@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Prepare directories
         run: |
@@ -133,7 +133,7 @@ jobs:
           Write-Host "Registry events: $($registry.Count)"
 
       - name: Upload corpus
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: benign-corpus-${{ github.run_id }}
           path: corpus/benign/

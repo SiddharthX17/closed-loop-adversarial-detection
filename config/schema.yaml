@@ -1,0 +1,19 @@
+version: 1
+fields:
+  timestamp:           { type: str, required: true,  description: "ISO 8601" }
+  host:                { type: str, required: true,  description: "hostname" }
+  user:                { type: str, required: true,  description: "username or SYSTEM" }
+  EventID:             { type: int, required: true,  description: "Windows Event ID" }
+  event_type:          { type: str, required: true,  description: "process_creation | registry | network | auth" }
+  Image:               { type: str, required: false, description: "full image path" }
+  CommandLine:         { type: str, required: false, description: "full command line" }
+  ParentImage:         { type: str, required: false }
+  ParentCommandLine:   { type: str, required: false }
+  ProcessId:           { type: str, required: false }
+  ParentProcessId:     { type: str, required: false }
+  TargetObject:        { type: str, required: false, description: "registry key path" }
+  Details:             { type: str, required: false, description: "registry value data" }
+  SourceIp:            { type: str, required: false }
+  DestinationIp:       { type: str, required: false }
+  DestinationHostname: { type: str, required: false }
+  DestinationPort:     { type: int, required: false }

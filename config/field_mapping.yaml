@@ -21,3 +21,8 @@ valid_fields:
   - DestinationIp
   - DestinationHostname
   - DestinationPort
+  - OriginalFileName
+  - CurrentDirectory
+  - IntegrityLevel
+  - Protocol
+  - Initiated

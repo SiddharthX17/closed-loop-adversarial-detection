@@ -17,3 +17,8 @@ fields:
   DestinationIp:       { type: str, required: false }
   DestinationHostname: { type: str, required: false }
   DestinationPort:     { type: int, required: false }
+  OriginalFileName:  { type: str, required: false, description: "PE header original filename — catches renamed binaries" }
+  CurrentDirectory:  { type: str, required: false, description: "working directory at process launch" }
+  IntegrityLevel:    { type: str, required: false, description: "process integrity level" }
+  Protocol:          { type: str, required: false, description: "network protocol tcp/udp — EID 3" }
+  Initiated:         { type: str, required: false, description: "true if process initiated connection — EID 3" }

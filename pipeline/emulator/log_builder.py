@@ -23,6 +23,11 @@ class LogEvent(BaseModel):
     DestinationIp: Optional[str] = None
     DestinationHostname: Optional[str] = None
     DestinationPort: Optional[int] = None
+    OriginalFileName: Optional[str] = None
+    CurrentDirectory: Optional[str] = None
+    IntegrityLevel:   Optional[str] = None
+    Protocol:         Optional[str] = None
+    Initiated:        Optional[str] = None
 
     class Config:
         extra = "forbid"  # unknown fields = hard reject, not silent drop

@@ -1,0 +1,23 @@
+# config/field_mapping.yaml
+# Sysmon-native field names — these are the valid column names in the log table.
+# The Sysmon pipeline (pysigma-pipeline-sysmon) handles field mapping inside
+# pySigma rule evaluation. No translation needed at the detection boundary.
+
+valid_fields:
+  - timestamp
+  - host
+  - user
+  - EventID
+  - event_type
+  - Image
+  - CommandLine
+  - ParentImage
+  - ParentCommandLine
+  - ProcessId
+  - ParentProcessId
+  - TargetObject
+  - Details
+  - SourceIp
+  - DestinationIp
+  - DestinationHostname
+  - DestinationPort

@@ -1,0 +1,321 @@
+import json
+import re
+import anthropic
+from datetime import datetime, timezone
+from dotenv import load_dotenv
+from pipeline.emulator.log_builder import LogEvent
+from pipeline.data.atomic_cleaner import CleanedAtomicTest
+
+load_dotenv()
+client = anthropic.Anthropic()
+
+# ─── Canonical schema (RESERVED — not used in current build_log_event flow) ──
+# These are kept for future pipeline stages that need normalised field names.
+# Do NOT use in LogEvent construction — LogEvent expects Sysmon field names.
+
+SIGMA_TO_CANONICAL = {
+    "Image":               "process_name",
+    "CommandLine":         "command_line",
+    "ParentImage":         "parent_process",
+    "TargetObject":        "registry_path",
+    "DestinationIp":       "network_destination",
+    "DestinationHostname": "network_destination",
+}
+
+CANONICAL_EVENT_FIELDS = {
+    "process_creation": {"process_name", "command_line", "parent_process"},
+    "registry":         {"registry_path"},
+    "network":          {"network_destination"},
+}
+
+MIN_CANONICAL_FIELDS = {
+    "process_creation": {"process_name", "command_line"},
+    "registry":         {"registry_path"},
+    "network":          {"network_destination"},
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Sysmon-level minimum field requirements — used in build_log_event
+# network accepts either DestinationIp OR DestinationHostname
+_SYSMON_MIN: dict[str, dict] = {
+    "process_creation": {"required_all": {"Image", "CommandLine"}},
+    "registry":         {"required_all": {"TargetObject"}},
+    "network":          {"required_any": {"DestinationIp", "DestinationHostname"}},
+}
+
+# ─── Prompts ──────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """You are a threat intelligence analyst generating synthetic Windows Sysmon log artifacts from ATT&CK procedure implementations.
+
+You will receive a structured description of an adversary technique execution including:
+- Technique metadata (ID, name, tactic)
+- Executor context (process image, elevation level)
+- Pre-resolved, discrete commands ready for execution
+- Optional input variables you may substitute with realistic alternatives
+
+STRICT EXTRACTION RULES:
+1. Only extract values EXPLICITLY present in the provided commands
+2. Do NOT infer, generalise, or fabricate values not derivable from the commands
+3. If a field value is not in the commands, omit that field entirely
+4. Input Variables marked for substitution MAY be replaced with realistic values of the matching type
+5. Set confidence to "low" if commands lack concrete, explicit observables
+
+SYSMON EVENT TYPES AND VALID FIELD NAMES:
+
+process_creation (EventID: 1)
+  Required: Image, CommandLine
+  Optional: ParentImage, ParentCommandLine, ProcessId, ParentProcessId,
+            OriginalFileName, CurrentDirectory, IntegrityLevel
+
+registry — value set (EventID: 13) or key create/delete (EventID: 12)
+  Required: TargetObject
+  Optional: Details
+
+network connection (EventID: 3)
+  Required: DestinationIp OR DestinationHostname
+  Optional: DestinationPort, Protocol, Initiated, SourceIp, DestinationHostname
+
+INTEGRITY LEVEL RULES:
+  Elevation Required: Yes  →  IntegrityLevel = "High"
+  Elevation Required: No   →  IntegrityLevel = "Medium"
+
+STRICT OUTPUT SCHEMA — follow exactly, no extra keys:
+{
+  "confidence": "high" | "low",
+  "reason": "<brief explanation of what was extracted or why confidence is low>",
+  "event_type": "process_creation" | "registry" | "network",
+  "EventID": <integer>,
+  "fields": {
+    "<SysmonFieldName>": "<extracted value>"
+  }
+}
+
+FORBIDDEN TOP-LEVEL KEYS: artifacts, overall_confidence, parameters, indicators, commands
+Use Sysmon field names (Image, CommandLine, TargetObject) — NOT canonical names (process_name, command_line).
+If extraction is not possible, return confidence "low" and fields as {}.
+Respond ONLY with the JSON object. No markdown, no explanation outside the JSON."""
+
+USER_PROMPT_TEMPLATE = """{formatted_input}{evasion_block}
+
+Extract Sysmon log artifacts from the commands above.
+Focus on the FIRST command that produces a loggable event if multiple steps are present."""
+
+EVASION_BLOCK = """
+
+Evasion hints from attacker agent (apply only where the commands support it — do not invent values):
+{evasion_hints}"""
+
+# Safe fallback returned on any LLM/parse failure — never crashes the pipeline
+_FALLBACK_RESULT = {
+    "confidence": "low",
+    "reason":     "Extraction failed — see interpreter log",
+    "event_type": None,
+    "EventID":    None,
+    "fields":     {},
+}
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _strip_markdown(raw: str) -> str:
+    raw = re.sub(r"^```[a-zA-Z]*\n?", "", raw)
+    raw = re.sub(r"\n?```$", "", raw)
+    return raw.strip()
+
+
+def _normalize(val):
+    # Only normalizing strings — other types pass through intentionally
+    if isinstance(val, str):
+        return val.strip()
+    return val
+
+
+def _ground_fields(fields: dict, procedure_text: str) -> dict:
+    """
+    Drop fields whose string values are not explicitly present in the procedure text.
+    Non-string values (int, bool etc.) pass through without grounding check.
+    """
+    grounded = {}
+    text = procedure_text.lower()
+
+    for k, v in fields.items():
+        if isinstance(v, str):
+            if v.lower() in text:
+                grounded[k] = v
+            else:
+                print(f"[procedure_interpreter] Dropping ungrounded field {k}={v!r}")
+        else:
+            # e.g. ProcessId as int — pass through
+            grounded[k] = v
+
+    return grounded
+
+
+def _validate_minimum_sysmon_fields(event_type: str, fields: dict) -> bool:
+    """
+    Check that the minimum required Sysmon fields are present for the event type.
+    Network accepts either DestinationIp or DestinationHostname.
+    Unknown event types pass through (no constraint).
+    """
+    spec = _SYSMON_MIN.get(event_type)
+    if spec is None:
+        return True
+
+    keys = set(fields.keys())
+
+    if "required_all" in spec:
+        return spec["required_all"].issubset(keys)
+
+    if "required_any" in spec:
+        return bool(spec["required_any"] & keys)
+
+    return True
+
+
+# ─── Canonical helpers (reserved for future pipeline stage) ───────────────────
+
+def _map_to_canonical(fields: dict) -> dict:
+    mapped = {}
+    for k, v in fields.items():
+        canonical = SIGMA_TO_CANONICAL.get(k)
+        if canonical:
+            if canonical == "network_destination":
+                if "network_destination" not in mapped:
+                    mapped["network_destination"] = _normalize(v)
+            else:
+                mapped[canonical] = _normalize(v)
+    return mapped
+
+
+def _enforce_canonical_constraints(event_type: str, fields: dict) -> dict:
+    allowed = CANONICAL_EVENT_FIELDS.get(event_type, set())
+    return {k: v for k, v in fields.items() if k in allowed}
+
+
+def _validate_minimum_canonical_fields(event_type: str, fields: dict) -> bool:
+    required = MIN_CANONICAL_FIELDS.get(event_type, set())
+    return required.issubset(set(fields.keys()))
+
+
+# ─── Core functions ───────────────────────────────────────────────────────────
+
+def interpret_procedure(
+    cleaned_test: CleanedAtomicTest,
+    evasion_hints: dict | None = None,
+) -> dict:
+    """
+    Send a CleanedAtomicTest to the LLM and return a structured extraction dict.
+    Never raises — returns _FALLBACK_RESULT on any failure.
+    """
+    evasion_block = ""
+    if evasion_hints:
+        evasion_block = EVASION_BLOCK.format(
+            evasion_hints=json.dumps(evasion_hints, indent=2)
+        )
+
+    prompt = USER_PROMPT_TEMPLATE.format(
+        formatted_input=cleaned_test.formatted_input,
+        evasion_block=evasion_block,
+    )
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            temperature=0,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}]
+        )
+    except Exception as e:
+        print(f"[interpret_procedure] API call failed: {e}")
+        return dict(_FALLBACK_RESULT, reason=f"API call failed: {e}")
+
+    # Safely extract text across all content blocks
+    raw = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            raw += block.text
+    raw = raw.strip()
+
+    print("\n[DEBUG] Raw LLM output:")
+    print(raw)
+
+    # Strip markdown fences if present
+    raw = _strip_markdown(raw)
+
+    # Guard JSON parse
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"[interpret_procedure] JSON parse failed: {e}\nRaw output: {raw}")
+        return dict(_FALLBACK_RESULT, reason=f"JSON parse failed: {e}")
+
+    # Validate top-level schema
+    if not isinstance(result, dict):
+        print("[interpret_procedure] LLM returned non-dict JSON")
+        return dict(_FALLBACK_RESULT, reason="LLM returned non-dict JSON")
+
+    if "confidence" not in result:
+        print("[interpret_procedure] Missing 'confidence' in LLM response")
+        return dict(_FALLBACK_RESULT, reason="Missing confidence key")
+
+    return result
+
+
+def build_log_event(
+    interpretation: dict,
+    procedure_text: str,
+    host: str = "WORKSTATION-01",
+    user: str = "SYSTEM",
+    timestamp: str = None,
+) -> LogEvent | None:
+    """
+    Build a validated LogEvent from an LLM interpretation dict.
+
+    Pipeline:
+      1. Confidence gate
+      2. EventID presence check
+      3. Ground fields against procedure text (kills hallucinations)
+      4. Sysmon minimum field validation
+      5. LogEvent construction (Sysmon field names, strict Pydantic)
+
+    Returns None at any failing gate with a logged reason.
+    """
+    if interpretation.get("confidence") != "high":
+        print(f"[build_log_event] Dropped: confidence={interpretation.get('confidence')}")
+        return None
+
+    if not interpretation.get("EventID"):
+        print("[build_log_event] Dropped: missing or null EventID")
+        return None
+
+    ts = timestamp or datetime.now(timezone.utc).isoformat()
+    event_type = interpretation.get("event_type")
+    raw_fields  = interpretation.get("fields", {})
+
+    # 1. Ground against procedure text
+    grounded_fields = _ground_fields(raw_fields, procedure_text)
+    if not grounded_fields:
+        print("[build_log_event] Dropped: no fields survived grounding")
+        return None
+
+    # 2. Sysmon minimum field validation
+    if not _validate_minimum_sysmon_fields(event_type, grounded_fields):
+        print(
+            f"[build_log_event] Dropped: minimum Sysmon fields not met "
+            f"for event_type={event_type!r}, fields={set(grounded_fields)}"
+        )
+        return None
+
+    try:
+        return LogEvent(
+            timestamp=ts,
+            host=host,
+            user=user,
+            EventID=interpretation["EventID"],
+            event_type=event_type,
+            **grounded_fields,
+        )
+    except Exception as e:
+        print(f"[build_log_event] LogEvent construction failed: {e}")
+        return None

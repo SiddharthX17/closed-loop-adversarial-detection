@@ -1,94 +1,76 @@
-import yaml
-import os
-from pprint import pprint
+"""
+1.12 — LLM Smoke Test
+Run interpret_procedure on 3 real techniques and inspect output.
+Techniques: T1059.001, T1547.001, T1112
 
-BASE_PATH = "data/atomic-red-team"
+Run from repo root:
+    python smoke_1_12.py
+"""
 
+import json
+from pipeline.data.stix_loader import lookup_technique
+from pipeline.data.atomic_loader import load_tests_for_technique
+from pipeline.data.atomic_cleaner import clean_test
+from pipeline.emulator.procedure_interpreter import interpret_procedure
 
-def load_atomic_tests(technique_id: str):
-    path = f"{BASE_PATH}/{technique_id}/{technique_id}.yaml"
-
-    if not os.path.exists(path):
-        print(f"[!] No file for {technique_id}")
-        return []
-
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    raw_tests = data.get("atomic_tests", [])
-    print(f"\n[+] Raw tests count: {len(raw_tests)}")
-
-    return raw_tests
+TECHNIQUES = ["T1059.001", "T1547.001", "T1112"]
+SEPARATOR = "=" * 72
 
 
-def filter_and_prepare_tests(raw_tests):
-    processed = []
+def run_smoke_test():
+    for technique_id in TECHNIQUES:
+        print(f"\n{SEPARATOR}")
+        print(f"TECHNIQUE: {technique_id}")
+        print(SEPARATOR)
 
-    for i, test in enumerate(raw_tests):
-        print(f"\n{'='*60}")
-        print(f"[RAW TEST {i+1}]")
-        pprint(test)
+        # --- Load metadata and atomic tests ---
+        metadata = lookup_technique(technique_id)
+        atomic_tests = load_tests_for_technique(technique_id)
 
-        platforms = test.get("supported_platforms", [])
-        executor = test.get("executor", {})
-        command = executor.get("command")
-
-        print("\n--- FILTERING ---")
-
-        if "windows" not in platforms:
-            print("❌ Skipped: not Windows")
+        if not atomic_tests:
+            print(f"  [SKIP] No atomic tests found for {technique_id}")
             continue
 
-        if not command or len(command) < 10:
-            print("❌ Skipped: empty/short command")
+        # Pick first test only — smoke test, not exhaustive
+        raw_test = atomic_tests[0]
+        print(f"  Test selected : {raw_test.test_name}")
+        print(f"  Executor      : {raw_test.executor_name}")
+
+        # --- Clean ---
+        cleaned = clean_test(raw_test, metadata)
+        if cleaned is None:
+            print(f"  [SKIP] clean_test returned None — no commands after cleaning")
             continue
 
-        if "#{" in command:
-            print("❌ Skipped: contains placeholders")
-            continue
+        print(f"  Commands      : {len(cleaned.commands)}")
+        print(f"  Unresolved    : {cleaned.has_unresolved_vars}")
 
-        # Normalize command
-        normalized = " ".join(command.splitlines()).strip()
+        # --- Interpret ---
+        print(f"\n  [interpret_procedure] calling LLM...")
+        result = interpret_procedure(cleaned)
 
-        print("✅ PASSED FILTER")
-        print(f"Command (normalized): {normalized}")
+        # --- Inspect output ---
+        print(f"\n  --- RAW RESULT DICT ---")
+        print(json.dumps(result, indent=2))
 
-        # This is EXACTLY what goes to LLM
-        llm_input = normalized
+        # Summarise what matters
+        confidence     = result.get("confidence", "MISSING")
+        reason         = result.get("reason", None)
+        extracted      = result.get("fields", {})
+        fields_present = [k for k, v in extracted.items() if v not in (None, "")]
 
-        processed.append({
-            "name": test.get("name"),
-            "description": test.get("description"),
-            "command": normalized,
-            "llm_input": llm_input
-        })
+        print(f"\n  --- SUMMARY ---")
+        print(f"  Confidence    : {confidence}")
+        print(f"  Reason        : {reason}")
+        print(f"  Fields populated ({len(fields_present)}): {fields_present}")
 
-    return processed
+        if confidence == "low":
+            print(f"  *** LOW CONFIDENCE — inspect this one ***")
 
-
-def inspect_technique(technique_id: str):
-    print(f"\n{'#'*80}")
-    print(f"INSPECTING: {technique_id}")
-    print(f"{'#'*80}")
-
-    raw_tests = load_atomic_tests(technique_id)
-
-    if not raw_tests:
-        return
-
-    processed = filter_and_prepare_tests(raw_tests)
-
-    print(f"\n\n🔥 FINAL LLM INPUTS ({len(processed)}):")
-    for i, p in enumerate(processed):
-        print(f"\n[{i+1}] {p['name']}")
-        print(f"LLM INPUT:\n{p['llm_input']}")
+            print(f"\n{SEPARATOR}")
+            print("Smoke test complete.")
+            print(SEPARATOR)
 
 
-# -------------------------
-# 🔥 Run this
-# -------------------------
 if __name__ == "__main__":
-    TEST_TECHNIQUES = ["T1059.001", "T1053.005", "T1547.001"]
-
-    for tid in TEST_TECHNIQUES:
-        inspect_technique(tid)
+    run_smoke_test()

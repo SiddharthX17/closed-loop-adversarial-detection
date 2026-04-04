@@ -1,0 +1,11 @@
+# config/techniques.yaml
+# Target ATT&CK techniques for v1 emulation.
+# Edit after P.11 research is complete — these are placeholders to unblock Phase 1 build.
+#
+# Format: list of ATT&CK technique IDs (subtechniques supported e.g. T1059.001)
+# The emulator reads this file when technique_ids is not passed explicitly.
+
+techniques:
+  - T1059.001   # Command and Scripting Interpreter: PowerShell
+  - T1547.001   # Boot or Logon Autostart: Registry Run Keys
+  - T1112       # Modify Registry

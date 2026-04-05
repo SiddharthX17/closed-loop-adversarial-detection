@@ -132,6 +132,33 @@ def load_events_from_jsonl(path: Path) -> list[dict]:
     return events
 
 
+def load_events_from_json(path) -> list:
+    """
+    Load log events from a JSON file containing an array of objects.
+    This is the format produced by the GH Actions benign corpus workflow.
+
+    Accepts:
+        - JSON array:  [ {...}, {...} ]
+        - Single JSON object: {...}  (wrapped into a list)
+    """
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    if isinstance(data, dict):
+        events = [data]
+    elif isinstance(data, list):
+        events = [e for e in data if isinstance(e, dict)]
+        skipped = len(data) - len(events)
+        if skipped:
+            logger.warning("%s: skipped %d non-dict entries", path, skipped)
+    else:
+        raise ValueError(
+            f"{path}: expected JSON array or object, got {type(data).__name__}")
+
+    logger.debug("Loaded %d events from %s", len(events), path)
+    return events
+
+
 # ---------------------------------------------------------------------------
 # In-memory DB construction
 # ---------------------------------------------------------------------------
@@ -416,7 +443,11 @@ if __name__ == "__main__":
     _rules_dir = Path(sys.argv[1])
     _events_path = Path(sys.argv[2])
 
-    _events = load_events_from_jsonl(_events_path)
+    # Route by extension — .jsonl for emulator output, .json for GH Actions corpus
+    if _events_path.suffix.lower() == ".jsonl":
+        _events = load_events_from_jsonl(_events_path)
+    else:
+        _events = load_events_from_json(_events_path)
     _engine = DetectionEngine(rules_dir=_rules_dir, events=_events)
     _results = _engine.run()
 

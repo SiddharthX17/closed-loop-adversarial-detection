@@ -38,6 +38,7 @@ from engine import (
     _convert_rule_to_sql,
     _regexp_udf,
     load_events_from_jsonl,
+    load_events_from_json
 )
 
 from sigma.collection import SigmaCollection
@@ -575,3 +576,51 @@ class TestRuleMatchResultShape:
         )
         assert r.fired is True
         assert len(r.matched_events) == 1
+
+# ---------------------------------------------------------------------------
+# 7. TestLoadEventsFromJson
+# ---------------------------------------------------------------------------
+
+
+class TestLoadEventsFromJson:
+    def test_json_array_happy_path(self, tmp_path):
+        f = tmp_path / "events.json"
+        events = [{"EventID": "1", "Image": "cmd.exe"},
+                  {"EventID": "2", "Image": "ps.exe"}]
+        f.write_text(json.dumps(events))
+        result = load_events_from_json(f)
+        assert len(result) == 2
+        assert result[0]["Image"] == "cmd.exe"
+
+    def test_single_json_object_wrapped_in_list(self, tmp_path):
+        f = tmp_path / "event.json"
+        f.write_text(json.dumps({"EventID": "1", "Image": "cmd.exe"}))
+        result = load_events_from_json(f)
+        assert len(result) == 1
+        assert isinstance(result, list)
+
+    def test_non_dict_entries_skipped(self, tmp_path):
+        f = tmp_path / "mixed.json"
+        f.write_text(json.dumps(
+            [{"EventID": "1"}, "not_a_dict", 42, {"EventID": "2"}]))
+        result = load_events_from_json(f)
+        assert len(result) == 2
+
+    def test_invalid_type_raises(self, tmp_path):
+        f = tmp_path / "bad.json"
+        f.write_text(json.dumps("just a string"))
+        with pytest.raises(ValueError, match="expected JSON array or object"):
+            load_events_from_json(f)
+
+    def test_empty_array_returns_empty_list(self, tmp_path):
+        f = tmp_path / "empty.json"
+        f.write_text("[]")
+        result = load_events_from_json(f)
+        assert result == []
+
+    def test_does_not_inject_channel(self, tmp_path):
+        # Engine loader is format-only — Channel defaulting is not its job
+        f = tmp_path / "events.json"
+        f.write_text(json.dumps([{"EventID": "1", "Image": "cmd.exe"}]))
+        result = load_events_from_json(f)
+        assert "Channel" not in result[0]

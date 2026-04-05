@@ -9,6 +9,8 @@ class LogEvent(BaseModel):
     user: str
     EventID: int
     event_type: str
+    # static for Sigma compatibility
+    Channel: str = "Microsoft-Windows-Sysmon/Operational"
 
     # Optional — Sysmon field names
     Image: Optional[str] = None

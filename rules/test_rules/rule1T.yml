@@ -1,0 +1,9 @@
+title: Suspicious PowerShell Encoded Command
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    Image: 'powershell.exe'
+    CommandLine|contains: '-enc'
+  condition: selection

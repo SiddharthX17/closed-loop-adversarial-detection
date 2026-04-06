@@ -31,3 +31,13 @@ DETECTION_MODULE = PROJECT_ROOT / "pipeline" / "detection"
 
 if str(DETECTION_MODULE) not in sys.path:
     sys.path.insert(0, str(DETECTION_MODULE))
+
+# Linter's get_valid_fields() imports LogEvent from pipeline/emulator
+EMULATOR_MODULE = PROJECT_ROOT / "pipeline" / "emulator"
+if str(EMULATOR_MODULE) not in sys.path:
+    sys.path.insert(0, str(EMULATOR_MODULE))
+
+# Add pipeline/validation so `import schema_linter` resolves directly
+VALIDATION_MODULE = PROJECT_ROOT / "pipeline" / "validation"
+if str(VALIDATION_MODULE) not in sys.path:
+    sys.path.insert(0, str(VALIDATION_MODULE))

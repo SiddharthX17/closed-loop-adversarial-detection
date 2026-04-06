@@ -137,6 +137,10 @@ def load_events_from_json(path) -> list:
     Load log events from a JSON file containing an array of objects.
     This is the format produced by the GH Actions benign corpus workflow.
 
+    Defaults Channel to 'Microsoft-Windows-Sysmon/Operational' for any event
+    missing it — windows_logsource_pipeline() injects a Channel condition into
+    every generated SQL query, so events without Channel fail every rule silently.
+
     Accepts:
         - JSON array:  [ {...}, {...} ]
         - Single JSON object: {...}  (wrapped into a list)
@@ -312,6 +316,76 @@ class DetectionEngine:
         """
         self.events = events
         return self.run()
+
+    def run_single_rule(
+        self,
+        rule_yaml: str,
+        events: Optional[list[dict]] = None,
+    ) -> RuleMatchResult:
+        """
+        Evaluate a single Sigma rule supplied as a YAML string against events.
+
+        Used by attack_gate.py and noise_gate.py for in-memory validation of
+        candidate rules from the defender agent — no temp files, no disk I/O.
+
+        Parameters
+        ----------
+        rule_yaml : raw Sigma rule YAML string (defender agent output)
+        events    : event list to evaluate against — defaults to self.events
+                    if not supplied. Pass explicitly to avoid mutating engine state.
+
+        Returns
+        -------
+        RuleMatchResult — same shape as run(), rule_id/title extracted from
+        YAML if parseable, otherwise falls back to "candidate_rule".
+        """
+        target_events = events if events is not None else self.events
+
+        if not target_events:
+            return RuleMatchResult(
+                rule_id="candidate_rule",
+                rule_title="candidate_rule",
+                rule_path="<in-memory>",
+                fired=False,
+                skipped=True,
+                skip_reason="empty_input: no events supplied",
+            )
+
+        conn = _build_db(target_events)
+
+        # Parse
+        try:
+            rule_collection = SigmaCollection.from_yaml(rule_yaml)
+        except Exception as exc:  # noqa: BLE001
+            return RuleMatchResult(
+                rule_id="candidate_rule",
+                rule_title="candidate_rule",
+                rule_path="<in-memory>",
+                fired=False,
+                skipped=True,
+                skip_reason=f"parse_error: {type(exc).__name__}: {exc}",
+            )
+
+        rule_id, rule_title = "candidate_rule", "candidate_rule"
+        if rule_collection.rules:
+            r = rule_collection.rules[0]
+            rule_id = str(r.id) if r.id else "candidate_rule"
+            rule_title = str(r.title) if r.title else "candidate_rule"
+
+        # Convert
+        sql, err = _convert_rule_to_sql(rule_collection)
+        if err:
+            return RuleMatchResult(
+                rule_id=rule_id,
+                rule_title=rule_title,
+                rule_path="<in-memory>",
+                fired=False,
+                skipped=True,
+                skip_reason=err,
+            )
+
+        # Execute
+        return self._execute(rule_id, rule_title, "<in-memory>", sql, conn)
 
     # ------------------------------------------------------------------
     # Internal: per-rule pipeline

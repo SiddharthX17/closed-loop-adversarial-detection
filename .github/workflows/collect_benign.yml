@@ -1,138 +1,148 @@
-name: Collect Benign Corpus v3
+name: Collect Benign Corpus
 
 on:
   schedule:
-    - cron: '0 0 * * 0'
+    - cron: '0 0 * * 0'   # Sunday midnight
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   collect:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
-      - name: Prepare directories
+      - name: Download Sysmon
+        shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path "corpus/benign/process"
-          New-Item -ItemType Directory -Force -Path "corpus/benign/network"
-          New-Item -ItemType Directory -Force -Path "corpus/benign/registry"
+          Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$env:TEMP\Sysmon.zip"
+          Expand-Archive "$env:TEMP\Sysmon.zip" -DestinationPath "$env:TEMP\Sysmon"
+
+      - name: Download SwiftOnSecurity config
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile "$env:TEMP\sysmonconfig.xml"
 
       - name: Install Sysmon
+        shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "Sysmon.zip"
-          Expand-Archive Sysmon.zip -DestinationPath Sysmon
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile "sysmonconfig.xml"
-          .\Sysmon\sysmon64.exe -accepteula -i sysmonconfig.xml
-          Start-Sleep -Seconds 5
+          Start-Process "$env:TEMP\Sysmon\Sysmon64.exe" -ArgumentList "-accepteula -i $env:TEMP\sysmonconfig.xml" -Wait -Verb RunAs
 
-      - name: Generate benign activity
+      - name: Simulate benign process activity (EID 1)
+        shell: powershell
         run: |
-          $urls = @(
-            "https://microsoft.com",
-            "https://github.com",
-            "https://bing.com",
-            "https://learn.microsoft.com"
-          )
-
-          for ($i = 0; $i -lt 25; $i++) {
-
-            # --- Parent-child chains via cmd ---
-            # cmd → whoami (cmd as parent, whoami as child)
-            Start-Process cmd -ArgumentList "/c whoami" -NoNewWindow -Wait
-
-            # cmd → ipconfig
-            Start-Process cmd -ArgumentList "/c ipconfig /all" -NoNewWindow -Wait
-
-            # cmd → dir
-            Start-Process cmd -ArgumentList "/c dir C:\Windows\System32" -NoNewWindow -Wait
-
-            # --- Parent-child chains via powershell ---
-            # powershell → Get-Process (new PS child process, not same session)
-            Start-Process powershell -ArgumentList "-NoProfile -Command Get-Process" -NoNewWindow -Wait
-
-            # powershell → Get-Service
-            Start-Process powershell -ArgumentList "-NoProfile -Command Get-Service" -NoNewWindow -Wait
-
-            # powershell → Get-ChildItem (file enumeration)
-            Start-Process powershell -ArgumentList "-NoProfile -Command Get-ChildItem C:\Users" -NoNewWindow -Wait
-
-            # --- Deeper chain: cmd → powershell → command ---
-            Start-Process cmd -ArgumentList '/c powershell -NoProfile -Command "Get-Date"' -NoNewWindow -Wait
-
-            # --- Notepad: spawn and kill cleanly ---
-            $np = Start-Process notepad -PassThru
-            Start-Sleep -Milliseconds 500
-            Stop-Process -Id $np.Id -Force -ErrorAction SilentlyContinue
-
-            # --- Registry writes + cleanup (generates EID 12/13) ---
-            $regKey = "HKCU:\SOFTWARE\BenignTest_$i"
-            New-Item -Path $regKey -Force | Out-Null
-            Set-ItemProperty -Path $regKey -Name "TestValue" -Value "benign_$i"
-            Remove-Item -Path $regKey -Force -ErrorAction SilentlyContinue
-
-            # --- Network noise ---
-            $url = $urls | Get-Random
-            try {
-              Invoke-WebRequest -Uri $url -UseBasicParsing | Out-Null
-            } catch {}
-
+          # Parent-child chains with randomised delays
+          foreach ($i in 1..10) {
+            Start-Process cmd.exe -ArgumentList "/c whoami /all" -Wait
             Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 800)
+
+            Start-Process cmd.exe -ArgumentList "/c powershell -NonInteractive -Command Get-Date" -Wait
+            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 500)
+
+            Start-Process cmd.exe -ArgumentList "/c ipconfig /all" -Wait
+            Start-Sleep -Milliseconds (Get-Random -Minimum 150 -Maximum 600)
+
+            Start-Process notepad.exe -PassThru | ForEach-Object {
+              Start-Sleep -Milliseconds 300
+              $_.Kill()
+            }
+            Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 700)
+
+            Start-Process cmd.exe -ArgumentList "/c tasklist /fo csv /nh" -Wait
+            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 400)
           }
 
-      - name: Simulate benign scheduled task lifecycle
+      - name: Simulate benign registry activity (EID 12/13)
+        shell: powershell
         run: |
-          schtasks /create /tn "BenignTestTask" /tr "notepad.exe" /sc once /st 23:59 /f
-          schtasks /query /tn "BenignTestTask"
-          schtasks /delete /tn "BenignTestTask" /f
+          foreach ($i in 1..10) {
+            # Write and delete a scratch key — generates EID 13 + EID 12
+            $key = "HKCU:\Software\BenignCorpusTest\Run$i"
+            New-Item -Path $key -Force | Out-Null
+            Set-ItemProperty -Path $key -Name "TestValue" -Value "BenignData$i"
+            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 400)
+            Remove-Item -Path $key -Recurse -Force
+            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 300)
+          }
 
-      - name: Wait for Sysmon log flush
-        run: Start-Sleep -Seconds 15
-
-      - name: Export Sysmon events (structured JSON)
+      - name: Simulate benign network activity (EID 3)
+        shell: powershell
         run: |
-          $events = Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -ErrorAction SilentlyContinue |
-            ForEach-Object {
+          $urls = @(
+            "https://www.google.com",
+            "https://github.com",
+            "https://windowsupdate.microsoft.com",
+            "https://www.microsoft.com"
+          )
+          foreach ($i in 1..5) {
+            foreach ($url in $urls) {
               try {
-                $xml = [xml]$_.ToXml()
-                $event = @{
-                  event_id  = [string]$_.Id
-                  timestamp = $_.TimeCreated.ToString("o")
-                  computer  = $_.MachineName
-                }
-                $xml.Event.EventData.Data | ForEach-Object {
-                  $event[$_.Name] = $_.'#text'
-                }
-                switch ($_.Id) {
-                  1  { $event["category"] = "process_creation" }
-                  3  { $event["category"] = "network_connection" }
-                  7  { $event["category"] = "image_loaded" }
-                  10 { $event["category"] = "process_access" }
-                  11 { $event["category"] = "file_create" }
-                  12 { $event["category"] = "registry_create" }
-                  13 { $event["category"] = "registry_set" }
-                  default { $event["category"] = "other" }
-                }
-                $event
-              } catch { $null }
-            } | Where-Object { $_ -ne $null }
+                Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5 | Out-Null
+              } catch {}
+              Start-Sleep -Milliseconds (Get-Random -Minimum 300 -Maximum 900)
+            }
+          }
 
-          $process  = $events | Where-Object { $_.category -eq "process_creation" }
-          $network  = $events | Where-Object { $_.category -eq "network_connection" }
-          $registry = $events | Where-Object { $_.category -like "registry*" }
+      - name: Wait for Sysmon to flush events
+        shell: powershell
+        run: Start-Sleep -Seconds 10
 
-          $process  | ConvertTo-Json -Depth 4 | Set-Content "corpus/benign/process/process.json"
-          $network  | ConvertTo-Json -Depth 4 | Set-Content "corpus/benign/network/network.json"
-          $registry | ConvertTo-Json -Depth 4 | Set-Content "corpus/benign/registry/registry.json"
+      - name: Export Sysmon events to JSONL
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path corpus/benign/process
+          New-Item -ItemType Directory -Force -Path corpus/benign/network
+          New-Item -ItemType Directory -Force -Path corpus/benign/registry
 
-          Write-Host "Process events: $($process.Count)"
-          Write-Host "Network events: $($network.Count)"
-          Write-Host "Registry events: $($registry.Count)"
+          $events = Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -ErrorAction SilentlyContinue
 
-      - name: Upload corpus
-        uses: actions/upload-artifact@v5
-        with:
-          name: benign-corpus-${{ github.run_id }}
-          path: corpus/benign/
-          retention-days: 90
+          # EID 1 → process/
+          $eid1 = $events | Where-Object { $_.Id -eq 1 }
+          $eid1 | ForEach-Object {
+            $xml = [xml]$_.ToXml()
+            $data = @{ Channel = "Microsoft-Windows-Sysmon/Operational"; EventID = 1 }
+            $xml.Event.EventData.Data | ForEach-Object { $data[$_.Name] = $_.'#text' }
+            $data | ConvertTo-Json -Compress
+          } | Set-Content -Path "corpus/benign/process/gh_actions_$(Get-Date -Format 'yyyyMMdd_HHmmss').jsonl" -Encoding UTF8
+
+          # EID 3 → network/
+          $eid3 = $events | Where-Object { $_.Id -eq 3 }
+          $eid3 | ForEach-Object {
+            $xml = [xml]$_.ToXml()
+            $data = @{ Channel = "Microsoft-Windows-Sysmon/Operational"; EventID = 3 }
+            $xml.Event.EventData.Data | ForEach-Object { $data[$_.Name] = $_.'#text' }
+            $data | ConvertTo-Json -Compress
+          } | Set-Content -Path "corpus/benign/network/gh_actions_$(Get-Date -Format 'yyyyMMdd_HHmmss').jsonl" -Encoding UTF8
+
+          # EID 11/12/13 → registry/
+          $eidReg = $events | Where-Object { $_.Id -in @(11, 12, 13) }
+          $eidReg | ForEach-Object {
+            $eid = $_.Id
+            $xml = [xml]$_.ToXml()
+            $data = @{ Channel = "Microsoft-Windows-Sysmon/Operational"; EventID = $eid }
+            $xml.Event.EventData.Data | ForEach-Object { $data[$_.Name] = $_.'#text' }
+            $data | ConvertTo-Json -Compress
+          } | Set-Content -Path "corpus/benign/registry/gh_actions_$(Get-Date -Format 'yyyyMMdd_HHmmss').jsonl" -Encoding UTF8
+
+          # Summary
+          Write-Host "EID1: $($eid1.Count) | EID3: $($eid3.Count) | EID11/12/13: $($eidReg.Count)"
+
+      - name: Commit corpus to repo
+        shell: powershell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add corpus/benign/
+          $changes = git diff --cached --name-only
+          if ($changes) {
+            git commit -m "chore: refresh benign corpus [skip ci]"
+            git push
+          } else {
+            Write-Host "No new corpus files to commit"
+          }

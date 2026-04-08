@@ -274,3 +274,14 @@ class TestAttackGateRun:
         result = run(RULE_CONTAINS, [make_attack_event()])
         assert result.rule_result is not None
         assert result.rule_result.fired is True
+
+    # ── no match ─────────────────────────────────────────────────────────
+
+    def test_unmatched_events_populated(self):
+        events = [
+            make_attack_event(CommandLine="malicious_payload"),
+            make_attack_event(CommandLine="benign"),
+        ]
+        result = run(RULE_CONTAINS, events)
+
+        assert len(result.unmatched_events) == 1

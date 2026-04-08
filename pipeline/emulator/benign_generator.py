@@ -295,8 +295,8 @@ _EID12_13_TEMPLATES = [
 _SYSMON_CHANNEL = "Microsoft-Windows-Sysmon/Operational"
 
 
-def _iso_timestamp(base: datetime, jitter_seconds: int = 0) -> str:
-    delta = timedelta(seconds=random.randint(0, max(jitter_seconds, 1)))
+def _iso_timestamp(base: datetime, rng: random.Random, jitter_seconds: int = 0) -> str:
+    delta = timedelta(seconds=rng.randint(0, max(jitter_seconds, 1)))
     return (base + delta).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
@@ -304,7 +304,8 @@ def _fill(template_val: str, user: str, rng: random.Random) -> str:
     """Substitute {user} and {octet} placeholders in template strings."""
     val = template_val.replace("{user}", user)
     val = val.replace("{octet}", str(rng.randint(10, 254)))
-    val = val.replace("{GUID}", str(uuid.uuid4()).upper())
+    val = val.replace("{GUID}", str(
+        uuid.UUID(int=rng.getrandbits(128))).upper())
     val = val.replace("{FontName}", rng.choice(
         ["Segoe UI", "Arial", "Calibri"]))
     return val
@@ -328,7 +329,7 @@ def _generate_eid1(
         ppid = str(rng.randint(400, 999))
 
         events.append(LogEvent(
-            timestamp=_iso_timestamp(base_time, jitter_seconds=3600),
+            timestamp=_iso_timestamp(base_time, rng, jitter_seconds=3600),
             host=host,
             user=user,
             EventID=1,
@@ -361,7 +362,7 @@ def _generate_eid3(
         user = rng.choice(_USERS)
 
         events.append(LogEvent(
-            timestamp=_iso_timestamp(base_time, jitter_seconds=3600),
+            timestamp=_iso_timestamp(base_time, rng, jitter_seconds=3600),
             host=host,
             user=user,
             EventID=3,
@@ -392,7 +393,7 @@ def _generate_eid12_13(
         eid = tmpl["EventID"]
 
         events.append(LogEvent(
-            timestamp=_iso_timestamp(base_time, jitter_seconds=3600),
+            timestamp=_iso_timestamp(base_time, rng, jitter_seconds=3600),
             host=host,
             user=user,
             EventID=eid,
@@ -482,7 +483,7 @@ def generate_benign_events(
         Combined list[LogEvent] across all event types.
     """
     rng = random.Random(seed)
-    base_time = datetime.now(tz=timezone.utc).replace(
+    base_time = datetime(2026, 1, 1, tzinfo=timezone.utc).replace(
         hour=rng.randint(8, 17), minute=0, second=0, microsecond=0
     )
 

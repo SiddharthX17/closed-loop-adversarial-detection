@@ -1,10 +1,3 @@
-"""
-tests/test_benign_generator.py
-
-Tests for pipeline/emulator/benign_generator.py
-Run from project root: pytest tests/test_benign_generator.py -v
-"""
-
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.emulator.benign_generator import (
     _SYSMON_CHANNEL,

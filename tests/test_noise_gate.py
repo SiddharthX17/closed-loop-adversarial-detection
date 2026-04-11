@@ -15,6 +15,7 @@ import json
 import sys
 from pathlib import Path
 
+from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -284,19 +285,19 @@ class TestNoiseGateFPRate:
         assert result.fp_rate > 0.05
 
     def test_passes_just_below_threshold(self, tmp_path):
-        # 2 notepad events out of 100 = 2% FP rate — below 5% threshold
+        # 1 notepad events out of 200 = 0.5% FP rate — below 1% threshold
         notepad_events = [
             _make_eid1_event(
                 Image=r"C:\Windows\System32\notepad.exe"
             ).model_dump(exclude_none=True)
-            for _ in range(2)
+            for _ in range(1)
         ]
         other_events = [
             _make_eid1_event(
                 Image=r"C:\Windows\System32\svchost.exe",
                 CommandLine="svchost.exe -k netsvcs",
             ).model_dump(exclude_none=True)
-            for _ in range(98)
+            for _ in range(199)
         ]
         _write_jsonl(tmp_path / "process" / "corpus.jsonl",
                      notepad_events + other_events)
@@ -309,22 +310,22 @@ class TestNoiseGateFPRate:
             supplement_with_generated=False,
         )
         assert result.passed is True
-        assert abs(result.fp_rate - 0.02) < 0.001
+        assert abs(result.fp_rate - 0.005) < 0.001
 
     def test_fails_just_above_threshold(self, tmp_path):
-        # 6 notepad events out of 100 = 6% FP rate — above 5% threshold
+        # 2 notepad events out of 100 = 2% FP rate — above 1% threshold
         notepad_events = [
             _make_eid1_event(
                 Image=r"C:\Windows\System32\notepad.exe"
             ).model_dump(exclude_none=True)
-            for _ in range(6)
+            for _ in range(2)
         ]
         other_events = [
             _make_eid1_event(
                 Image=r"C:\Windows\System32\svchost.exe",
                 CommandLine="svchost.exe -k netsvcs",
             ).model_dump(exclude_none=True)
-            for _ in range(94)
+            for _ in range(98)
         ]
         _write_jsonl(tmp_path / "process" / "corpus.jsonl",
                      notepad_events + other_events)
@@ -498,3 +499,58 @@ class TestNoiseGateResultFields:
             benign_gen_seed=42,
         )
         assert result_with_gen.total_events > result_no_gen.total_events
+
+
+class TestNoiseGateEdgeCases:
+    @patch("pipeline.validation.noise_gate.DetectionEngine")
+    def test_engine_skipped_returns_failure(self, MockEngine, tmp_path):
+        # Write some benign events so corpus isn't empty
+        events = [_make_eid1_event().model_dump(exclude_none=True)
+                  for _ in range(10)]
+        _write_jsonl(tmp_path / "process" / "corpus.jsonl", events)
+
+        # Mock engine returns a skipped result
+        mock_result = MagicMock()
+        mock_result.skipped = True
+        mock_result.skip_reason = "unsupported_modifier: base64offset"
+        mock_result.fired = False
+        mock_result.matched_events = []
+        MockEngine.return_value.run_single_rule.return_value = mock_result
+
+        attack_sample = [_make_eid1_event()]
+        result = run(
+            rule_yaml=_RARE_BINARY_RULE,
+            attack_sample=attack_sample,
+            corpus_root=tmp_path,
+            supplement_with_generated=False,
+        )
+
+        assert result.passed is False
+        assert result.error is not None
+        assert "skipped" in result.error.lower()
+        assert result.fp_rate == 0.0
+        assert result.total_events == 10  # corpus was loaded before skip
+
+    @patch("pipeline.validation.noise_gate.DetectionEngine")
+    def test_generator_filtered_to_matching_eids(self, MockEngine, tmp_path):
+        # attack_sample is EID1 only → should only supplement with process events
+        mock_result = MagicMock()
+        mock_result.skipped = False
+        mock_result.fired = False
+        mock_result.matched_events = []
+        MockEngine.return_value.run_single_rule.return_value = mock_result
+
+        attack_sample = [_make_eid1_event()]  # EID1 only
+        result = run(
+            rule_yaml=_RARE_BINARY_RULE,
+            attack_sample=attack_sample,
+            corpus_root=tmp_path,  # empty disk corpus
+            supplement_with_generated=True,
+            benign_gen_seed=42,
+        )
+
+        # benign_generator produces 200 per type (EID1 + EID3 + EID12/13)
+        # only EID1 (process) should be included since attack_sample is EID1
+        # generator makes 200 EID1 events → total should be 200, not 600
+        assert result.total_events == 200
+        assert result.passed is True

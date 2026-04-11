@@ -30,7 +30,7 @@ _HOSTS = [
 ]
 
 _USERS = [
-    "jsmith", "adavis", "mbrown", "lgarcia", "SYSTEM", "LOCAL SERVICE",
+    "jsmith", "adavis", "mbrown", "lgarcia", "jprakash", "SYSTEM", "LOCAL SERVICE",
 ]
 
 _INTEGRITY = ["Medium", "High", "System", "Low"]

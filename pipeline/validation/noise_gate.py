@@ -2,7 +2,7 @@
 noise_gate.py
 
 Runs a candidate Sigma rule against the benign corpus and asserts
-FP rate stays below threshold (default 5%).
+FP rate stays below threshold (default 1%).
 
 Corpus loading:
   - Determines relevant subdirs from EventIDs present in attack_sample
@@ -29,13 +29,12 @@ from pipeline.emulator.log_builder import LogEvent
 
 _EID_TO_SUBDIR: dict[int, str] = {
     1:  "process",
-    11: "registry",
     12: "registry",
     13: "registry",
     3:  "network",
 }
 
-_DEFAULT_FP_THRESHOLD = 0.05
+_DEFAULT_FP_THRESHOLD = 0.01
 _FP_SAMPLE_CAP = 5       # max FP events surfaced to defender agent
 _BENIGN_GEN_COUNT = 200  # synthetic events per type, supplements corpus
 
@@ -129,7 +128,7 @@ def run(
         attack_sample:             Emulated attack events for the technique.
                                    Used only to determine which corpus subdirs to load.
         corpus_root:               Path to corpus/benign/ directory.
-        fp_threshold:              Max acceptable FP rate (default 0.05 = 5%).
+        fp_threshold:              Max acceptable FP rate (default 0.01 = 1%).
         benign_gen_seed:           Seed for synthetic benign event generation.
         supplement_with_generated: If True, adds benign_generator events to corpus.
                                    Set False in tests that want corpus-only evaluation.
@@ -187,6 +186,15 @@ def run(
     try:
         engine = DetectionEngine(rules_dir=Path("rules"), events=corpus_events)
         result = engine.run_single_rule(rule_yaml)
+        if result.skipped:
+            return NoiseGateResult(
+                passed=False,
+                fp_rate=0.0,
+                fp_count=0,
+                total_events=len(corpus_events),
+                error=f"Rule skipped during noise gate execution: {result.skip_reason}",
+                feedback=f"Rule could not be executed against benign corpus: {result.skip_reason}",
+            )
     except Exception as exc:
         return NoiseGateResult(
             passed=False,

@@ -28,9 +28,10 @@ class TechniqueMetrics:
     rules_evaluated: int            # total rules run against this technique
     rules_fired:    int             # rules that matched at least one event
     total_events:   int             # emulated attack events for technique
-    matched_events: int             # attack events caught by any rule
+    # attack events caught by any rule - is summed across all rules, so the same event matched by 3 rules contributes 3 to the count. This inflates recall.
+    matched_events: int
     missed_events:  int             # attack events not caught by any rule
-    # fired events that were attack / total fired
+    # fired events that were attack / total fired - currently a rule-level proxy, not true event-level precision.
     precision:      Optional[float]
     # attack events caught / total attack events
     recall:         Optional[float]
@@ -194,8 +195,11 @@ class MetricsTracker:
         recalls = [m.recall for m in technique_list if m.recall is not None]
         mean_recall = sum(recalls) / len(recalls) if recalls else 0.0
 
-        fp_rates = [m.fp_rate for m in technique_list if m.fp_rate is not None]
-        mean_fp = sum(fp_rates) / len(fp_rates) if fp_rates else 0.0
+        total_fp = sum(
+            m.fp_count for m in technique_list if m.fp_count is not None)
+        total_benign = sum(
+            m.total_benign for m in technique_list if m.total_benign is not None)
+        mean_fp = total_fp / total_benign if total_benign > 0 else 0.0
 
         report = IterationReport(
             iteration=it,

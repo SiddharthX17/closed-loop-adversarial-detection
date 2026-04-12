@@ -182,7 +182,8 @@ class TestFinaliseIteration:
                            rules_fired=2, total_events=10, matched_events=8)
         t.record_detection("T1547.001", rules_evaluated=3,
                            rules_fired=1, total_events=10, matched_events=6)
-        t.record_validation("T1059.001", fp_rate=0.02)
+        t.record_validation("T1059.001", fp_rate=0.02,
+                            fp_count=2, total_benign=100)
         # T1547.001 has no fp_rate — should not factor into mean
         report = t.finalise_iteration(output_dir=None)
         assert abs(report.mean_fp_rate - 0.02) < 0.001

@@ -2,7 +2,7 @@
 pipeline/embedding/embedder.py
 
 Pre-embeds ATT&CK technique descriptions for all target techniques.
-Vectors are L2-normalized at encode time — similarity becomes a pure dot product.
+Vectors are L2-normalized at encode time — similarity is a pure dot product.
 Saves to disk as .npz — load once, reuse across runs.
 
 Usage:

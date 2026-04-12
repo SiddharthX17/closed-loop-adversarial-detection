@@ -109,7 +109,7 @@ def test_build_embeddings_basic(monkeypatch, tmp_path):
     monkeypatch.setattr(embedder, "get_loader", lambda: DummyLoader())
 
     class DummyModel:
-        def encode(self, texts, show_progress_bar=False):
+        def encode(self, texts, **kwargs):
             return np.ones((len(texts), 384))
 
     monkeypatch.setattr(embedder, "SentenceTransformer",

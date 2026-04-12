@@ -4,38 +4,96 @@ pipeline/attacker/agent.py
 Attacker agent — pre-filters Atomic Red Team candidates per technique,
 calls Haiku to select + mutate, returns a CampaignPlan.
 
-CampaignPlan feeds directly into run_emulator() via evasion_hints.
+Selection logic:
+  - Primary filter: len(cleaned.commands) > 0 (cleaner extracted real commands)
+  - Unresolved vars: NOT skipped — LLM substitutes realistic values
+  - Primary ranking: complexity score (command count + interesting binary refs)
+  - Tiebreaker: executor diversity (prefer powershell + cmd over 3x powershell)
+  - Cap: MAX_CANDIDATES (3) passed to LLM
+
+Mutation context (iteration 2+):
+  - caught_fields: Sysmon field values that fired rules last run
+  - caught_rules: rule titles + SQL conditions that matched
+  - prior_attempts: (test_guid, hints_hash) pairs tried this run — deduplication
+
+CampaignPlan feeds into run_emulator() via evasion_hints.
 """
 
+import os
+import json
+import yaml
+import hashlib
+import anthropic
+
+from dataclasses import dataclass, field
+from dotenv import load_dotenv
+from pathlib import Path
+
+from pipeline.data.atomic_loader import load_tests_for_technique
+from pipeline.data.atomic_cleaner import clean_test
+from pipeline.data.stix_loader import get_loader
 from pipeline.attacker.prompts import (
     AtomicCandidate,
     build_coldstart_prompt,
     build_mutation_prompt,
 )
-from pipeline.data.stix_loader import get_loader
-from pipeline.data.atomic_cleaner import clean_test
-from pipeline.data.atomic_loader import load_tests_for_technique
-import os
-import json
-import yaml
-import anthropic
-from dotenv import load_dotenv
-
-from dataclasses import dataclass, field
-from pathlib import Path
 
 load_dotenv()
-
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
 TECHNIQUES_PATH = Path("config/techniques.yaml")
 MODEL = "claude-haiku-4-5-20251001"
+TEMPERATURE = 0.2
 MAX_CANDIDATES = 3
 
-# Executor preference order for diversity selection
-EXECUTOR_PRIORITY = ["powershell",
-                     "command_prompt", "cmd", "sh", "bash", "python"]
+# ---------------------------------------------------------------------------
+# Executor list — used as diversity tiebreaker only, not primary filter.
+# LOLBins and script hosts included — these are the most detection-relevant
+# execution chains and should be preferred when complexity scores are equal.
+# ---------------------------------------------------------------------------
+EXECUTOR_PRIORITY = [
+    # Script-based execution
+    "powershell",
+    "command_prompt",
+    "cmd",
+    # LOLBins — indirect execution, commonly abused
+    "mshta",
+    "rundll32",
+    "regsvr32",
+    "wmic",
+    "msiexec",
+    "certutil",
+    "bitsadmin",
+    "installutil",
+    "regasm",
+    "regsvcs",
+    "odbcconf",
+    # Script hosts
+    "wscript",
+    "cscript",
+    # Other shells
+    "pwsh",
+    "bash",
+    "sh",
+    "python",
+]
+
+# Binaries that indicate interesting/detection-relevant behaviour.
+# Presence in cleaned.commands increases complexity score.
+INTERESTING_BINARIES = {
+    "mshta.exe", "rundll32.exe", "regsvr32.exe", "wmic.exe",
+    "wscript.exe", "cscript.exe", "msiexec.exe", "certutil.exe",
+    "bitsadmin.exe", "odbcconf.exe", "regasm.exe", "regsvcs.exe",
+    "installutil.exe", "pwsh.exe", "powershell.exe", "cmd.exe",
+    "schtasks.exe", "at.exe", "sc.exe", "reg.exe", "regedit.exe",
+    "net.exe", "net1.exe", "whoami.exe", "nltest.exe", "dsquery.exe",
+}
+
+SYSMON_FIELDS = [
+    "Image", "CommandLine", "ParentImage", "ParentCommandLine",
+    "TargetObject", "DestinationIp", "DestinationHostname", "OriginalFileName",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -46,76 +104,96 @@ EXECUTOR_PRIORITY = ["powershell",
 class TechniqueTask:
     """
     One technique's worth of attacker output.
-    formatted_input is the cleaned Atomic procedure text for the selected test.
-    evasion_hints plugs directly into run_emulator() as the evasion_hints param.
+    formatted_input: CleanedAtomicTest.formatted_input for selected test.
+    evasion_hints: plugs directly into run_emulator() as evasion_hints param.
+    mutation_applied: False if mutation context was present but hints came back empty.
     """
     technique_id: str
     selected_test_name: str
     selected_test_guid: str
-    formatted_input: str        # CleanedAtomicTest.formatted_input for selected test
+    formatted_input: str
     evasion_hints: dict = field(default_factory=dict)
+    mutation_applied: bool = True
 
 
-# CampaignPlan: keyed by technique_id — formalised further at 3.08 wiring
+# CampaignPlan: keyed by technique_id — formalised at 3.08 wiring
 CampaignPlan = dict[str, TechniqueTask]
 
 
 # ---------------------------------------------------------------------------
-# Pre-filter helpers
+# Candidate filtering and ranking
 # ---------------------------------------------------------------------------
 
-def _has_concrete_observables(formatted_input: str) -> bool:
+def _has_concrete_observables(cleaned) -> bool:
     """
-    Rough heuristic — formatted_input must reference something extractable.
-    Mirrors the confidence check in procedure_interpreter.
+    True if the cleaner extracted at least one executable command.
+    Empty commands list means nothing concrete was parsed — skip.
     """
-    text = formatted_input.lower()
-    indicators = [
-        ".exe", ".ps1", ".bat", ".cmd",
-        "hkcu", "hklm",
-        "http://", "https://",
-        "reg ", "powershell", "cmd.exe",
-        "step 1:",  # means commands were parsed — at least one command exists
-    ]
-    return any(ind in text for ind in indicators)
+    return len(cleaned.commands) > 0
+
+
+def _score_complexity(cleaned) -> int:
+    """
+    Complexity score for candidate ranking.
+    Higher = more detection-relevant, more interesting for mutation.
+
+    Scoring:
+      +1 per command step (multi-stage > single-line)
+      +2 per interesting binary referenced in commands
+      +1 if has_unresolved_vars (real-world tool dependency = more interesting)
+    """
+    score = len(cleaned.commands)
+
+    all_commands = " ".join(cleaned.commands).lower()
+    for binary in INTERESTING_BINARIES:
+        if binary in all_commands:
+            score += 2
+
+    if cleaned.has_unresolved_vars:
+        score += 1  # interesting tests tend to have env-specific vars
+
+    return score
 
 
 def _normalise_executor(executor_image: str) -> str:
-    # executor_image is e.g. "powershell.exe", "cmd.exe" — strip to bare name
     name = (executor_image or "").lower().strip()
-    if name.endswith(".exe"):
-        name = name[:-4]
+    # Extract bare filename — handles full paths like C:\Windows\System32\mshta.exe
+    # stem strips extension, works on both paths and bare names
+    name = Path(name).stem
     return name
 
 
-def _select_diverse_candidates(
-    pairs: list[tuple],  # list of (AtomicTest, CleanedAtomicTest)
+def _select_candidates(
+    pairs: list[tuple],
     max_n: int = MAX_CANDIDATES,
 ) -> list[tuple]:
     """
-    Pick up to max_n candidates, prioritising executor diversity.
-    Avoids passing 3x powershell when cmd/registry alternatives exist.
+    Select up to max_n candidates.
+
+    Primary: complexity score descending.
+    Tiebreaker: executor diversity (greedy — pick highest complexity,
+                then next highest with a different executor, etc.)
     """
     if len(pairs) <= max_n:
         return pairs
 
-    seen_executors: set[str] = set()
+    # Sort by complexity descending
+    scored = sorted(pairs, key=lambda p: _score_complexity(p[1]), reverse=True)
+
     selected = []
+    seen_executors: set[str] = set()
 
-    by_executor: dict[str, list[tuple]] = {}
-    for pair in pairs:
+    # First pass: one per executor type, highest complexity first
+    for pair in scored:
         ex = _normalise_executor(pair[1].executor_image)
-        by_executor.setdefault(ex, []).append(pair)
-
-    for ex in EXECUTOR_PRIORITY:
-        if ex in by_executor and ex not in seen_executors:
-            selected.append(by_executor[ex][0])
+        if ex not in seen_executors:
+            selected.append(pair)
             seen_executors.add(ex)
             if len(selected) >= max_n:
                 return selected
 
-    # Fill remaining slots
-    for pair in pairs:
+    # Second pass: fill remaining slots by complexity regardless of executor
+    for pair in scored:
         if pair not in selected:
             selected.append(pair)
             if len(selected) >= max_n:
@@ -125,17 +203,17 @@ def _select_diverse_candidates(
 
 
 def _build_candidates(
-    pairs: list[tuple],  # list of (AtomicTest, CleanedAtomicTest)
+    pairs: list[tuple],
 ) -> tuple[list[AtomicCandidate], dict]:
     """
-    Build AtomicCandidate list + guid->CleanedAtomicTest lookup dict.
-    guid comes from AtomicTest.test_guid — CleanedAtomicTest doesn't carry it.
+    Build AtomicCandidate list + guid->CleanedAtomicTest lookup.
+    guid from AtomicTest.test_guid — not on CleanedAtomicTest.
     """
     candidates = []
     lookup = {}  # guid -> CleanedAtomicTest
 
     for raw_test, cleaned in pairs:
-        guid = raw_test.test_guid or cleaned.test_name  # test_name as fallback
+        guid = raw_test.test_guid or cleaned.test_name
         candidate = AtomicCandidate(
             name=cleaned.test_name,
             guid=guid,
@@ -149,30 +227,138 @@ def _build_candidates(
 
 
 # ---------------------------------------------------------------------------
+# Prior attempt tracking
+# ---------------------------------------------------------------------------
+
+def _hints_hash(evasion_hints: dict) -> str:
+    return hashlib.md5(
+        json.dumps(evasion_hints, sort_keys=True).encode()
+    ).hexdigest()[:8]
+
+
+# ---------------------------------------------------------------------------
+# Detection context extraction
+# ---------------------------------------------------------------------------
+
+def _get_detection_context(
+    technique_id: str,
+    previous_results: dict | None,
+) -> tuple[dict[str, list[str]], list[dict]]:
+    """
+    Extract mutation context from the previous run's DetectionResult.
+
+    Returns:
+        caught_fields: {sysmon_field: [values that triggered rules]}
+        caught_rules:  [{"title": str, "condition": str}] for each fired rule
+    """
+    if not previous_results:
+        return {}, []
+
+    result = previous_results.get(technique_id)
+    if not result:
+        return {}, []
+
+    # Field values from matched events
+    caught_fields: dict[str, list[str]] = {}
+    for event in getattr(result, "matched_events", []):
+        for f in SYSMON_FIELDS:
+            val = event.get(f)
+            if val:
+                caught_fields.setdefault(f, [])
+                if val not in caught_fields[f]:
+                    caught_fields[f].append(val)
+
+    # Rules that fired — title + SQL condition for LLM to reason about what to evade
+    caught_rules = []
+    for rb in getattr(result, "fired_rules", []):
+        caught_rules.append({
+            "title": rb.rule_title,
+            "condition": (rb.sql_query or "unavailable")[:300],
+        })
+
+    return caught_fields, caught_rules
+
+
+# ---------------------------------------------------------------------------
+# Prompt assembly
+# ---------------------------------------------------------------------------
+
+def _build_full_prompt(
+    technique_id: str,
+    technique_name: str,
+    tactic: str,
+    candidates: list[AtomicCandidate],
+    caught_fields: dict,
+    caught_rules: list[dict],
+    prior_attempts: list[dict],
+    has_unresolved_vars: bool,
+) -> str:
+    """
+    Assemble the full prompt for the LLM.
+    Base prompt from prompts.py, additional mutation context appended here.
+    prompts.py content is not modified — extra context injected by agent.
+    """
+    if caught_fields:
+        prompt = build_mutation_prompt(
+            technique_id=technique_id,
+            technique_name=technique_name,
+            tactic=tactic,
+            candidates=candidates,
+            caught_fields=caught_fields,
+        )
+    else:
+        prompt = build_coldstart_prompt(
+            technique_id=technique_id,
+            technique_name=technique_name,
+            tactic=tactic,
+            candidates=candidates,
+        )
+
+    # Inject caught rules — LLM should understand what condition matched
+    # so it can reason about what to evade, not just which field values
+    if caught_rules:
+        prompt += "\n\nRules that fired last run — understand what they detect, then evade them:\n"
+        for rule in caught_rules:
+            prompt += f"  - {rule['title']}: {rule['condition']}\n"
+
+    # Inject prior attempts — prevent repeating the same test+hints combination
+    if prior_attempts:
+        prompt += "\n\nPrior attempts this run (do not repeat the same test + hints combination):\n"
+        for attempt in prior_attempts:
+            prompt += f"  - test_guid: {attempt['test_guid']}, hints_hash: {attempt['hints_hash']}\n"
+
+    # Unresolved vars note — instruct LLM to substitute realistic values
+    if has_unresolved_vars:
+        prompt += (
+            "\n\nNote: the selected test may contain unresolved variables "
+            "(e.g. #{tool_path}, #{domain}). "
+            "Substitute realistic Windows values in your evasion_hints — "
+            "do not leave placeholders in field values."
+        )
+
+    return prompt
+
+
+# ---------------------------------------------------------------------------
 # LLM call + parse
 # ---------------------------------------------------------------------------
 
 def _call_llm(prompt: str, client: anthropic.Anthropic) -> dict | None:
-    """
-    Call Haiku at temp=0, parse JSON response.
-    Returns parsed dict or None on failure.
-    """
     try:
         response = client.messages.create(
             model=MODEL,
             max_tokens=512,
-            temperature=0,
+            temperature=TEMPERATURE,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
 
-        # Strip accidental markdown fences if present
         if raw.startswith("```"):
             lines = raw.splitlines()
             raw = "\n".join(
                 line for line in lines
                 if not line.strip().startswith("```")
-            )
+            ).strip()
 
         return json.loads(raw)
 
@@ -185,13 +371,9 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> dict | None:
 def _parse_llm_output(
     raw: dict,
     candidates: list[AtomicCandidate],
-    lookup: dict,       # guid -> CleanedAtomicTest
+    lookup: dict,
     technique_id: str,
 ) -> TechniqueTask | None:
-    """
-    Validate LLM output and build TechniqueTask.
-    Falls back to first candidate if LLM returns unknown guid/name.
-    """
     if not raw:
         return None
 
@@ -199,7 +381,6 @@ def _parse_llm_output(
     selected_name = raw.get("selected_test_name")
     evasion_hints = raw.get("evasion_hints", {})
 
-    # Validate evasion_hints — must be flat dict of strings
     if not isinstance(evasion_hints, dict):
         evasion_hints = {}
     evasion_hints = {
@@ -207,18 +388,14 @@ def _parse_llm_output(
         if isinstance(k, str) and isinstance(v, str)
     }
 
-    # Resolve selected test — guid first, fallback to name match
+    # Resolve selected test — guid first, name fallback
     selected_cleaned = lookup.get(selected_guid)
     if not selected_cleaned:
-        selected_cleaned = next(
-            (lookup[g]
-             for g in lookup if lookup[g].test_name == selected_name),
-            None,
-        )
-        if selected_cleaned:
-            selected_guid = next(
-                g for g in lookup if lookup[g].test_name == selected_name
-            )
+        for g, c in lookup.items():
+            if c.test_name == selected_name:
+                selected_cleaned = c
+                selected_guid = g
+                break
 
     if not selected_cleaned:
         if DEBUG:
@@ -231,7 +408,6 @@ def _parse_llm_output(
         first = candidates[0]
         selected_cleaned = lookup.get(first.guid)
         selected_guid = first.guid
-        selected_name = first.name
 
     return TechniqueTask(
         technique_id=technique_id,
@@ -239,6 +415,7 @@ def _parse_llm_output(
         selected_test_guid=selected_guid,
         formatted_input=selected_cleaned.formatted_input,
         evasion_hints=evasion_hints,
+        mutation_applied=True,
     )
 
 
@@ -251,22 +428,24 @@ class AttackerAgent:
     def __init__(self):
         self._client = anthropic.Anthropic()
         self._stix = get_loader()
+        # Prior attempts tracked per technique within a run.
+        # Keyed by technique_id. Each entry: {test_guid, hints_hash}.
+        # Resets on each run() call — does not persist across pipeline iterations.
+        self._prior_attempts: dict[str, list[dict]] = {}
 
     def _load_technique_ids(self) -> list[str]:
         with open(TECHNIQUES_PATH) as f:
             config = yaml.safe_load(f)
         techniques = config.get("techniques", [])
-        return [
-            t if isinstance(t, str) else t["id"]
-            for t in techniques
-        ]
+        return [t if isinstance(t, str) else t["id"] for t in techniques]
 
     def _prepare_candidates(
         self,
         technique_id: str,
     ) -> tuple[list[AtomicCandidate], dict]:
         """
-        Load, clean, filter, and diversify Atomic tests for a technique.
+        Load, clean, filter, rank, and cap Atomic tests for a technique.
+        Unresolved vars are NOT skipped — passed through for LLM substitution.
         Returns (candidates, guid_lookup). Empty on failure.
         """
         metadata = self._stix.lookup(technique_id)
@@ -285,16 +464,14 @@ class AttackerAgent:
             cleaned = clean_test(raw_test, metadata)
             if cleaned is None:
                 continue
-            if cleaned.has_unresolved_vars:
+            if not _has_concrete_observables(cleaned):
                 if DEBUG:
                     print(
-                        f"[attacker] {technique_id}: skipping '{cleaned.test_name}' — unresolved vars")
+                        f"[attacker] {technique_id}: "
+                        f"skipping '{cleaned.test_name}' — no commands extracted"
+                    )
                 continue
-            if not _has_concrete_observables(cleaned.formatted_input):
-                if DEBUG:
-                    print(
-                        f"[attacker] {technique_id}: skipping '{cleaned.test_name}' — no concrete observables")
-                continue
+            # Note: has_unresolved_vars is NOT a filter — LLM substitutes values
             pairs.append((raw_test, cleaned))
 
         if not pairs:
@@ -303,40 +480,32 @@ class AttackerAgent:
                     f"[attacker] {technique_id}: no usable candidates after filtering")
             return [], {}
 
-        diverse_pairs = _select_diverse_candidates(pairs)
-        return _build_candidates(diverse_pairs)
+        selected_pairs = _select_candidates(pairs)
+        return _build_candidates(selected_pairs)
 
-    def _get_caught_fields(
+    def _is_duplicate_attempt(
         self,
         technique_id: str,
-        previous_results: dict | None,
-    ) -> dict[str, list[str]]:
-        """
-        Extract Sysmon field values that fired rules in the previous run.
-        Returns {} on first iteration or if technique had no matches.
-        """
-        if not previous_results:
-            return {}
+        test_guid: str,
+        evasion_hints: dict,
+    ) -> bool:
+        prior = self._prior_attempts.get(technique_id, [])
+        h = _hints_hash(evasion_hints)
+        return any(
+            p["test_guid"] == test_guid and p["hints_hash"] == h
+            for p in prior
+        )
 
-        result = previous_results.get(technique_id)
-        if not result:
-            return {}
-
-        caught: dict[str, list[str]] = {}
-        matched_events = getattr(result, "matched_events", [])
-        sysmon_fields = [
-            "Image", "CommandLine", "ParentImage", "ParentCommandLine",
-            "TargetObject", "DestinationIp", "DestinationHostname", "OriginalFileName",
-        ]
-        for event in matched_events:
-            for f in sysmon_fields:
-                val = event.get(f)
-                if val:
-                    caught.setdefault(f, [])
-                    if val not in caught[f]:
-                        caught[f].append(val)
-
-        return caught
+    def _record_attempt(
+        self,
+        technique_id: str,
+        test_guid: str,
+        evasion_hints: dict,
+    ) -> None:
+        self._prior_attempts.setdefault(technique_id, []).append({
+            "test_guid": test_guid,
+            "hints_hash": _hints_hash(evasion_hints),
+        })
 
     def run(
         self,
@@ -347,7 +516,7 @@ class AttackerAgent:
         Generate a CampaignPlan for the given techniques.
 
         Args:
-            technique_ids:    list of ATT&CK IDs. Reads techniques.yaml if None.
+            technique_ids:    ATT&CK IDs. Reads techniques.yaml if None.
             previous_results: dict[technique_id, DetectionResult] from prior run.
                               None on first iteration (cold start).
 
@@ -356,6 +525,9 @@ class AttackerAgent:
         """
         if technique_ids is None:
             technique_ids = self._load_technique_ids()
+
+        # Reset prior attempts for this run
+        self._prior_attempts = {}
 
         plan: CampaignPlan = {}
 
@@ -371,44 +543,74 @@ class AttackerAgent:
             technique_name = metadata.technique_name if metadata else tid
             tactic = metadata.tactic if metadata else "unknown"
 
-            caught_fields = self._get_caught_fields(tid, previous_results)
+            caught_fields, caught_rules = _get_detection_context(
+                tid, previous_results)
 
-            if caught_fields:
-                prompt = build_mutation_prompt(
-                    technique_id=tid,
-                    technique_name=technique_name,
-                    tactic=tactic,
-                    candidates=candidates,
-                    caught_fields=caught_fields,
-                )
-            else:
-                prompt = build_coldstart_prompt(
-                    technique_id=tid,
-                    technique_name=technique_name,
-                    tactic=tactic,
-                    candidates=candidates,
-                )
+            # Check if any selected candidate has unresolved vars
+            has_unresolved = any(
+                lookup[c.guid].has_unresolved_vars
+                for c in candidates
+                if c.guid in lookup
+            )
+
+            prior_for_technique = self._prior_attempts.get(tid, [])
+
+            prompt = _build_full_prompt(
+                technique_id=tid,
+                technique_name=technique_name,
+                tactic=tactic,
+                candidates=candidates,
+                caught_fields=caught_fields,
+                caught_rules=caught_rules,
+                prior_attempts=prior_for_technique,
+                has_unresolved_vars=has_unresolved,
+            )
 
             if DEBUG:
                 print(
                     f"[attacker] {tid}: calling LLM "
                     f"({len(candidates)} candidates, "
-                    f"{'mutation' if caught_fields else 'coldstart'})"
+                    f"{'mutation' if caught_fields else 'coldstart'}, "
+                    f"temp={TEMPERATURE})"
                 )
 
             raw = _call_llm(prompt, self._client)
             task = _parse_llm_output(raw, candidates, lookup, tid)
 
-            if task:
-                plan[tid] = task
-                if DEBUG:
-                    print(
-                        f"[attacker] {tid}: selected '{task.selected_test_name}', "
-                        f"evasion_hints={list(task.evasion_hints.keys())}"
-                    )
-            else:
+            if not task:
                 if DEBUG:
                     print(
                         f"[attacker] {tid}: failed to parse LLM output — skipping")
+                continue
+
+            # Mutation context present but LLM returned no hints — flag it
+            if caught_fields and not task.evasion_hints:
+                if DEBUG:
+                    print(
+                        f"[attacker] {tid}: mutation context present but "
+                        f"LLM returned empty evasion_hints — no mutation applied"
+                    )
+                task.mutation_applied = False
+
+            # Duplicate attempt check
+            if self._is_duplicate_attempt(tid, task.selected_test_guid, task.evasion_hints):
+                if DEBUG:
+                    print(
+                        f"[attacker] {tid}: duplicate attempt detected "
+                        f"(guid={task.selected_test_guid}) — using as-is, "
+                        f"consider adding more Atomic tests for this technique"
+                    )
+
+            self._record_attempt(
+                tid, task.selected_test_guid, task.evasion_hints)
+
+            plan[tid] = task
+
+            if DEBUG:
+                print(
+                    f"[attacker] {tid}: selected '{task.selected_test_name}', "
+                    f"evasion_hints={list(task.evasion_hints.keys())}, "
+                    f"mutation_applied={task.mutation_applied}"
+                )
 
         return plan

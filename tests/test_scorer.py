@@ -52,7 +52,7 @@ def dummy_scorer(monkeypatch):
                         lambda path: fake_embeddings)
 
     class DummyModel:
-        def encode(self, texts, normalize_embeddings=False):
+        def encode(self, texts, **kwargs):
             return np.ones((len(texts), 384))
 
     monkeypatch.setattr(scorer, "SentenceTransformer",

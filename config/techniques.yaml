@@ -1,11 +1,45 @@
 # config/techniques.yaml
 # Target ATT&CK techniques for v1 emulation.
-# Edit after P.11 research is complete — these are placeholders to unblock Phase 1 build.
+# P.11 research is complete, atomic test filtered, TODO review rule coverage in SigmaHQ repo and filter.
 #
 # Format: list of ATT&CK technique IDs (subtechniques supported e.g. T1059.001)
 # The emulator reads this file when technique_ids is not passed explicitly.
 
 techniques:
-  - T1059.001   # Command and Scripting Interpreter: PowerShell
-  - T1547.001   # Boot or Logon Autostart: Registry Run Keys
-  - T1112       # Modify Registry
+  # Command and Scripting Interprete
+  - T1059.001 # PowerShell
+  - T1059.003 # Windows Command Shell
+  
+  # Scheduled Task/Job
+  - T1053.005 # Scheduled Task
+
+  # Windows Management Instrumentation
+  - T1047   
+
+  # Create or Modify System Process 
+  - T1543.003 # Windows Service
+
+  # Modify Registry
+  - T1112 
+
+  # Masquerading 
+  - T1036.003 # Rename Legitimate Utilities
+  - T1036.004 # Masquerade Task or Service
+  - T1036.005 # Match Legitimate Resource Name or Location
+
+  # OS Credential Dumping
+  - T1003.001 # LSASS Memory
+  - T1003.002 # Security Account Manager
+  - T1003.004 # LSA Secrets
+
+  # Remote Services
+  - T1021.004 # SSH
+  - T1021.006 # Windows Remote Management
+
+  # Application Layer Protocol
+  - T1071.001 # Web Protocols
+
+  # Event Triggered Execution
+  - T1546.013 # PowerShell Profile
+  - T1546.012 # Image File Execution Options Injection
+  

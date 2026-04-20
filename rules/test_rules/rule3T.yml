@@ -1,8 +1,0 @@
-title: Suspicious Download Cradle
-logsource:
-  product: windows
-  service: sysmon
-detection:
-  selection:
-    CommandLine|re: 'Invoke-WebRequest.*http'
-  condition: selection

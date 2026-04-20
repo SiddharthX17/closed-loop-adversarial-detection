@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pipeline.data.stix_loader import lookup_technique
-from pipeline.data.atomic_loader import load_tests_for_technique
+from pipeline.data.atomic_loader import load_tests_for_technique_with_fallback
 from pipeline.data.atomic_cleaner import clean_test
 from pipeline.emulator.procedure_interpreter import interpret_procedure, build_log_event
 from pipeline.emulator.log_builder import LogEvent
@@ -121,7 +121,7 @@ def _select_tests(technique_id: str, metadata, stats: EmulatorStats) -> list:
     atomic_loader already pre-filters for: Windows platform, non-manual executor,
     non-empty command. No need to re-check those here.
     """
-    raw_tests = load_tests_for_technique(technique_id)
+    raw_tests = load_tests_for_technique_with_fallback(technique_id)
     if not raw_tests:
         _dbg(f"{technique_id}: no atomic tests returned by loader")
         return []

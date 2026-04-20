@@ -1,0 +1,27 @@
+title: Suspicious Executable Staged in Temp Location via PowerShell
+id: a7f3c2e1-9b4d-4f8a-b6e2-3d1c7a5f9e2b
+status: experimental
+description: Detects PowerShell staging an executable in a temp via Copy-Item
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+author: custom
+date: 2026-04-17
+tags:
+  - attack.defense_evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    EventID: 1
+    Image|contains:
+      - 'powershell'
+      - 'pwsh'
+    CommandLine|contains|all:
+      - 'Copy-Item'
+      - '\Temp\'
+  condition: selection
+falsepositives:
+  - Legitimate build scripts copying binaries to temp
+level: medium

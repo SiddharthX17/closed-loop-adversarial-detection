@@ -135,15 +135,9 @@ def load_events_from_jsonl(path: Path) -> list[dict]:
 def load_events_from_json(path) -> list:
     """
     Load log events from a JSON file containing an array of objects.
-    This is the format produced by the GH Actions benign corpus workflow.
-
-    Defaults Channel to 'Microsoft-Windows-Sysmon/Operational' for any event
-    missing it — windows_logsource_pipeline() injects a Channel condition into
-    every generated SQL query, so events without Channel fail every rule silently.
-
-    Accepts:
-        - JSON array:  [ {...}, {...} ]
-        - Single JSON object: {...}  (wrapped into a list)
+    Format-only loader — does NOT inject Channel.
+    Used for GH Actions benign corpus which outputs JSON arrays not JSONL.
+    Benign corpus events already have Channel set from the collection workflow.
     """
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)

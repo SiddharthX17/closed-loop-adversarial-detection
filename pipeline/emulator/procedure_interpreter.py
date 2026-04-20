@@ -1,5 +1,6 @@
 import json
 import re
+import os
 import anthropic
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -114,6 +115,9 @@ _FALLBACK_RESULT = {
     "fields":     {},
 }
 
+_PARTIAL_MATCH_FIELDS = {"CommandLine", "ParentCommandLine"}
+_PARTIAL_MATCH_MIN_TOKENS = 2  # at least 2 tokens must appear
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -133,20 +137,48 @@ def _normalize(val):
 def _ground_fields(fields: dict, procedure_text: str) -> dict:
     """
     Drop fields whose string values are not explicitly present in the procedure text.
-    Non-string values (int, bool etc.) pass through without grounding check.
+    - Verbatim match: full value appears in procedure_text
+    - Basename match: for path-like values, basename appears in procedure_text  
+    - Partial match: for CommandLine fields, at least N tokens appear in procedure_text
+    Non-string values pass through without grounding check.
     """
     grounded = {}
     text = procedure_text.lower()
 
     for k, v in fields.items():
-        if isinstance(v, str):
-            if v.lower() in text:
-                grounded[k] = v
-            else:
-                print(f"[procedure_interpreter] Dropping ungrounded field {k}={v!r}")
-        else:
-            # e.g. ProcessId as int — pass through
+        if not isinstance(v, str):
             grounded[k] = v
+            continue
+
+        v_lower = v.lower()
+
+        # Check 1 — verbatim
+        if v_lower in text:
+            grounded[k] = v
+            continue
+
+        # Check 2 — basename for path-like values
+        basename = os.path.basename(v).lower()
+        if basename and basename != v_lower and basename in text:
+            grounded[k] = v
+            continue
+        basename_no_ext = os.path.splitext(basename)[0].lower()
+        if basename_no_ext and basename_no_ext != v_lower and basename_no_ext in text:
+            grounded[k] = v
+            continue
+
+        # Check 3 — partial token match for CommandLine fields
+        if k in _PARTIAL_MATCH_FIELDS:
+            tokens = [
+                t for t in v_lower.split()
+                if len(t) > 4  # skip short tokens like '-c', 'the'
+            ]
+            matched = sum(1 for t in tokens if t in text)
+            if matched >= _PARTIAL_MATCH_MIN_TOKENS:
+                grounded[k] = v
+                continue
+
+        print(f"[procedure_interpreter] Dropping ungrounded field {k}={v!r}")
 
     return grounded
 
@@ -247,7 +279,8 @@ def interpret_procedure(
     try:
         result = json.loads(raw)
     except json.JSONDecodeError as e:
-        print(f"[interpret_procedure] JSON parse failed: {e}\nRaw output: {raw}")
+        print(
+            f"[interpret_procedure] JSON parse failed: {e}\nRaw output: {raw}")
         return dict(_FALLBACK_RESULT, reason=f"JSON parse failed: {e}")
 
     # Validate top-level schema
@@ -282,7 +315,8 @@ def build_log_event(
     Returns None at any failing gate with a logged reason.
     """
     if interpretation.get("confidence") != "high":
-        print(f"[build_log_event] Dropped: confidence={interpretation.get('confidence')}")
+        print(
+            f"[build_log_event] Dropped: confidence={interpretation.get('confidence')}")
         return None
 
     if not interpretation.get("EventID"):
@@ -291,7 +325,7 @@ def build_log_event(
 
     ts = timestamp or datetime.now(timezone.utc).isoformat()
     event_type = interpretation.get("event_type")
-    raw_fields  = interpretation.get("fields", {})
+    raw_fields = interpretation.get("fields", {})
 
     # 1. Ground against procedure text
     grounded_fields = _ground_fields(raw_fields, procedure_text)

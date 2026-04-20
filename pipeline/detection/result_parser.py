@@ -48,7 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from engine import RuleMatchResult
+from pipeline.detection.engine import RuleMatchResult
 
 logger = logging.getLogger(__name__)
 

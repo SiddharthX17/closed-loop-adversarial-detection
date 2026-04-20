@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
+import os
 
 _DEFAULT_ATOMICS_PATH = Path(
     __file__).parents[2] / "data" / "atomic-red-team" / "atomics"
@@ -9,6 +10,9 @@ _DEFAULT_ATOMICS_PATH = Path(
 _SKIP_EXECUTORS = {"manual"}
 
 DEBUG = False  # set to True to see verbose loader warnings
+
+_CUSTOM_TESTS_DIR = Path(__file__).parents[2] / "data" / "custom-tests"
+_CUSTOM_TESTS_FALLBACK_THRESHOLD = 2  # minimum atomic tests per technique
 
 
 @dataclass
@@ -151,3 +155,97 @@ def load_all_tests(
     print(
         f"[atomic_loader] Loaded {total} tests across {len(results)} techniques")
     return results
+
+
+def load_custom_tests_for_technique(technique_id: str) -> list[AtomicTest]:
+    """
+    Load custom test cases from data/custom-tests/{technique_id}.yaml.
+    Returns empty list if no custom file exists.
+    Uses same AtomicTest schema as load_tests_for_technique — downstream
+    components (cleaner, interpreter) need no changes.
+    """
+    custom_path = _CUSTOM_TESTS_DIR / f"{technique_id}.yaml"
+    if not custom_path.exists():
+        return []
+
+    try:
+        with open(custom_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(
+            f"[atomic_loader] YAML parse error for custom {technique_id}: {e}")
+        return []
+
+    if not isinstance(data, dict):
+        return []
+
+    tests = []
+    for raw in data.get("atomic_tests", []):
+        if not isinstance(raw, dict):
+            continue
+
+        platforms = [p.lower() for p in raw.get("supported_platforms", [])]
+        if "windows" not in platforms:
+            continue
+
+        executor = raw.get("executor", {})
+        if not isinstance(executor, dict):
+            continue
+
+        executor_name = executor.get("name", "").lower().strip()
+        if executor_name in _SKIP_EXECUTORS or not executor_name:
+            continue
+
+        raw_command = executor.get("command")
+        if not isinstance(raw_command, str):
+            continue
+        command = raw_command.strip()
+        if not command:
+            continue
+
+        tests.append(AtomicTest(
+            technique_id=technique_id,
+            test_guid=str(raw.get("auto_generated_guid", "")),
+            test_name=str(raw.get("name", "Unnamed Custom Test")),
+            description=str(raw.get("description", "")).strip(),
+            executor_name=executor_name,
+            command=command,
+            elevation_required=bool(executor.get("elevation_required", False)),
+            input_arguments=_parse_input_arguments(raw.get("input_arguments")),
+            supported_platforms=platforms,
+        ))
+
+    debug = os.environ.get("PIPELINE_DEBUG", "").lower() in ("1", "true")
+    if debug and tests:
+        print(
+            f"[atomic_loader] Loaded {len(tests)} custom test(s) for {technique_id}")
+
+    return tests
+
+
+def load_tests_for_technique_with_fallback(
+    technique_id: str,
+    atomics_path: Path = _DEFAULT_ATOMICS_PATH,
+    threshold: int = _CUSTOM_TESTS_FALLBACK_THRESHOLD,
+) -> list[AtomicTest]:
+    """
+    Load Atomic tests for a technique. If fewer than `threshold` non-manual
+    Windows tests exist in the Atomic repo, supplement with custom tests
+    from data/custom-tests/{technique_id}.yaml.
+    Custom tests are appended after Atomic tests, not replacing them.
+    """
+    atomic_tests = load_tests_for_technique(technique_id, atomics_path)
+
+    if len(atomic_tests) < threshold:
+        custom_tests = load_custom_tests_for_technique(technique_id)
+        if custom_tests:
+            debug = os.environ.get(
+                "PIPELINE_DEBUG", "").lower() in ("1", "true")
+            if debug:
+                print(
+                    f"[atomic_loader] {technique_id}: {len(atomic_tests)} Atomic "
+                    f"test(s) below threshold — adding {len(custom_tests)} custom"
+                )
+            atomic_tests = atomic_tests + custom_tests
+
+    return atomic_tests

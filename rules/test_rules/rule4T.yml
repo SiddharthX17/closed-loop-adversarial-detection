@@ -1,9 +1,0 @@
-title: Suspicious Parent Process
-logsource:
-  product: windows
-  service: sysmon
-detection:
-  selection:
-    ParentImage: 'winword.exe'
-  condition: selection
-  

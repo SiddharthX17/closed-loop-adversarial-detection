@@ -207,7 +207,6 @@ def _emulate_technique(
 
 def run_emulator(
     technique_ids: list[str] | None = None,
-    # TODO: attacker agent (Phase 3)
     evasion_hints: dict[str, dict] | None = None,
     # pass None to suppress file output
     output_dir: Path | None = Path("corpus/attack"),
@@ -218,8 +217,9 @@ def run_emulator(
     Args:
         technique_ids:  Explicit list of ATT&CK technique IDs.
                         If None, reads from config/techniques.yaml.
-        evasion_hints:  Per-technique evasion context keyed by technique_id.
-                        TODO: wired from attacker agent in Phase 3. Pass None for now.
+        evasion_hints:  Per-technique evasion context from AttackerAgent.
+                        Keyed by technique_id — Sysmon field name → mutated value.
+                        Pass None to run base procedures without mutation.
         output_dir:     Root directory for JSONL output and stats.
                         Writes to:
                           {output_dir}/{technique_id}.jsonl

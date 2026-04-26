@@ -119,6 +119,17 @@ class TechniqueTask:
 # CampaignPlan: keyed by technique_id — formalised at 3.08 wiring
 CampaignPlan = dict[str, TechniqueTask]
 
+# TODO DocString
+
+
+def extract_emulator_inputs(plan: CampaignPlan):
+    technique_ids = list(plan.keys())
+    evasion_hints = {
+        tid: (task.evasion_hints if task.mutation_applied else {})
+        for tid, task in plan.items()
+    }
+    return technique_ids, evasion_hints
+
 
 # ---------------------------------------------------------------------------
 # Candidate filtering and ranking

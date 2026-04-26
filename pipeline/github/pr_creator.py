@@ -9,9 +9,6 @@ Per PR:
   - PR body: validation summary + evidence events
   - Returns PRResult(pr_url, pr_number)
  
-Requires in .env:
-  GITHUB_TOKEN — personal access token with repo scope
-  GITHUB_REPO  — "owner/repo-name"
 """
 
 import os

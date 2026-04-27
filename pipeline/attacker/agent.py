@@ -119,16 +119,28 @@ class TechniqueTask:
 # CampaignPlan: keyed by technique_id — formalised at 3.08 wiring
 CampaignPlan = dict[str, TechniqueTask]
 
-# TODO DocString
 
+def extract_emulator_inputs(
+    plan: CampaignPlan,
+) -> tuple[list[str], dict[str, dict], dict[str, str]]:
+    """
+    Extract run_emulator() inputs from a CampaignPlan.
 
-def extract_emulator_inputs(plan: CampaignPlan):
+    Returns:
+        technique_ids:       ordered list of technique IDs
+        evasion_hints:       dict[technique_id, dict] of Sysmon field overrides
+        selected_test_guids: dict[technique_id, guid] of attacker-selected tests
+    """
     technique_ids = list(plan.keys())
     evasion_hints = {
         tid: (task.evasion_hints if task.mutation_applied else {})
         for tid, task in plan.items()
     }
-    return technique_ids, evasion_hints
+    selected_test_guids = {
+        tid: task.selected_test_guid
+        for tid, task in plan.items()
+    }
+    return technique_ids, evasion_hints, selected_test_guids
 
 
 # ---------------------------------------------------------------------------

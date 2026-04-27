@@ -33,7 +33,8 @@ from pipeline.emulator.output_writer import write_log_stream, write_stats
 
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 _CONFIG_PATH = Path("config/techniques.yaml")
-_MAX_TESTS_PER_TECHNIQUE = 4
+_MAX_TESTS_PER_TECHNIQUE = 4       # absolute cap (no selected guid)
+_MAX_TESTS_WITH_SELECTION = 2      # selected test + 1 diverse test per iteration
 
 
 def _dbg(msg: str) -> None:
@@ -109,7 +110,12 @@ def _load_technique_ids(config_path: Path = _CONFIG_PATH) -> list[str]:
 
 # ─── Test selection ───────────────────────────────────────────────────────────
 
-def _select_tests(technique_id: str, metadata, stats: EmulatorStats) -> list:
+def _select_tests(
+    technique_id: str,
+    metadata,
+    stats: EmulatorStats,
+    selected_guid: str | None = None,
+) -> list:
     """
     Load all Atomic tests for a technique, clean each one, and return up to
     _MAX_TESTS_PER_TECHNIQUE that are ready for LLM interpretation.
@@ -120,18 +126,23 @@ def _select_tests(technique_id: str, metadata, stats: EmulatorStats) -> list:
 
     atomic_loader already pre-filters for: Windows platform, non-manual executor,
     non-empty command. No need to re-check those here.
+
+    If selected_guid is provided (attacker agent made a selection):
+      - Selected test is always first
+      - One additional diverse test included for breadth
+      - Cap: _MAX_TESTS_WITH_SELECTION
+    Otherwise:
+      - Cap: _MAX_TESTS_PER_TECHNIQUE
     """
     raw_tests = load_tests_for_technique_with_fallback(technique_id)
     if not raw_tests:
         _dbg(f"{technique_id}: no atomic tests returned by loader")
         return []
 
-    selected = []
+    cap = _MAX_TESTS_WITH_SELECTION if selected_guid else _MAX_TESTS_PER_TECHNIQUE
+    cleaned_all = []
 
     for test in raw_tests:
-        if len(selected) >= _MAX_TESTS_PER_TECHNIQUE:
-            break
-
         stats.tests_attempted += 1
         cleaned = clean_test(test, metadata)
 
@@ -147,18 +158,43 @@ def _select_tests(technique_id: str, metadata, stats: EmulatorStats) -> list:
             stats.tests_skipped_unresolved += 1
             continue
 
+        cleaned_all.append((test.test_guid, cleaned))
+
+    if not cleaned_all:
+        return []
+
+    selected = []
+
+    # If attacker selected a specific test, put it first
+    if selected_guid:
+        for guid, cleaned in cleaned_all:
+            if guid == selected_guid:
+                selected.append(cleaned)
+                _dbg(
+                    f"{technique_id} / '{cleaned.test_name}': selected (attacker choice, 1/{cap})")
+                break
+
+    # Fill remaining slots with diverse tests (skip already selected)
+    selected_guids_seen = {selected_guid} if selected_guid else set()
+    for guid, cleaned in cleaned_all:
+        if len(selected) >= cap:
+            break
+        if guid in selected_guids_seen:
+            continue
         selected.append(cleaned)
-        _dbg(f"{technique_id} / '{test.test_name}': selected ({len(selected)}/{_MAX_TESTS_PER_TECHNIQUE})")
+        selected_guids_seen.add(guid)
+        _dbg(f"{technique_id} / '{cleaned.test_name}': selected ({len(selected)}/{cap})")
 
     return selected
 
-
 # ─── Per-technique emulation ──────────────────────────────────────────────────
+
 
 def _emulate_technique(
     technique_id: str,
     evasion_hints: dict | None,
     stats: EmulatorStats,
+    selected_test_guids: dict[str, str] | None = None,
 ) -> list[LogEvent]:
     """
     Run the full emulation chain for a single technique.
@@ -170,7 +206,10 @@ def _emulate_technique(
             f"[emulator] {technique_id}: not found in STIX bundle — skipping")
         return []
 
-    cleaned_tests = _select_tests(technique_id, metadata, stats)
+    selected_guid = selected_test_guids.get(
+        technique_id) if selected_test_guids else None
+    cleaned_tests = _select_tests(
+        technique_id, metadata, stats, selected_guid=selected_guid)
     if not cleaned_tests:
         _dbg(f"{technique_id}: no valid tests after selection — 0 events")
         return []
@@ -188,6 +227,7 @@ def _emulate_technique(
         log_event = build_log_event(
             interpretation=interpretation,
             procedure_text=cleaned.formatted_input,
+            evasion_hints=hints,
         )
 
         if log_event is not None:
@@ -208,6 +248,7 @@ def _emulate_technique(
 def run_emulator(
     technique_ids: list[str] | None = None,
     evasion_hints: dict[str, dict] | None = None,
+    selected_test_guids: dict[str, str] | None = None,
     # pass None to suppress file output
     output_dir: Path | None = Path("corpus/attack"),
 ) -> tuple[dict[str, list[LogEvent]], EmulatorStats]:
@@ -215,16 +256,19 @@ def run_emulator(
     Run emulation across all target techniques.
 
     Args:
-        technique_ids:  Explicit list of ATT&CK technique IDs.
-                        If None, reads from config/techniques.yaml.
-        evasion_hints:  Per-technique evasion context from AttackerAgent.
-                        Keyed by technique_id — Sysmon field name → mutated value.
-                        Pass None to run base procedures without mutation.
-        output_dir:     Root directory for JSONL output and stats.
-                        Writes to:
-                          {output_dir}/{technique_id}.jsonl
-                          {output_dir}/stats/run_{ts}_stats.json
-                        Pass None to skip all file output (useful in tests).
+        technique_ids:      Explicit list of ATT&CK technique IDs.
+                            If None, reads from config/techniques.yaml.
+        evasion_hints:      Per-technique evasion context from AttackerAgent.
+                            Keyed by technique_id — Sysmon field name → mutated value.
+                            Pass None to run base procedures without mutation.
+        selected_test_guids: dict[technique_id, test_guid] from extract_emulator_inputs().
+                             Attacker-selected test sorted first, cap reduced to 2 per technique.
+                             Pass None to run all tests up to _MAX_TESTS_PER_TECHNIQUE.
+        output_dir:         Root directory for JSONL output and stats.
+                            Writes to:
+                                {output_dir}/{technique_id}.jsonl
+                                {output_dir}/stats/run_{ts}_stats.json
+                            Pass None to skip all file output (useful in tests).
 
     Returns:
         log_stream:  dict[technique_id, list[LogEvent]]
@@ -241,7 +285,8 @@ def run_emulator(
         stats.techniques_attempted += 1
         print(f"[emulator] Processing {technique_id}...")
 
-        events = _emulate_technique(technique_id, evasion_hints, stats)
+        events = _emulate_technique(
+            technique_id, evasion_hints, stats, selected_test_guids=selected_test_guids)
 
         log_stream[technique_id] = events
         stats.per_technique[technique_id] = len(events)

@@ -134,12 +134,17 @@ def _normalize(val):
     return val
 
 
-def _ground_fields(fields: dict, procedure_text: str) -> dict:
+def _ground_fields(
+    fields: dict,
+    procedure_text: str,
+    evasion_hints: dict | None = None,
+) -> dict:
     """
     Drop fields whose string values are not explicitly present in the procedure text.
     - Verbatim match: full value appears in procedure_text
-    - Basename match: for path-like values, basename appears in procedure_text  
+    - Basename match: for path-like values, basename appears in procedure_text
     - Partial match: for CommandLine fields, at least N tokens appear in procedure_text
+    - Evasion hint: attacker agent explicitly provided this field+value — trusted unconditionally
     Non-string values pass through without grounding check.
     """
     grounded = {}
@@ -175,6 +180,15 @@ def _ground_fields(fields: dict, procedure_text: str) -> dict:
             ]
             matched = sum(1 for t in tokens if t in text)
             if matched >= _PARTIAL_MATCH_MIN_TOKENS:
+                grounded[k] = v
+                continue
+        # Check 4 — trusted evasion hint from attacker agent
+        # Values explicitly injected by the attacker bypass verbatim grounding.
+        # LLM-hallucinated values that are neither in procedure_text nor in hints
+        # still get dropped.
+        if evasion_hints and k in evasion_hints:
+            hint_val = evasion_hints[k]
+            if isinstance(hint_val, str) and hint_val.lower() == v_lower:
                 grounded[k] = v
                 continue
 
@@ -301,6 +315,7 @@ def build_log_event(
     host: str = "WORKSTATION-01",
     user: str = "SYSTEM",
     timestamp: str = None,
+    evasion_hints: dict | None = None,
 ) -> LogEvent | None:
     """
     Build a validated LogEvent from an LLM interpretation dict.
@@ -328,7 +343,7 @@ def build_log_event(
     raw_fields = interpretation.get("fields", {})
 
     # 1. Ground against procedure text
-    grounded_fields = _ground_fields(raw_fields, procedure_text)
+    grounded_fields = _ground_fields(raw_fields, procedure_text, evasion_hints)
     if not grounded_fields:
         print("[build_log_event] Dropped: no fields survived grounding")
         return None

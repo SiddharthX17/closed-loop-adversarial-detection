@@ -238,89 +238,105 @@ class PRCreator:
         default_branch = self._repo.default_branch
         head_sha = self._repo.get_branch(default_branch).commit.sha
 
-        # Create branch from HEAD
-        try:
-            self._repo.create_git_ref(
-                ref=f"refs/heads/{branch}",
-                sha=head_sha,
-            )
-        except GithubException as e:
-            if e.status == 422:
-                # Branch already exists — get its current SHA and update
-                if DEBUG:
-                    print(
-                        f"[pr_creator] Branch '{branch}' already exists — reusing")
-            else:
-                raise
-
-        # Commit rule YAML to branch
-        # Check if file already exists on branch (update vs create)
-        try:
-            existing = self._repo.get_contents(rule_path, ref=branch)
-            self._repo.update_file(
-                path=rule_path,
-                message=f"feat: {technique_id} detection rule — automated",
-                content=rule_yaml,
-                sha=existing.sha,
-                branch=branch,
-            )
-            if DEBUG:
-                print(f"[pr_creator] Updated existing file: {rule_path}")
-        except GithubException as e:
-            if e.status == 404:
-                self._repo.create_file(
-                    path=rule_path,
-                    message=f"feat: {technique_id} detection rule — automated",
-                    content=rule_yaml,
-                    branch=branch,
-                )
-                if DEBUG:
-                    print(f"[pr_creator] Created new file: {rule_path}")
-            else:
-                raise
-
-        # Build PR body
-        fp_rate = getattr(validation_result, "fp_rate", None)
-        pr_body = _build_pr_body(
-            technique_id=technique_id,
-            technique_name=technique_name,
-            missed_events=missed_events,
-            validation_feedback=getattr(
-                validation_result, "feedback", "") or "",
-            fired_rules=fired_rules or [],
-            fp_rate=fp_rate,
-        )
-
-        # Open PR — check for existing open PR on this branch first
+        # ── Early exit: check existing PR + content before touching branch ──
         open_prs = self._repo.get_pulls(
             state="open",
             head=f"{self._repo.owner.login}:{branch}",
         )
         existing_pr = next(iter(open_prs), None)
 
-        if existing_pr:
-            if DEBUG:
-                print(
-                    f"[pr_creator] PR already open for branch '{branch}' "
-                    f"(#{existing_pr.number}) — updating body"
-                )
-            existing_pr.edit(body=pr_body)
-            pr = existing_pr
-        else:
-            pr = self._repo.create_pull(
-                title=f"[Auto] {technique_id}: {technique_name} detection rule",
-                body=pr_body,
-                head=branch,
-                base=default_branch,
-            )
-            if DEBUG:
-                print(
-                    f"[pr_creator] Opened PR #{pr.number}: {pr.html_url}"
-                )
-
-        return PRResult(
-            pr_url=pr.html_url,
-            pr_number=pr.number,
-            branch_name=branch,
-            rule_filename=filename,
+        fp_rate = getattr(validation_result, "fp_rate", None)
+        feedback = getattr(validation_result, "feedback", "") or ""
+        pr_body = _build_pr_body(
+            technique_id=technique_id,
+            technique_name=technique_name,
+            missed_events=missed_events,
+            validation_feedback=feedback,
+            fired_rules=fired_rules or [],
+            fp_rate=fp_rate,
         )
+
+        if existing_pr:
+            try:
+                existing_file = self._repo.get_contents(rule_path, ref=branch)
+                existing_content = existing_file.decoded_content.decode()
+                content_unchanged = existing_content.strip() == rule_yaml.strip()
+                body_unchanged = (
+                    existing_pr.body or "").strip() == pr_body.strip()
+
+                if content_unchanged and body_unchanged:
+                    if DEBUG:
+                        print(
+                            f"[pr_creator] No changes detected for "
+                            f"#{existing_pr.number} — skipping entirely"
+                        )
+                    return PRResult(
+                        pr_url=existing_pr.html_url,
+                        pr_number=existing_pr.number,
+                        branch_name=branch,
+                        rule_filename=filename,
+                    )
+            except GithubException as e:
+                if e.status != 404:
+                    raise
+                content_unchanged = False
+                body_unchanged = False
+        else:
+            content_unchanged = False
+            body_unchanged = False
+
+        # ── Branch lifecycle: delete + recreate only when changes exist ──────
+        try:
+            _retry(lambda: self._repo.create_git_ref(
+                ref=f"refs/heads/{branch}",
+                sha=head_sha,
+            ))
+            if DEBUG:
+                print(
+                    f"[pr_creator] {technique_id}: created branch '{branch}'")
+        except GithubException as e:
+            if e.status == 422:
+                if DEBUG:
+                    print(
+                        f"[pr_creator] Branch '{branch}' exists — "
+                        f"deleting and recreating from HEAD"
+                    )
+                ref = self._repo.get_git_ref(f"heads/{branch}")
+                _retry(lambda: ref.delete())
+                _retry(lambda: self._repo.create_git_ref(
+                    ref=f"refs/heads/{branch}",
+                    sha=head_sha,
+                ))
+            else:
+                raise
+
+        # ── Commit rule to branch ─────────────────────────────────────────
+        skip_commit = False
+        if content_unchanged:
+            if DEBUG:
+                print(f"[pr_creator] Content unchanged — skipping commit")
+            skip_commit = True
+        else:
+            try:
+                existing_file = self._repo.get_contents(rule_path, ref=branch)
+                _retry(lambda: self._repo.update_file(
+                    path=rule_path,
+                    message=f"feat: {technique_id} detection rule — automated",
+                    content=rule_yaml,
+                    sha=existing_file.sha,
+                    branch=branch,
+                ))
+                if DEBUG:
+                    print(f"[pr_creator] Updated {rule_path}")
+            except GithubException as e:
+                if e.status == 404:
+                    _retry(lambda: self._repo.create_file(
+                        path=rule_path,
+                        message=f"feat: {technique_id} detection rule — automated",
+                        content=rule_yaml,
+                        branch=branch,
+                    ))
+                    if DEBUG:
+                        print(f"[pr_creator] Created {rule_path}")
+                else:
+                    raise

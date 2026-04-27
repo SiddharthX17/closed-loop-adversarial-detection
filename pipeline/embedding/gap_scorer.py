@@ -17,7 +17,9 @@ Typical call site (orchestrator, post-detection):
 
 import os
 from dataclasses import dataclass, field
+from typing import Optional
 
+from pipeline.emulator.log_builder import LogEvent
 from pipeline.embedding.scorer import EmbeddingScorer, EventScoringResult
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
@@ -32,17 +34,20 @@ class GapScoringResult:
     """
     Embedding scorer output for a single gap technique.
 
-    technique_id:    ATT&CK technique ID with the gap
-    event_scores:    one EventScoringResult per missed event
-                     (top_matches empty if event scored below threshold)
-    top_technique:   the highest-scoring technique ID across all missed events,
-                     or None if nothing cleared the threshold
-    top_score:       cosine similarity of the top match, or 0.0
+    technique_id:       ATT&CK technique ID with the gap
+    event_scores:       one EventScoringResult per missed event
+    top_technique:      highest-scoring technique ID across all events,
+                        or None if nothing cleared the threshold
+    top_score:          cosine similarity of top match, None if no match
+    num_events_scored:  total events passed to scorer
+    num_events_matched: events where at least one technique cleared threshold
     """
     technique_id: str
     event_scores: list[EventScoringResult] = field(default_factory=list)
     top_technique: str | None = None
-    top_score: float = 0.0
+    top_score: Optional[float] = None
+    num_events_scored: int = 0
+    num_events_matched: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -50,67 +55,80 @@ class GapScoringResult:
 # ---------------------------------------------------------------------------
 
 def score_gaps(
-    detection_results: dict,   # dict[technique_id, DetectionResult]
+    detection_results: dict,        # dict[technique_id, DetectionResult]
     scorer: EmbeddingScorer,
+    # dict[technique_id, list[LogEvent]] from emulator
+    log_stream: dict,
 ) -> dict[str, GapScoringResult]:
     """
-    Score missed events for all gap techniques in detection_results.
+    Score attack events for all gap techniques in detection_results.
 
-    Only processes techniques where DetectionResult.gap is True —
-    covered techniques have nothing to score.
+    Uses log_stream (raw emulated attack events) as the event source —
+    NOT detection_result.matched_events, which is always empty on gap results.
+
+    Only scores techniques where DetectionResult.gap is True.
+    Techniques with no curated rules return an empty GapScoringResult
+    instead of being skipped — orchestrator can distinguish all three states:
+    covered / gap-with-rules / gap-no-rules.
 
     Args:
         detection_results: dict[technique_id, DetectionResult] from result_parser
         scorer:            EmbeddingScorer instance (loaded once by orchestrator)
+        log_stream:        dict[technique_id, list[LogEvent]] from run_emulator()
 
     Returns:
         dict[technique_id, GapScoringResult] — one entry per gap technique.
-        Techniques with no missed events get an entry with empty event_scores.
     """
     gap_results: dict[str, GapScoringResult] = {}
 
     for technique_id, detection_result in detection_results.items():
-        # Only score techniques with a genuine gap
         if not getattr(detection_result, "gap", False):
             continue
 
-        missed_events = getattr(detection_result, "matched_events", [])
-        # matched_events on a gap result should be empty — but defensively
-        # also check total_rules so we don't score skip-only techniques
         total_rules = getattr(detection_result, "total_rules", 0)
         if total_rules == 0:
-            if DEBUG:
-                print(
-                    f"[gap_scorer] {technique_id}: skipping — "
-                    f"no rules evaluated (no rules curated for this technique)"
-                )
-            continue
-
-        if DEBUG:
-            print(
-                f"[gap_scorer] {technique_id}: scoring "
-                f"{len(missed_events)} missed events"
-            )
-
-        if not missed_events:
-            # Gap exists but no missed events available — can still create entry
+            # No rules curated — return empty entry so orchestrator can distinguish
             gap_results[technique_id] = GapScoringResult(
                 technique_id=technique_id)
             if DEBUG:
                 print(
-                    f"[gap_scorer] {technique_id}: gap with no missed events to score")
+                    f"[gap_scorer] {technique_id}: gap with no curated rules — "
+                    f"returning empty entry"
+                )
             continue
 
-        # Batch score all missed events
-        event_scores = scorer.score_missed_events(missed_events)
+        # Use raw attack events from emulator — not matched_events (always empty on gaps)
+        raw_events = log_stream.get(technique_id, [])
+        event_dicts = [
+            e.model_dump(exclude_none=True)
+            for e in raw_events
+        ]
 
-        # Find the single best technique match across all events
+        if DEBUG:
+            print(
+                f"[gap_scorer] {technique_id}: scoring "
+                f"{len(event_dicts)} attack events"
+            )
+
+        if not event_dicts:
+            gap_results[technique_id] = GapScoringResult(
+                technique_id=technique_id)
+            if DEBUG:
+                print(
+                    f"[gap_scorer] {technique_id}: gap with no emulated events to score")
+            continue
+
+        event_scores = scorer.score_missed_events(event_dicts)
+
         top_technique = None
-        top_score = 0.0
+        top_score = None
+        num_matched = 0
+
         for es in event_scores:
             if es.top_matches:
-                best = es.top_matches[0]  # already sorted descending
-                if best.score > top_score:
+                num_matched += 1
+                best = es.top_matches[0]
+                if top_score is None or best.score > top_score:
                     top_score = best.score
                     top_technique = best.technique_id
 
@@ -119,18 +137,22 @@ def score_gaps(
             event_scores=event_scores,
             top_technique=top_technique,
             top_score=top_score,
+            num_events_scored=len(event_dicts),
+            num_events_matched=num_matched,
         )
 
         if DEBUG:
+            score_str = f"{top_score:.4f}" if top_score is not None else "none"
             print(
                 f"[gap_scorer] {technique_id}: top match = "
-                f"{top_technique} ({top_score:.4f})"
+                f"{top_technique} ({score_str})"
+                f"matched {num_matched}/{len(event_dicts)} events"
             )
 
     if DEBUG:
         print(
             f"[gap_scorer] Scored {len(gap_results)} gap techniques "
-            f"(skipped {len(detection_results) - len(gap_results)} covered/no-rules)"
+            f"(skipped {len(detection_results) - len(gap_results)} covered)"
         )
 
     return gap_results

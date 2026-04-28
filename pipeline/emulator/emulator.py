@@ -175,7 +175,19 @@ def _select_tests(
                 break
 
     # Fill remaining slots with diverse tests (skip already selected)
-    selected_guids_seen = {selected_guid} if selected_guid else set()
+    selected_guids_seen = set()
+
+    # If attacker selected a test, try to add it first
+    if selected_guid:
+        for guid, cleaned in cleaned_all:
+            if guid == selected_guid:
+                selected.append(cleaned)
+                selected_guids_seen.add(guid)
+                _dbg(
+                    f"{technique_id} / '{cleaned.test_name}': selected (attacker choice, 1/{cap})")
+                break
+
+    # Fill remaining slots
     for guid, cleaned in cleaned_all:
         if len(selected) >= cap:
             break

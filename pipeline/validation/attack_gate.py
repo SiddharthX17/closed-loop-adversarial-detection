@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from engine import DetectionEngine, RuleMatchResult
+from pipeline.detection.engine import DetectionEngine, RuleMatchResult
 
 logger = logging.getLogger(__name__)
 

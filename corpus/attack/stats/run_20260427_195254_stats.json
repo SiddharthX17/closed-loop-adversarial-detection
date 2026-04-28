@@ -1,0 +1,11 @@
+{
+  "techniques_attempted": 1,
+  "techniques_with_events": 1,
+  "tests_attempted": 0,
+  "tests_skipped_no_clean": 0,
+  "tests_skipped_unresolved": 0,
+  "events_generated": 2,
+  "per_technique": {
+    "T1059.001": 2
+  }
+}

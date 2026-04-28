@@ -34,6 +34,32 @@ _EID_TO_SUBDIR: dict[int, str] = {
     3:  "network",
 }
 
+_CANONICAL_FIELDS = {
+    "timestamp": "timestamp",
+    "host": "host",
+    "user": "user",
+    "eventid": "EventID",
+    "event_type": "event_type",
+    "image": "Image",
+    "commandline": "CommandLine",
+    "parentimage": "ParentImage",
+    "parentcommandline": "ParentCommandLine",
+    "processid": "ProcessId",
+    "parentprocessid": "ParentProcessId",
+    "targetobject": "TargetObject",
+    "details": "Details",
+    "sourceip": "SourceIp",
+    "destinationip": "DestinationIp",
+    "destinationhostname": "DestinationHostname",
+    "destinationport": "DestinationPort",
+    "originalfilename": "OriginalFileName",
+    "currentdirectory": "CurrentDirectory",
+    "integritylevel": "IntegrityLevel",
+    "protocol": "Protocol",
+    "initiated": "Initiated",
+}
+
+
 _DEFAULT_FP_THRESHOLD = 0.01
 _FP_SAMPLE_CAP = 5       # max FP events surfaced to defender agent
 _BENIGN_GEN_COUNT = 200  # synthetic events per type, supplements corpus
@@ -108,6 +134,30 @@ def _log_events_to_dicts(events: list[LogEvent]) -> list[dict]:
     return [e.model_dump(exclude_none=True) for e in events]
 
 
+def _normalise_event_keys(event: dict) -> dict:
+    """
+    Resolve case-insensitive duplicate keys while preserving canonical schema names.
+    First canonical value wins.
+    """
+    result = {}
+
+    for k, v in event.items():
+        if k is None:
+            continue
+
+        raw = str(k)
+        canonical = _CANONICAL_FIELDS.get(raw.lower(), raw)
+
+        if canonical not in result:
+            result[canonical] = v
+
+    return result
+
+
+def _normalise_event_list(events: list[dict]) -> list[dict]:
+    return [_normalise_event_keys(e) for e in events]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -171,6 +221,11 @@ def run(
         if debug:
             print(f"[noise_gate] added {len(filtered_generated)} synthetic events "
                   f"(total: {len(corpus_events)})")
+
+    corpus_events = _normalise_event_list(corpus_events)
+
+    if debug:
+        print(f"[noise_gate] normalised {len(corpus_events)} corpus events")
 
     if not corpus_events:
         return NoiseGateResult(

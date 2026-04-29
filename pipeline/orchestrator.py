@@ -1,0 +1,443 @@
+"""
+Coordinates all 7 pipeline stages:
+  1. Attacker Agent  → structured campaign plan
+  2. Emulator        → log stream per technique
+  3. Detection Layer → per-technique match results
+  4. Gap Scorer      → embedding proximity for missed events
+  5. Defender Agent  → candidate Sigma rules for gaps
+  6. Validation      → schema linter + attack gate + noise gate (inside DefenderAgent)
+  7. PR Creator      → opens GitHub PRs for validated rules
+
+Runs up to max_iterations. Each iteration feeds previous detection results
+back to the attacker agent for mutation-driven adaptation.
+
+Usage:
+    from pipeline.orchestrator import Orchestrator
+    result = Orchestrator().run(iterations=2)
+"""
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from pipeline.attacker.agent import AttackerAgent, extract_emulator_inputs, CampaignPlan
+from pipeline.emulator.emulator import run_emulator
+from pipeline.detection.engine import DetectionEngine
+from pipeline.detection.result_parser import parse_results, get_gaps, get_covered
+from pipeline.embedding.scorer import EmbeddingScorer
+from pipeline.embedding.gap_scorer import score_gaps
+from pipeline.embedding.embedder import EMBEDDINGS_PATH
+from pipeline.defender.agent import DefenderAgent, GapContext, find_existing_rule_paths
+from pipeline.github.pr_creator import PRCreator, PRResult
+from pipeline.metrics.tracker import MetricsTracker
+from pipeline.data.stix_loader import get_loader
+
+import yaml
+
+DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
+
+RULES_DIR = Path("rules")
+CORPUS_ROOT = Path("corpus/benign")
+TECHNIQUES_PATH = Path("config/techniques.yaml")
+OUTPUT_DIR = Path("corpus/attack")
+
+
+def _dbg(msg: str) -> None:
+    if DEBUG:
+        print(f"[orchestrator] {msg}")
+
+
+# ---------------------------------------------------------------------------
+# Result types
+# ---------------------------------------------------------------------------
+
+@dataclass
+class IterationSummary:
+    iteration: int
+    techniques_attempted: int
+    techniques_covered: int
+    techniques_with_gaps: int
+    rules_generated: int
+    rules_validated: int
+    prs_opened: list[str] = field(default_factory=list)  # PR URLs
+
+
+@dataclass
+class OrchestrationResult:
+    iterations_run: int
+    summaries: list[IterationSummary] = field(default_factory=list)
+    # technique_id → covered:bool
+    final_coverage: dict = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _load_technique_ids() -> list[str]:
+    with open(TECHNIQUES_PATH) as f:
+        data = yaml.safe_load(f)
+    return [str(t) for t in data.get("techniques", [])]
+
+
+def _flatten_log_stream(
+    log_stream: dict,       # dict[technique_id, list[LogEvent]]
+) -> list[dict]:
+    """
+    Flatten all LogEvents across all techniques into a single list[dict]
+    for the detection engine.
+    """
+    events = []
+    for technique_events in log_stream.values():
+        for event in technique_events:
+            events.append(
+                event.model_dump(exclude_none=True)
+                if hasattr(event, "model_dump")
+                else dict(event)
+            )
+    return events
+
+
+def _build_detection_results(
+    rule_match_results: list,
+) -> dict:
+    """
+    Convert list[RuleMatchResult] from engine.run() into
+    dict[technique_id, DetectionResult] keyed by technique ID.
+    Last DetectionResult per technique wins (shouldn't overlap, but safe).
+    """
+    parsed = parse_results(rule_match_results)
+    result_map = {}
+    for dr in parsed:
+        result_map[dr.technique_id] = dr
+    return result_map
+
+
+def _build_gap_context(
+    technique_id: str,
+    detection_result,
+    log_stream: dict,
+    stix,
+    corpus_root: Path,
+) -> Optional[GapContext]:
+    """
+    Build GapContext for a gap technique.
+
+    missed_events: all attack events for the technique (as dicts) — these
+                   are all "missed" since gap=True means zero rules fired.
+    attack_sample: same events as LogEvent objects — for validation gates.
+    """
+    metadata = stix.lookup(technique_id)
+    if not metadata:
+        _dbg(f"{technique_id}: no STIX metadata — cannot build GapContext")
+        return None
+
+    raw_events = log_stream.get(technique_id, [])
+    if not raw_events:
+        _dbg(f"{technique_id}: no emulated events — skipping defender")
+        return None
+
+    missed_events = [
+        e.model_dump(exclude_none=True)
+        if hasattr(e, "model_dump") else dict(e)
+        for e in raw_events
+    ]
+
+    existing_rule_paths = find_existing_rule_paths(technique_id, RULES_DIR)
+
+    return GapContext(
+        technique_id=technique_id,
+        technique_name=metadata.technique_name,
+        tactic=metadata.tactic,
+        missed_events=missed_events,
+        existing_rule_paths=existing_rule_paths,
+        attack_sample=raw_events,       # list[LogEvent] for validation
+        corpus_root=corpus_root,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+
+class Orchestrator:
+
+    def __init__(
+        self,
+        rules_dir: Path = RULES_DIR,
+        corpus_root: Path = CORPUS_ROOT,
+        output_dir: Optional[Path] = OUTPUT_DIR,
+        open_prs: bool = True,
+    ):
+        """
+        Args:
+            rules_dir:   directory containing curated Sigma rules
+            corpus_root: root of benign corpus for noise gate
+            output_dir:  where emulator writes JSONL + stats. None = suppress writes.
+            open_prs:    set False to skip PR creation (useful for testing loop logic)
+        """
+        self._rules_dir = rules_dir
+        self._corpus_root = corpus_root
+        self._output_dir = output_dir
+        self._open_prs = open_prs
+
+        self._stix = get_loader()
+        self._attacker = AttackerAgent()
+        self._defender = DefenderAgent(corpus_root=corpus_root)
+        self._metrics = MetricsTracker()
+
+        # EmbeddingScorer — load once, reuse across iterations
+        if EMBEDDINGS_PATH.exists():
+            self._scorer = EmbeddingScorer(embeddings_path=EMBEDDINGS_PATH)
+        else:
+            _dbg("Embeddings not found — gap scoring disabled. Run embedder first.")
+            self._scorer = None
+
+        # PR creator — optional, only init if opening PRs
+        self._pr_creator = None
+        if open_prs:
+            try:
+                self._pr_creator = PRCreator()
+            except EnvironmentError as e:
+                print(f"[orchestrator] PR creation disabled: {e}")
+                self._open_prs = False
+
+    def run(
+        self,
+        technique_ids: Optional[list[str]] = None,
+        iterations: int = 2,
+    ) -> OrchestrationResult:
+        """
+        Run the full adversarial detection loop.
+
+        Args:
+            technique_ids: techniques to target. Reads techniques.yaml if None.
+            iterations:    number of attacker→emulator→detect→defend cycles.
+
+        Returns:
+            OrchestrationResult with per-iteration summaries.
+        """
+        if technique_ids is None:
+            technique_ids = _load_technique_ids()
+
+        print(f"[orchestrator] Starting run: {len(technique_ids)} techniques, "
+              f"{iterations} iteration(s)")
+
+        result = OrchestrationResult(iterations_run=0)
+        # fed back to attacker each iteration
+        previous_results: Optional[dict] = None
+
+        for iteration in range(1, iterations + 1):
+            print(
+                f"\n[orchestrator] ── Iteration {iteration}/{iterations} ──────────────")
+            summary = self._run_iteration(
+                technique_ids=technique_ids,
+                iteration=iteration,
+                previous_results=previous_results,
+            )
+            result.summaries.append(summary)
+            result.iterations_run += 1
+
+            # Feed detection results forward to attacker for next iteration
+            # Stored on self during iteration, cleared before next
+            previous_results = getattr(self, "_last_detection_results", None)
+
+        # Final coverage snapshot
+        if previous_results:
+            result.final_coverage = {
+                tid: dr.covered
+                for tid, dr in previous_results.items()
+            }
+
+        # Finalise metrics
+        self._metrics.finalise_iteration(
+            iteration=iterations,
+            output_dir=self._output_dir / "metrics" if self._output_dir else None,
+        )
+
+        self._print_summary(result)
+        return result
+
+    def _run_iteration(
+        self,
+        technique_ids: list[str],
+        iteration: int,
+        previous_results: Optional[dict],
+    ) -> IterationSummary:
+
+        summary = IterationSummary(
+            iteration=iteration,
+            techniques_attempted=len(technique_ids),
+            techniques_covered=0,
+            techniques_with_gaps=0,
+            rules_generated=0,
+            rules_validated=0,
+        )
+
+        # ── Stage 1: Attacker agent ───────────────────────────────
+        _dbg(f"Stage 1: attacker agent (iteration {iteration})")
+        plan: CampaignPlan = self._attacker.run(
+            technique_ids=technique_ids,
+            previous_results=previous_results,
+        )
+        _dbg(f"Plan generated for {len(plan)} technique(s)")
+
+        # ── Stage 2: Emulator ─────────────────────────────────────
+        _dbg("Stage 2: emulator")
+        emulator_technique_ids, evasion_hints, selected_test_guids = (
+            extract_emulator_inputs(plan)
+        )
+
+        # Include any techniques not in the plan (attacker may have skipped some)
+        all_technique_ids = list(dict.fromkeys(
+            emulator_technique_ids +
+            [t for t in technique_ids if t not in emulator_technique_ids]
+        ))
+
+        log_stream, emulator_stats = run_emulator(
+            technique_ids=all_technique_ids,
+            evasion_hints=evasion_hints,
+            selected_test_guids=selected_test_guids,
+            output_dir=self._output_dir,
+        )
+        _dbg(f"Emulator: {emulator_stats.events_generated} events across "
+             f"{emulator_stats.techniques_with_events} technique(s)")
+
+        # ── Stage 3: Detection layer ──────────────────────────────
+        _dbg("Stage 3: detection")
+        all_events = _flatten_log_stream(log_stream)
+
+        if not all_events:
+            print("[orchestrator] No events generated — skipping detection")
+            return summary
+
+        engine = DetectionEngine(
+            rules_dir=self._rules_dir,
+            events=all_events,
+        )
+        rule_match_results = engine.run()
+        detection_results = _build_detection_results(rule_match_results)
+
+        # Store for next iteration's attacker mutation context
+        self._last_detection_results = detection_results
+
+        covered = [tid for tid, dr in detection_results.items() if dr.covered]
+        gaps = [tid for tid, dr in detection_results.items() if dr.gap]
+        summary.techniques_covered = len(covered)
+        summary.techniques_with_gaps = len(gaps)
+
+        print(
+            f"[orchestrator] Coverage: {len(covered)}/{len(detection_results)} techniques")
+        if gaps:
+            print(f"[orchestrator] Gaps: {gaps}")
+
+        # Record detection metrics
+        for tid, dr in detection_results.items():
+            self._metrics.record_detection(
+                tid,
+                rules_evaluated=dr.total_rules,
+                rules_fired=len(dr.fired_rules),
+                total_events=len(log_stream.get(tid, [])),
+                matched_events=len(dr.matched_events),
+                iteration=iteration,
+            )
+
+        # ── Stage 4: Gap scorer ───────────────────────────────────
+        if self._scorer and gaps:
+            _dbg("Stage 4: gap scorer")
+            gap_scores = score_gaps(
+                detection_results, self._scorer, log_stream)
+            for tid, gs in gap_scores.items():
+                if gs.top_technique:
+                    score_str = f"{gs.top_score:.4f}" if gs.top_score is not None else "none"
+                    _dbg(
+                        f"{tid}: closest technique = {gs.top_technique} ({score_str})")
+
+        # ── Stage 5+6: Defender agent + Validation ────────────────
+        if not gaps:
+            _dbg("No gaps — skipping defender agent")
+            return summary
+
+        _dbg(f"Stage 5: defender agent ({len(gaps)} gap(s))")
+
+        for technique_id in gaps:
+            dr = detection_results[technique_id]
+            _dbg(f"Processing gap: {technique_id}")
+
+            gap_context = _build_gap_context(
+                technique_id=technique_id,
+                detection_result=dr,
+                log_stream=log_stream,
+                stix=self._stix,
+                corpus_root=self._corpus_root,
+            )
+            if not gap_context:
+                continue
+
+            rule_yaml, validation_result = self._defender.run(gap_context)
+            summary.rules_generated += 1
+
+            if validation_result:
+                self._metrics.record_validation(
+                    technique_id,
+                    fp_rate=validation_result.fp_rate,
+                    fp_count=validation_result.fp_count,
+                    total_benign=validation_result.total_benign,
+                    gate_failed=validation_result.gate_failed,
+                    iteration=iteration,
+                )
+
+            if not rule_yaml or not validation_result or not validation_result.passed:
+                gate = getattr(validation_result, "gate_failed",
+                               "unknown") if validation_result else "unknown"
+                print(
+                    f"[orchestrator] {technique_id}: rule generation failed (gate={gate})")
+                continue
+
+            summary.rules_validated += 1
+            print(f"[orchestrator] {technique_id}: rule validated ✓")
+
+            # ── Stage 7: PR creator ───────────────────────────────
+            if self._open_prs and self._pr_creator:
+                _dbg(f"Stage 7: opening PR for {technique_id}")
+                try:
+                    metadata = self._stix.lookup(technique_id)
+                    technique_name = metadata.technique_name if metadata else technique_id
+
+                    pr_result = self._pr_creator.create_pr(
+                        technique_id=technique_id,
+                        technique_name=technique_name,
+                        rule_yaml=rule_yaml,
+                        missed_events=gap_context.missed_events,
+                        validation_result=validation_result,
+                        fired_rules=dr.fired_rules,
+                    )
+                    summary.prs_opened.append(pr_result.pr_url)
+                    print(f"[orchestrator] PR opened: {pr_result.pr_url}")
+                except Exception as e:
+                    print(
+                        f"[orchestrator] PR creation failed for {technique_id}: {e}")
+
+        return summary
+
+    def _print_summary(self, result: OrchestrationResult) -> None:
+        print(f"\n[orchestrator] ── Run Complete ────────────────────────")
+        print(f"  Iterations run: {result.iterations_run}")
+        for s in result.summaries:
+            print(f"\n  Iteration {s.iteration}:")
+            print(f"    Techniques attempted : {s.techniques_attempted}")
+            print(f"    Covered              : {s.techniques_covered}")
+            print(f"    Gaps                 : {s.techniques_with_gaps}")
+            print(f"    Rules generated      : {s.rules_generated}")
+            print(f"    Rules validated      : {s.rules_validated}")
+            print(f"    PRs opened           : {len(s.prs_opened)}")
+            for url in s.prs_opened:
+                print(f"      {url}")
+
+        if result.final_coverage:
+            print(f"\n  Final coverage:")
+            for tid, covered in result.final_coverage.items():
+                marker = "✓" if covered else "✗"
+                print(f"    {marker} {tid}")
+        print(f"[orchestrator] ────────────────────────────────────────")

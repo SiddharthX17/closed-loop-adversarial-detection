@@ -1,0 +1,378 @@
+"""
+3.16 + 3.17 — wire and test the full adversarial loop.
+
+Runs Orchestrator for 2 iterations and verifies:
+  - All stages executed without contract mismatches
+  - Events generated per technique
+  - Detection layer produced results
+  - Defender agent attempted gap closure
+  - Iteration 2 attacker plan captured for 3.18 mutation verification
+
+Set OPEN_PRS=0 to skip PR creation during loop testing.
+
+Usage (from project root):
+    $env:PIPELINE_DEBUG="1"
+    $env:OPEN_PRS="0"
+    python -m scripts.run_full_loop
+"""
+
+from pipeline.data.stix_loader import get_loader
+from pipeline.detection.result_parser import parse_results
+from pipeline.detection.engine import DetectionEngine
+from pipeline.emulator.emulator import run_emulator
+from pipeline.attacker.agent import AttackerAgent, extract_emulator_inputs, CampaignPlan
+from pipeline.orchestrator import Orchestrator, OrchestrationResult
+import sys
+import os
+from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Optional
+
+sys.path.insert(0, str(Path(__file__).parents[1]))
+
+
+OPEN_PRS = os.getenv("OPEN_PRS", "0").lower() in ("1", "true")
+ITERATIONS = 2
+RULES_DIR = Path("rules")
+CORPUS_ROOT = Path("corpus/benign")
+OUTPUT_DIR = None  # suppress file writes during loop test
+
+
+# ---------------------------------------------------------------------------
+# Extended orchestrator that captures plans per iteration for 3.18
+# ---------------------------------------------------------------------------
+
+@dataclass
+class LoopTestResult:
+    orchestration_result: OrchestrationResult
+    plans_per_iteration: dict[int, CampaignPlan] = field(default_factory=dict)
+    detection_results_per_iteration: dict[int, dict] = field(
+        default_factory=dict)
+    events_per_iteration: dict[int, dict] = field(default_factory=dict)
+
+
+def run_instrumented_loop(
+    technique_ids: list[str],
+    iterations: int = 2,
+) -> LoopTestResult:
+    """
+    Run the full loop with instrumentation to capture per-iteration state.
+    Mirrors Orchestrator._run_iteration but surfaces intermediate state
+    for contract verification and 3.18 mutation check.
+    """
+    from pipeline.orchestrator import (
+        _load_technique_ids, _flatten_log_stream, _build_detection_results,
+        _build_gap_context, IterationSummary, OrchestrationResult,
+    )
+    from pipeline.defender.agent import DefenderAgent
+    from pipeline.github.pr_creator import PRCreator
+    from pipeline.metrics.tracker import MetricsTracker
+    from pipeline.embedding.scorer import EmbeddingScorer
+    from pipeline.embedding.embedder import EMBEDDINGS_PATH
+    from pipeline.embedding.gap_scorer import score_gaps
+
+    stix = get_loader()
+    attacker = AttackerAgent()
+    defender = DefenderAgent(corpus_root=CORPUS_ROOT)
+    metrics = MetricsTracker()
+
+    scorer = None
+    if EMBEDDINGS_PATH.exists():
+        scorer = EmbeddingScorer(embeddings_path=EMBEDDINGS_PATH)
+
+    pr_creator = None
+    if OPEN_PRS:
+        try:
+            pr_creator = PRCreator()
+        except EnvironmentError as e:
+            print(f"  PR creation disabled: {e}")
+
+    loop_result = LoopTestResult(
+        orchestration_result=OrchestrationResult(iterations_run=0)
+    )
+    previous_results = None
+
+    for iteration in range(1, iterations + 1):
+        print(
+            f"\n── Iteration {iteration}/{iterations} ────────────────────────────")
+
+        # Stage 1: Attacker
+        print(f"[{iteration}] Stage 1: attacker agent")
+        plan = attacker.run(
+            technique_ids=technique_ids,
+            previous_results=previous_results,
+        )
+        loop_result.plans_per_iteration[iteration] = plan
+        print(f"  Plan: {len(plan)} technique(s) — "
+              f"{[tid for tid in plan]}")
+
+        # Stage 2: Emulator
+        print(f"[{iteration}] Stage 2: emulator")
+        emulator_tids, evasion_hints, selected_guids = extract_emulator_inputs(
+            plan)
+
+        all_tids = list(dict.fromkeys(
+            emulator_tids +
+            [t for t in technique_ids if t not in emulator_tids]
+        ))
+
+        log_stream, stats = run_emulator(
+            technique_ids=all_tids,
+            evasion_hints=evasion_hints,
+            selected_test_guids=selected_guids,
+            output_dir=OUTPUT_DIR,
+        )
+        loop_result.events_per_iteration[iteration] = {
+            tid: len(events) for tid, events in log_stream.items()
+        }
+        print(f"  Events: {stats.events_generated} total — "
+              f"{loop_result.events_per_iteration[iteration]}")
+
+        all_events = _flatten_log_stream(log_stream)
+        if not all_events:
+            print(f"  WARNING: no events generated in iteration {iteration}")
+            previous_results = previous_results  # preserve
+            continue
+
+        # Stage 3: Detection
+        print(f"[{iteration}] Stage 3: detection")
+        engine = DetectionEngine(rules_dir=RULES_DIR, events=all_events)
+        rule_results = engine.run()
+        detection_results = _build_detection_results(rule_results)
+        loop_result.detection_results_per_iteration[iteration] = detection_results
+        previous_results = detection_results
+
+        covered = [tid for tid in technique_ids
+                   if detection_results.get(tid) and detection_results[tid].covered]
+        gaps = [tid for tid in technique_ids
+                if detection_results.get(tid) and detection_results[tid].gap]
+
+        print(f"  Covered: {covered}")
+        print(f"  Gaps:    {gaps}")
+
+        # Record metrics
+        for tid, dr in detection_results.items():
+            metrics.record_detection(
+                tid,
+                rules_evaluated=dr.total_rules,
+                rules_fired=len(dr.fired_rules),
+                total_events=len(log_stream.get(tid, [])),
+                matched_events=len(dr.matched_events),
+                iteration=iteration,
+            )
+
+        # Stage 4: Gap scorer
+        if scorer and gaps:
+            print(f"[{iteration}] Stage 4: gap scorer")
+            gap_scores = score_gaps(detection_results, scorer, log_stream)
+            for tid, gs in gap_scores.items():
+                if gs.top_technique:
+                    score_str = f"{gs.top_score:.4f}" if gs.top_score is not None else "none"
+                    print(f"  {tid}: closest = {gs.top_technique} ({score_str}), "
+                          f"matched {gs.num_events_matched}/{gs.num_events_scored} events")
+
+        # Stage 5+6: Defender + Validation
+        if not gaps:
+            print(f"[{iteration}] No gaps — skipping defender")
+            summary = IterationSummary(
+                iteration=iteration,
+                techniques_attempted=len(technique_ids),
+                techniques_covered=len(covered),
+                techniques_with_gaps=0,
+                rules_generated=0,
+                rules_validated=0,
+            )
+            loop_result.orchestration_result.summaries.append(summary)
+            loop_result.orchestration_result.iterations_run += 1
+            continue
+
+        print(f"[{iteration}] Stage 5: defender agent")
+        rules_generated = 0
+        rules_validated = 0
+        prs_opened = []
+
+        for technique_id in gaps:
+            dr = detection_results[technique_id]
+            gap_context = _build_gap_context(
+                technique_id=technique_id,
+                log_stream=log_stream,
+                stix=stix,
+                corpus_root=CORPUS_ROOT,
+            )
+            if not gap_context:
+                continue
+
+            rule_yaml, validation_result = defender.run(gap_context)
+            rules_generated += 1
+
+            if validation_result:
+                metrics.record_validation(
+                    technique_id,
+                    fp_rate=getattr(validation_result, "fp_rate", None),
+                    fp_count=getattr(validation_result, "fp_count", None),
+                    total_benign=getattr(
+                        validation_result, "total_benign", None),
+                    gate_failed=getattr(validation_result,
+                                        "gate_failed", None),
+                    iteration=iteration,
+                )
+
+            if not rule_yaml or not validation_result or not validation_result.passed:
+                gate = getattr(validation_result, "gate_failed",
+                               "unknown") if validation_result else "unknown"
+                print(f"  {technique_id}: rule generation failed (gate={gate})")
+                continue
+
+            rules_validated += 1
+            print(f"  {technique_id}: rule validated ✓ "
+                  f"(FP={validation_result.fp_rate:.1%})")
+
+            # Stage 7: PR
+            if OPEN_PRS and pr_creator:
+                try:
+                    metadata = stix.lookup(technique_id)
+                    technique_name = metadata.technique_name if metadata else technique_id
+                    pr_result = pr_creator.create_pr(
+                        technique_id=technique_id,
+                        technique_name=technique_name,
+                        rule_yaml=rule_yaml,
+                        missed_events=gap_context.missed_events,
+                        validation_result=validation_result,
+                        fired_rules=dr.fired_rules,
+                    )
+                    prs_opened.append(pr_result.pr_url)
+                    print(f"  PR: {pr_result.pr_url}")
+                except Exception as e:
+                    print(f"  PR failed for {technique_id}: {e}")
+
+        summary = IterationSummary(
+            iteration=iteration,
+            techniques_attempted=len(technique_ids),
+            techniques_covered=len(covered),
+            techniques_with_gaps=len(gaps),
+            rules_generated=rules_generated,
+            rules_validated=rules_validated,
+            prs_opened=prs_opened,
+        )
+        loop_result.orchestration_result.summaries.append(summary)
+        loop_result.orchestration_result.iterations_run += 1
+
+    metrics.finalise_iteration(iteration=iterations, output_dir=None)
+    return loop_result
+
+
+# ---------------------------------------------------------------------------
+# Contract verification
+# ---------------------------------------------------------------------------
+
+def verify_contracts(loop_result: LoopTestResult, technique_ids: list[str]) -> list[str]:
+    """
+    Verify stage contracts between iterations.
+    Returns list of failure messages — empty = all passed.
+    """
+    failures = []
+
+    for iteration, plan in loop_result.plans_per_iteration.items():
+        # Attacker output contract
+        for tid, task in plan.items():
+            if not task.selected_test_guid:
+                failures.append(
+                    f"Iter {iteration} / {tid}: TechniqueTask missing selected_test_guid"
+                )
+            if not task.formatted_input:
+                failures.append(
+                    f"Iter {iteration} / {tid}: TechniqueTask missing formatted_input"
+                )
+
+        # Events generated contract
+        events = loop_result.events_per_iteration.get(iteration, {})
+        for tid in technique_ids:
+            count = events.get(tid, 0)
+            if count == 0:
+                failures.append(
+                    f"Iter {iteration} / {tid}: no events generated — "
+                    f"emulator produced nothing for this technique"
+                )
+
+        # Detection results contract
+        det = loop_result.detection_results_per_iteration.get(iteration, {})
+        for tid in technique_ids:
+            if tid not in det:
+                failures.append(
+                    f"Iter {iteration} / {tid}: no DetectionResult — "
+                    f"technique may have no curated rules"
+                )
+
+    return failures
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    print("\n── 3.16/3.17 Full Loop Wire + Test ─────────────────────")
+    print(f"  Iterations: {ITERATIONS}")
+    print(f"  Open PRs:   {OPEN_PRS}")
+    print(f"  Rules dir:  {RULES_DIR}")
+    print(f"  Corpus:     {CORPUS_ROOT}")
+
+    # Load technique list
+    from pipeline.orchestrator import _load_technique_ids
+    technique_ids = _load_technique_ids()
+    print(f"  Techniques: {technique_ids}")
+
+    # Run instrumented loop
+    print("\n── Running loop ─────────────────────────────────────────")
+    loop_result = run_instrumented_loop(
+        technique_ids=technique_ids,
+        iterations=ITERATIONS,
+    )
+
+    # Contract verification
+    print("\n── Contract verification ────────────────────────────────")
+    failures = verify_contracts(loop_result, technique_ids)
+    if failures:
+        print(f"  FAILURES ({len(failures)}):")
+        for f in failures:
+            print(f"    ✗ {f}")
+    else:
+        print(f"  ✓ All stage contracts verified")
+
+    # Per-iteration summary
+    print("\n── Loop summary ─────────────────────────────────────────")
+    for s in loop_result.orchestration_result.summaries:
+        print(f"\n  Iteration {s.iteration}:")
+        print(f"    Techniques attempted : {s.techniques_attempted}")
+        print(f"    Covered              : {s.techniques_covered}")
+        print(f"    Gaps                 : {s.techniques_with_gaps}")
+        print(f"    Rules generated      : {s.rules_generated}")
+        print(f"    Rules validated      : {s.rules_validated}")
+        print(f"    PRs opened           : {len(s.prs_opened)}")
+
+    # Save plans for 3.18 mutation verification
+    import json
+    plans_summary = {}
+    for iteration, plan in loop_result.plans_per_iteration.items():
+        plans_summary[iteration] = {
+            tid: {
+                "selected_test_guid": task.selected_test_guid,
+                "selected_test_name": task.selected_test_name,
+                "evasion_hints": task.evasion_hints,
+                "mutation_applied": task.mutation_applied,
+            }
+            for tid, task in plan.items()
+        }
+
+    plans_path = Path("corpus/attack/stats/loop_plans.json")
+    plans_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(plans_path, "w") as f:
+        json.dump(plans_summary, f, indent=2)
+    print(f"\n  Plans saved to {plans_path} (for 3.18 mutation check)")
+
+    overall = "✓ PASSED" if not failures else f"✗ FAILED ({len(failures)} contract failures)"
+    print(f"\n── 3.16/3.17 result: {overall} ──────────────────────────")
+
+
+if __name__ == "__main__":
+    main()

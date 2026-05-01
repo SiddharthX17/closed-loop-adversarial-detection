@@ -86,7 +86,7 @@ def _extract_title(rule_yaml: str) -> str:
         return ""
 
 
-def _slugify(text: str, max_len: int = 40) -> str:
+def _slugify(text: str, max_len: int = 120) -> str:
     """
     URL/filename-safe slug, truncated to max_len.
     Avoids Windows 255-char filename limit when combined with technique ID.

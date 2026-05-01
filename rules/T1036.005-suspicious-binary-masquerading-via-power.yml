@@ -1,0 +1,49 @@
+title: Suspicious Binary Masquerading Via PowerShell Compilation or Copy
+id: 8f4c2e1a-3b5d-4f9c-a2e1-5d7c9a1f3e2b
+status: experimental
+description: |
+  Detects PowerShell commands that create or copy executables with legitimate system process names to suspicious locations.
+  This includes using Add-Type to compile assemblies as legitimate binaries (svchost.exe, cmd.exe, etc.) or copying system binaries to temp directories with legitimate names.
+  Adversaries use this technique to evade detection by masquerading malicious code as legitimate Windows processes.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://docs.microsoft.com/en-us/dotnet/api/system.reflection.assembly.save
+author: Detection Engineer
+date: 2026-04-29
+modified: 2026-04-29
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_powershell:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  selection_addtype_masquerade:
+    CommandLine|contains|all:
+      - 'Add-Type'
+      - '-OutputAssembly'
+    CommandLine|contains:
+      - 'svchost.exe'
+      - 'cmd.exe'
+      - 'lsass.exe'
+      - 'csrss.exe'
+      - 'services.exe'
+      - 'winlogon.exe'
+  selection_copy_masquerade:
+    CommandLine|contains|all:
+      - 'Copy-Item'
+      - '\Temp\'
+    CommandLine|contains:
+      - 'svchost.exe'
+      - 'VEDetector.exe'
+      - 'SecurityUpdate.exe'
+      - 'WindowsUpdate.exe'
+  condition: selection_powershell and (selection_addtype_masquerade or selection_copy_masquerade)
+falsepositives:
+  - Legitimate administrative scripts that compile or copy binaries with system process names (rare)
+  - Development environments building legitimate tools with these names
+level: high

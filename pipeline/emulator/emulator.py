@@ -54,7 +54,7 @@ class EmulatorStats:
     techniques_with_events: int = 0
     tests_attempted: int = 0
     tests_skipped_no_clean: int = 0       # clean_test returned None
-    tests_skipped_unresolved: int = 0     # has_unresolved_vars == True
+    tests_with_unresolved_vars: int = 0     # has_unresolved_vars == True
     events_generated: int = 0
     # technique_id → event count
     per_technique: dict = field(default_factory=dict)
@@ -66,7 +66,7 @@ class EmulatorStats:
             f"  Techniques with ≥1 event     : {self.techniques_with_events}",
             f"  Tests attempted              : {self.tests_attempted}",
             f"  Tests skipped (no clean)     : {self.tests_skipped_no_clean}",
-            f"  Tests skipped (unresolved)   : {self.tests_skipped_unresolved}",
+            f"  Tests skipped (unresolved)   : {self.tests_with_unresolved_vars}",
             f"  Events generated             : {self.events_generated}",
             "  Per-technique breakdown:",
         ]
@@ -122,7 +122,6 @@ def _select_tests(
 
     Skips:
       - Tests where clean_test returns None (no commands survive cleaning)
-      - Tests with unresolved #{...} variables after cleaning
 
     atomic_loader already pre-filters for: Windows platform, non-manual executor,
     non-empty command. No need to re-check those here.
@@ -154,8 +153,9 @@ def _select_tests(
 
         if cleaned.has_unresolved_vars:
             _dbg(
-                f"{technique_id} / '{test.test_name}': unresolved vars remain — skipping")
-            stats.tests_skipped_unresolved += 1
+                f"{technique_id} / '{test.test_name}': unresolved vars remain — "
+                f"passing to LLM for interpretation")
+            stats.tests_with_unresolved_vars += 1
             continue
 
         cleaned_all.append((test.test_guid, cleaned))

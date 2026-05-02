@@ -33,7 +33,7 @@ load_dotenv()
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
-RULES_DIR = "rules"
+RULES_DIR = "rules/generated"
 MAX_EVIDENCE_EVENTS = 5
 MAX_FIELD_LENGTH = 300
 _RETRY_STATUSES = {403, 429}  # rate limit only — never retry 404/422

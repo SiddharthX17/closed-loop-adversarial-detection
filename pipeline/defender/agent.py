@@ -247,12 +247,12 @@ class DefenderAgent:
                 else "noise_gate"
             )
 
-            if DEBUG:
-                print(
-                    f"[defender] {technique_id}: attempt {attempt} failed — "
-                    f"gate={gate}, "
-                    f"feedback={str(result.feedback or 'none')[:120]}"
-                )
+            print(
+                f"[defender] {technique_id}: attempt {attempt}/{MAX_RETRIES + 1} "
+                f"failed — gate={gate} — "
+                f"{str(result.feedback or 'none')[:120]}"
+            )
+
 
             if attempt <= MAX_RETRIES:
                 retry_feedback = _build_retry_feedback(result, rule_yaml)

@@ -32,6 +32,7 @@ from pipeline.defender.agent import DefenderAgent, GapContext, find_existing_rul
 from pipeline.github.pr_creator import PRCreator, PRResult
 from pipeline.metrics.tracker import MetricsTracker
 from pipeline.data.stix_loader import get_loader
+from pipeline.emulator.procedure_interpreter import get_drop_stats
 
 import yaml
 
@@ -60,6 +61,8 @@ class IterationSummary:
     techniques_with_gaps: int
     rules_generated: int
     rules_validated: int
+    event_coverage: dict[str, str] = field(
+        default_factory=dict)  # tid → "matched/total"
     prs_opened: list[str] = field(default_factory=list)  # PR URLs
 
 
@@ -327,8 +330,12 @@ class Orchestrator:
 
         covered = [tid for tid in technique_ids if detection_results.get(
             tid) and detection_results[tid].covered]
-        gaps = [tid for tid in technique_ids if detection_results.get(
-            tid) and detection_results[tid].gap]
+        gaps = [tid for tid in technique_ids
+                if detection_results.get(tid) and (
+                    detection_results[tid].gap or
+                    (detection_results[tid].covered and
+                     len(detection_results[tid].matched_events) < len(log_stream.get(tid, [])))
+                )]
         summary.techniques_covered = len(covered)
         summary.techniques_with_gaps = len(gaps)
 
@@ -338,6 +345,14 @@ class Orchestrator:
             print(f"[orchestrator] Gaps: {gaps}")
 
         # Record detection metrics
+        event_coverage = {}
+        for tid in technique_ids:
+            dr = detection_results.get(tid)
+            total = len(log_stream.get(tid, []))
+            matched = len(dr.matched_events) if dr else 0
+            event_coverage[tid] = f"{matched}/{total}"
+        summary.event_coverage = event_coverage
+
         for tid, dr in detection_results.items():
             self._metrics.record_detection(
                 tid,
@@ -425,6 +440,15 @@ class Orchestrator:
                     print(
                         f"[orchestrator] PR creation failed for {technique_id}: {e}")
 
+        # Drop stats from procedure interpreter
+        drop_stats = get_drop_stats()
+        if drop_stats["unresolved_var"] > 0 or drop_stats["ungrounded"] > 0:
+            _dbg(
+                f"Procedure interpreter drops — "
+                f"unresolved_var: {drop_stats['unresolved_var']}, "
+                f"ungrounded: {drop_stats['ungrounded']}"
+            )
+
         return summary, detection_results
 
     def _print_summary(self, result: OrchestrationResult) -> None:
@@ -434,6 +458,9 @@ class Orchestrator:
             print(f"\n  Iteration {s.iteration}:")
             print(f"    Techniques attempted : {s.techniques_attempted}")
             print(f"    Covered              : {s.techniques_covered}")
+            if s.event_coverage:
+                for tid, ratio in s.event_coverage.items():
+                    print(f"      {tid}: {ratio} events matched")
             print(f"    Gaps                 : {s.techniques_with_gaps}")
             print(f"    Rules generated      : {s.rules_generated}")
             print(f"    Rules validated      : {s.rules_validated}")

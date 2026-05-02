@@ -102,13 +102,13 @@ class DetectionResult:
 
     @property
     def gap(self) -> bool:
-        """
-        True when the technique has evaluable rules but none fired.
-        Skipped-only techniques are also gaps — we can't claim coverage
-        if rules never executed.
-        """
-        has_evaluable = bool(self.fired_rules or self.missed_rules)
-        return has_evaluable and not self.covered
+        """True if any attack events were not caught — includes partial coverage."""
+        if self.total_rules == 0:
+            return False
+        if not self.covered:
+            return True
+        # Partial coverage: covered but not all events matched
+        return False
 
     @property
     def skip_only(self) -> bool:

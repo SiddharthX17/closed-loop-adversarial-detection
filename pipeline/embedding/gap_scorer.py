@@ -47,7 +47,7 @@ class GapScoringResult:
     top_technique: str | None = None
     top_score: Optional[float] = None
     num_events_scored: int = 0
-    num_events_matched: int = 0
+    num_events_matched: int = 0  # events where at least one technique cleared threshold
 
 
 # ---------------------------------------------------------------------------

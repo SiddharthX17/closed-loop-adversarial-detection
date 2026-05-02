@@ -263,6 +263,27 @@ def _hints_hash(evasion_hints: dict) -> str:
 # Detection context extraction
 # ---------------------------------------------------------------------------
 
+def _extract_detection_block(rule_path: str) -> str:
+    """
+    Extract just the detection: block from a Sigma rule YAML.
+    More readable for LLM reasoning about evasion than SQL.
+    Falls back to empty string if file unreadable.
+    """
+    try:
+        import yaml as pyyaml
+        text = Path(rule_path).read_text(encoding="utf-8")
+        parsed = pyyaml.safe_load(text)
+        if parsed and "detection" in parsed:
+            # Re-serialise just the detection block — compact and clean
+            return pyyaml.dump(
+                {"detection": parsed["detection"]},
+                default_flow_style=False,
+            ).strip()
+    except Exception:
+        pass
+    return "unavailable"
+
+
 def _get_detection_context(
     technique_id: str,
     previous_results: dict | None,
@@ -294,9 +315,11 @@ def _get_detection_context(
     # Rules that fired — title + SQL condition for LLM to reason about what to evade
     caught_rules = []
     for rb in getattr(result, "fired_rules", []):
+        # Load detection block from rule file — more readable than SQL for LLM
+        detection_yaml = _extract_detection_block(rb.rule_path)
         caught_rules.append({
             "title": rb.rule_title,
-            "condition": (rb.sql_query or "unavailable")[:300],
+            "detection_yaml": detection_yaml,
         })
 
     return caught_fields, caught_rules
@@ -340,9 +363,12 @@ def _build_full_prompt(
     # Inject caught rules — LLM should understand what condition matched
     # so it can reason about what to evade, not just which field values
     if caught_rules:
-        prompt += "\n\nRules that fired last run — understand what they detect, then evade them:\n"
-        for rule in caught_rules:
-            prompt += f"  - {rule['title']}: {rule['condition']}\n"
+        prompt += "\n\nRules that fired last run (understand what each detects, then evade it):\n"
+        for i, rule in enumerate(caught_rules, 1):
+            prompt += f"\n  Rule {i}: {rule['title']}\n"
+            prompt += f"  Detection block:\n"
+            for line in rule['detection_yaml'].splitlines():
+                prompt += f"    {line}\n"
 
     # Inject prior attempts — prevent repeating the same test+hints combination
     if prior_attempts:
@@ -502,6 +528,20 @@ class AttackerAgent:
                 print(
                     f"[attacker] {technique_id}: no usable candidates after filtering")
             return [], {}
+
+        used_guids = {
+            attempt["test_guid"]
+            for attempt in self._prior_attempts.get(technique_id, [])
+        }
+        # Prefer unused tests if alternatives exist
+
+        unused_pairs = [(raw, c)
+                        for raw, c in pairs if raw.test_guid not in used_guids]
+        used_pairs = [(raw, c)
+                      for raw, c in pairs if raw.test_guid in used_guids]
+
+        if unused_pairs:
+            pairs = unused_pairs + used_pairs
 
         selected_pairs = _select_candidates(pairs)
         return _build_candidates(selected_pairs)

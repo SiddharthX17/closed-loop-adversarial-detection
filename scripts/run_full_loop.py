@@ -145,10 +145,21 @@ def run_instrumented_loop(
         covered = [tid for tid in technique_ids
                    if detection_results.get(tid) and detection_results[tid].covered]
         gaps = [tid for tid in technique_ids
-                if detection_results.get(tid) and detection_results[tid].gap]
+                if detection_results.get(tid) and (
+                    detection_results[tid].gap or
+                    (detection_results[tid].covered and
+                     len(detection_results[tid].matched_events) < len(log_stream.get(tid, [])))
+                )]
 
         print(f"  Covered: {covered}")
         print(f"  Gaps:    {gaps}")
+        for tid, dr in detection_results.items():
+            total_attack = len(log_stream.get(tid, []))
+            matched = len(dr.matched_events)
+            ratio = f"{matched}/{total_attack}" if total_attack > 0 else "0/0"
+            status = "✓" if dr.covered else "✗"
+            partial = " (partial)" if dr.covered and matched < total_attack else ""
+            print(f"    {status} {tid}: {ratio} events matched{partial}")
 
         # Record metrics
         for tid, dr in detection_results.items():

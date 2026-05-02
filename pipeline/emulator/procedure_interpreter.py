@@ -122,6 +122,15 @@ _UNRESOLVED_VAR_PATTERN = re.compile(
 _PARTIAL_MATCH_FIELDS = {"CommandLine", "ParentCommandLine"}
 _PARTIAL_MATCH_MIN_TOKENS = 2  # at least 2 tokens must appear
 
+# ─── Counter ──────────────────────────────────────────────────────────────────
+
+_drop_stats = {"unresolved_var": 0, "ungrounded": 0}
+
+
+def get_drop_stats() -> dict:
+    """Return accumulated drop counts since process start."""
+    return dict(_drop_stats)
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -163,6 +172,7 @@ def _ground_fields(
                     if not exact_in_text and not exact_in_hints:
                         print(
                             f"[procedure_interpreter] Dropping unresolved variable in {k}={v!r}")
+                        _drop_stats["unresolved_var"] += 1
                         continue
 
         if not isinstance(v, str):
@@ -207,6 +217,7 @@ def _ground_fields(
                 continue
 
         print(f"[procedure_interpreter] Dropping ungrounded field {k}={v!r}")
+        _drop_stats["ungrounded"] += 1
 
     return grounded
 

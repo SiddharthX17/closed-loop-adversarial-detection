@@ -97,11 +97,15 @@ def _resolve_env_vars(command: str) -> str:
     Sorted longest-first to avoid partial substitutions.
     """
     for var, val in sorted(ATOMIC_VAR_DEFAULTS.items(), key=lambda x: -len(x[0])):
-        command = command.replace(var, val)
+        # Case-insensitive replace for $env: variants
+        if var.lower().startswith("$env:"):
+            command = re.sub(re.escape(var), lambda m: val, command, flags=re.IGNORECASE)
+        else:
+            command = command.replace(var, val)
     return command
 
-
 # ─── Line joining ─────────────────────────────────────────────────────────────
+
 
 def _join_continuations(lines: list[str], continuation_char: str) -> list[str]:
     """

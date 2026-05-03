@@ -115,9 +115,6 @@ _FALLBACK_RESULT = {
     "fields":     {},
 }
 
-_PS_BUILTINS = {'$true', '$false', '$null', '$_', '$?'}
-_UNRESOLVED_VAR_PATTERN = re.compile(
-    r'\$(?:\{[^}]+\}|[a-zA-Z_][a-zA-Z0-9_:]*)')
 
 _PARTIAL_MATCH_FIELDS = {"CommandLine", "ParentCommandLine"}
 _PARTIAL_MATCH_MIN_TOKENS = 2  # at least 2 tokens must appear
@@ -164,16 +161,6 @@ def _ground_fields(
     text = procedure_text.lower()
 
     for k, v in fields.items():
-        if isinstance(v, str):
-            if _UNRESOLVED_VAR_PATTERN.search(v):
-                if v.lower() not in _PS_BUILTINS:
-                    exact_in_text = v_lower in text
-                    exact_in_hints = v_lower in hint_text
-                    if not exact_in_text and not exact_in_hints:
-                        print(
-                            f"[procedure_interpreter] Dropping unresolved variable in {k}={v!r}")
-                        _drop_stats["unresolved_var"] += 1
-                        continue
 
         if not isinstance(v, str):
             grounded[k] = v

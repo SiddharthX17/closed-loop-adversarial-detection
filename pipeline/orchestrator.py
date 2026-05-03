@@ -328,8 +328,11 @@ class Orchestrator:
         rule_match_results = engine.run()
         detection_results = _build_detection_results(rule_match_results)
 
-        covered = [tid for tid in technique_ids if detection_results.get(
-            tid) and detection_results[tid].covered]
+        covered = [tid for tid in technique_ids
+                   if detection_results.get(tid)
+                   and detection_results[tid].covered
+                   and len(detection_results[tid].matched_events) >= len(log_stream.get(tid, []))]
+
         gaps = [tid for tid in technique_ids
                 if detection_results.get(tid) and (
                     detection_results[tid].gap or
@@ -440,15 +443,6 @@ class Orchestrator:
                     print(
                         f"[orchestrator] PR creation failed for {technique_id}: {e}")
 
-        # Drop stats from procedure interpreter
-        drop_stats = get_drop_stats()
-        if drop_stats["unresolved_var"] > 0 or drop_stats["ungrounded"] > 0:
-            _dbg(
-                f"Procedure interpreter drops — "
-                f"unresolved_var: {drop_stats['unresolved_var']}, "
-                f"ungrounded: {drop_stats['ungrounded']}"
-            )
-
         return summary, detection_results
 
     def _print_summary(self, result: OrchestrationResult) -> None:
@@ -473,4 +467,11 @@ class Orchestrator:
             for tid, covered in result.final_coverage.items():
                 marker = "✓" if covered else "✗"
                 print(f"    {marker} {tid}")
+
+        # Cumulative drop stats — printed once after all iterations
+        drop_stats = get_drop_stats()
+        print(f"\n  Procedure interpreter field drops (cumulative run total):")
+        print(
+            f"    Unresolved variables dropped : {drop_stats['unresolved_var']}")
+        print(f"    Ungrounded fields dropped    : {drop_stats['ungrounded']}")
         print(f"[orchestrator] ────────────────────────────────────────")

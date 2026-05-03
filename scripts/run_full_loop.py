@@ -143,7 +143,10 @@ def run_instrumented_loop(
         previous_results = detection_results
 
         covered = [tid for tid in technique_ids
-                   if detection_results.get(tid) and detection_results[tid].covered]
+                   if detection_results.get(tid)
+                   and detection_results[tid].covered
+                   and len(detection_results[tid].matched_events) >= len(log_stream.get(tid, []))]
+
         gaps = [tid for tid in technique_ids
                 if detection_results.get(tid) and (
                     detection_results[tid].gap or
@@ -180,7 +183,7 @@ def run_instrumented_loop(
                 if gs.top_technique:
                     score_str = f"{gs.top_score:.4f}" if gs.top_score is not None else "none"
                     print(f"  {tid}: closest = {gs.top_technique} ({score_str}), "
-                          f"matched {gs.num_events_matched}/{gs.num_events_scored} events")
+                          f"embedding similarity computed on {gs.num_events_matched}/{gs.num_events_scored} events")
 
         # Stage 5+6: Defender + Validation
         if not gaps:

@@ -24,6 +24,7 @@ import json
 import yaml
 import hashlib
 import anthropic
+import random
 
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
@@ -491,6 +492,8 @@ class AttackerAgent:
     def _prepare_candidates(
         self,
         technique_id: str,
+        caught_fields:  dict[str, list[str]],
+        previous_results: dict | None = None,
     ) -> tuple[list[AtomicCandidate], dict]:
         """
         Load, clean, filter, rank, and cap Atomic tests for a technique.
@@ -529,19 +532,39 @@ class AttackerAgent:
                     f"[attacker] {technique_id}: no usable candidates after filtering")
             return [], {}
 
-        used_guids = {
-            attempt["test_guid"]
-            for attempt in self._prior_attempts.get(technique_id, [])
-        }
-        # Prefer unused tests if alternatives exist
+        attempts = self._prior_attempts.get(technique_id, [])
+        prev_guid = attempts[-1]["test_guid"] if attempts else None
+        used_guids = {a["test_guid"] for a in attempts}
 
-        unused_pairs = [(raw, c)
-                        for raw, c in pairs if raw.test_guid not in used_guids]
-        used_pairs = [(raw, c)
-                      for raw, c in pairs if raw.test_guid in used_guids]
+        prev_dr = (previous_results or {}).get(technique_id)
+        if prev_dr is None:
+            status = "unknown"
+        elif getattr(prev_dr, "gap", False):
+            status = "gap"
+        elif getattr(prev_dr, "covered", False):
+            status = "covered"
+        else:
+            status = "gap"
 
-        if unused_pairs:
-            pairs = unused_pairs + used_pairs
+        if status in ("covered", "partial"):
+            # Prefer latest test for true mutation — same execution path, different hints
+            if prev_guid:
+                preferred = [(raw, c)
+                             for raw, c in pairs if raw.test_guid == prev_guid]
+                others = [(raw, c)
+                          for raw, c in pairs if raw.test_guid != prev_guid]
+                # shuffle non-preferred to avoid alphabetical lock
+                random.shuffle(others)
+                pairs = preferred + others
+        else:
+            # Gap or unknown — explore unseen paths first
+            unseen = [(raw, c)
+                      for raw, c in pairs if raw.test_guid not in used_guids]
+            seen = [(raw, c)
+                    for raw, c in pairs if raw.test_guid in used_guids]
+            random.shuffle(unseen)
+            random.shuffle(seen)
+            pairs = (unseen + seen) if unseen else seen
 
         selected_pairs = _select_candidates(pairs)
         return _build_candidates(selected_pairs)
@@ -598,16 +621,23 @@ class AttackerAgent:
             if DEBUG:
                 print(f"[attacker] Processing {tid}")
 
-            candidates, lookup = self._prepare_candidates(tid)
+            caught_fields: dict[str, list[str]] = {}
+            caught_rules: list[dict] = []
+            if previous_results:
+                caught_fields, caught_rules = _get_detection_context(
+                    tid, previous_results)
+
+            candidates, lookup = self._prepare_candidates(
+                tid,
+                caught_fields=caught_fields,
+                previous_results=previous_results,
+            )
             if not candidates:
                 continue
 
             metadata = self._stix.lookup(tid)
             technique_name = metadata.technique_name if metadata else tid
             tactic = metadata.tactic if metadata else "unknown"
-
-            caught_fields, caught_rules = _get_detection_context(
-                tid, previous_results)
 
             # Check if any selected candidate has unresolved vars
             has_unresolved = any(

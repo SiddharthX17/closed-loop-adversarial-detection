@@ -144,9 +144,8 @@ def score_gaps(
         if DEBUG:
             score_str = f"{top_score:.4f}" if top_score is not None else "none"
             print(
-                f"[gap_scorer] {technique_id}: top match = "
-                f"{top_technique} ({score_str})"
-                f"matched {num_matched}/{len(event_dicts)} events"
+                f"[gap_scorer] {technique_id}: top match = {top_technique} ({score_str}), "
+                f"embedding similarity computed on {num_matched}/{len(event_dicts)} events"
             )
 
     if DEBUG:

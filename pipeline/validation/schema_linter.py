@@ -148,15 +148,25 @@ def _extract_fields_from_rule(rule_yaml: str) -> tuple[set[str], Optional[str], 
         collection = SigmaCollection.from_yaml(rule_yaml)
     except SigmaError as exc:
         return set(), ERR_PARSE, f"SigmaError: {exc}"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return set(), ERR_PARSE, f"{type(exc).__name__}: {exc}"
 
+    from sigma.rule import SigmaDetectionItem
+
     fields: set[str] = set()
+
+    def _extract_from_detection(detection):
+        for item in detection.detection_items:
+            if isinstance(item, SigmaDetectionItem):
+                if item.field is not None:
+                    fields.add(str(item.field))
+            elif hasattr(item, "detection_items"):
+                # Nested SigmaDetection — recurse
+                _extract_from_detection(item)
+
     for rule in collection.rules:
         for detection in rule.detection.detections.values():
-            for item in detection.detection_items:
-                if item.field is not None:
-                    fields.add(item.field)
+            _extract_from_detection(detection)
 
     return fields, None, None
 

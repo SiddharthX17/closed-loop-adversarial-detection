@@ -48,6 +48,34 @@ logger = logging.getLogger(__name__)
 # Table name used in all generated SQL — must match backend.table
 _TABLE = "logs"
 
+BASELINE_COLUMNS = {
+    "timestamp",
+    "host",
+    "user",
+    "EventID",
+    "event_type",
+    "Channel",
+    "Image",
+    "CommandLine",
+    "ParentImage",
+    "ParentCommandLine",
+    "ProcessId",
+    "ParentProcessId",
+    "TargetObject",
+    "Details",
+    "SourceIp",
+    "DestinationIp",
+    "DestinationHostname",
+    "DestinationPort",
+    "OriginalFileName",
+    "CurrentDirectory",
+    "IntegrityLevel",
+    "Protocol",
+    "Initiated",
+    "Hashes",
+    "LogonId",
+}
+
 
 # ---------------------------------------------------------------------------
 # REGEXP UDF
@@ -163,9 +191,11 @@ def load_events_from_json(path) -> list:
 
 def _infer_columns(events: list[dict]) -> list[str]:
     """Union of all keys across all events — the table schema is the superset."""
-    cols: set[str] = set()
+    cols = set(BASELINE_COLUMNS)
+
     for e in events:
         cols.update(e.keys())
+
     return sorted(cols)
 
 

@@ -1,6 +1,8 @@
 """
 pipeline/defender/prompts.py
 
+beta
+
 Prompt templates for the defender agent.
 Single template handles both first attempt and retries — retry_feedback
 is None on first call, populated with gate failure details on subsequent calls.

@@ -1,8 +1,6 @@
 """
 pipeline/defender/prompts.py
 
-beta
-
 Prompt templates for the defender agent.
 Single template handles both first attempt and retries — retry_feedback
 is None on first call, populated with gate failure details on subsequent calls.
@@ -53,7 +51,8 @@ def _format_retry_feedback(retry_feedback: dict | None) -> str:
 
     lines.append(
         "\nFix the issues identified above. "
-        "Do not repeat the same field names or logic that caused the failure."
+        "Do not repeat the same flawed logic. Reuse fields only where justified.\n"
+        "Fix the failed gate while preserving aspects that likely passed."
     )
 
     return "\n".join(lines)
@@ -92,16 +91,23 @@ def build_defender_prompt(
 
     prompt += (
         "The following log events were NOT detected by existing rules. "
-        "Your job is to write a Sigma rule that detects them:\n\n"
+        "Write a Sigma rule that detects them:\n\n"
         "Missed events:\n"
         f"{_format_missed_events(missed_events)}\n\n"
     )
 
     prompt += (
-        "Existing rules for this technique (for context — "
-        "you may improve one of these or write a new rule, "
-        "whichever better covers the missed events):\n\n"
+        "Existing rules for this technique (for context):\n\n"
         f"{_format_existing_rules(existing_rules)}\n\n"
+    )
+
+    prompt += (
+        "Decision guidance:\n"
+        "- Write a NEW rule if the missed events represent a fundamentally different "
+        "execution pattern from existing rules (different binary, different execution chain, "
+        "different event type).\n"
+        "- IMPROVE an existing rule if the missed events are a variant of what it already "
+        "targets (same binary, slightly different command line or parent).\n\n"
     )
 
     if is_retry:
@@ -109,23 +115,50 @@ def build_defender_prompt(
         prompt += "\n\n"
 
     prompt += (
-        "Requirements:\n"
-        "- Output valid Sigma YAML only. No explanation, no markdown fences.\n"
+        "Requirements — follow all of these:\n\n"
+
+        "Rule ID:\n"
+        "- The id field MUST be a randomly generated UUID4.\n"
+        "- Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx "
+        "(x = hex digit, y = one of 8, 9, a, b).\n"
+        "- Do NOT use placeholder values like 00000000-0000-0000-0000-000000000000 "
+        "or sequential patterns. Generate a unique random UUID4.\n\n"
+
+        "Field selection:\n"
         "- Use only Sysmon field names that exist in a standard Sysmon schema:\n"
         "  Image, CommandLine, ParentImage, ParentCommandLine, TargetObject,\n"
         "  Details, DestinationIp, DestinationHostname, DestinationPort,\n"
-        "  SourceIp, OriginalFileName, CurrentDirectory, IntegrityLevel,\n"
-        "  Protocol, Initiated, ProcessId, ParentProcessId\n"
+        "  SourceIp, OriginalFileName, CurrentDirectory, Protocol, Initiated,\n"
+        "  ProcessId, ParentProcessId\n"
+        "- Prefer specific high-signal fields over broad keyword matching.\n"
+        "  Good: Image|endswith: '\\\\rundll32.exe' AND CommandLine|contains: 'comsvcs'\n"
+        "  Bad: CommandLine|contains: 'malware' (too vague)\n"
+        "- Do NOT hardcode full URLs, file hashes, or exact string payloads unless "
+        "they are definitively unique to malicious activity and not present in any "
+        "benign enterprise context.\n\n"
+
+        "Logsource:\n"
         "- Set logsource correctly for Sysmon:\n"
         "    logsource:\n"
-        "      category: process_creation   # or registry_set, network_connection etc.\n"
-        "      product: windows\n"
+        "      category: process_creation   "
+        "# or registry_set, network_connection, registry_event etc.\n"
+        "      product: windows\n\n"
+
+        "Detection logic:\n"
         "- The rule must match the missed events above — not just the technique in general.\n"
-        "- Keep detection logic specific enough to avoid firing on routine benign activity.\n"
-        "- Use a descriptive title and set tags with the ATT&CK technique ID.\n"
+        "- Keep detection logic specific enough to avoid firing on routine enterprise "
+        "activity (legitimate PowerShell, scheduled tasks, software updates).\n"
+        "- If using CommandLine matching, require multiple conditions (AND) to reduce FPs.\n"
+        "- Use Sigma modifiers correctly: contains, startswith, endswith, re (regex), "
+        "all (all conditions must match).\n\n"
+
+        "Metadata:\n"
+        "- Use a descriptive title.\n"
+        "- Set tags with the ATT&CK technique ID.\n"
         "- Set status: experimental\n"
-        f"- Rule filename convention (for your title/id): T{technique_id}-<short-description>\n\n"
-        "Output the Sigma YAML rule now:"
+        f"- Rule filename convention (for your title): {technique_id}-<short-description>\n\n"
+
+        "Output the Sigma YAML rule only. No explanation, no markdown fences, no preamble."
     )
 
     return prompt

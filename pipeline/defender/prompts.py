@@ -7,6 +7,7 @@ is None on first call, populated with gate failure details on subsequent calls.
 """
 
 from pathlib import Path
+import uuid
 
 
 def _format_missed_events(missed_events: list[dict]) -> str:
@@ -114,15 +115,14 @@ def build_defender_prompt(
         prompt += _format_retry_feedback(retry_feedback)
         prompt += "\n\n"
 
+    generated_id = str(uuid.uuid4())
+
     prompt += (
         "Requirements — follow all of these:\n\n"
 
         "Rule ID:\n"
-        "- The id field MUST be a randomly generated UUID4.\n"
-        "- Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx "
-        "(x = hex digit, y = one of 8, 9, a, b).\n"
-        "- Do NOT use placeholder values like 00000000-0000-0000-0000-000000000000 "
-        "or sequential patterns. Generate a unique random UUID4.\n\n"
+        f"- Use exactly this UUID4 for the id field: {generated_id}\n"
+        "  Do not change it, do not generate your own.\n\n"
 
         "Field selection:\n"
         "- Use only Sysmon field names that exist in a standard Sysmon schema:\n"

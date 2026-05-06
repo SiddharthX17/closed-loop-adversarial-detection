@@ -24,6 +24,7 @@ DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
 MODEL = "claude-haiku-4-5-20251001"
 MAX_RETRIES = 2
+MAX_RETRIES_GATE_FAILURE = 3
 RULES_DIR = Path("rules")
 
 
@@ -193,10 +194,15 @@ class DefenderAgent:
         last_result: ValidationResult | None = None
         last_rule: str | None = None
 
-        for attempt in range(1, MAX_RETRIES + 2):  # attempts: 1, 2, 3
+        # Determine retry cap based on which gate fails.
+        # Lint failures = prompt quality issue — more retries won't help.
+        # Noise/attack gate failures = rule logic issue — one extra retry is worthwhile.
+        max_attempts = MAX_RETRIES + 1  # default: 3 total attempts
+
+        for attempt in range(1, max_attempts + 1):
             if DEBUG:
                 print(
-                    f"[defender] {technique_id}: attempt {attempt}/{MAX_RETRIES + 1}"
+                    f"[defender] {technique_id}: attempt {attempt}/{max_attempts}"
                 )
 
             prompt = build_defender_prompt(
@@ -216,7 +222,6 @@ class DefenderAgent:
                         f"[defender] {technique_id}: "
                         f"LLM returned nothing on attempt {attempt}"
                     )
-                # No point retrying an API failure with the same prompt
                 break
 
             last_rule = rule_yaml
@@ -224,7 +229,6 @@ class DefenderAgent:
             if DEBUG:
                 print(f"[defender] {technique_id}: validating candidate rule")
 
-            # validate() expects list[LogEvent] for attack_sample
             result = validate(
                 rule_yaml=rule_yaml,
                 attack_sample=gap_context.attack_sample,
@@ -240,7 +244,6 @@ class DefenderAgent:
                     )
                 return rule_yaml, result
 
-            # Identify which gate failed for logging
             gate = (
                 "schema_linter" if not result.lint_passed
                 else "attack_gate" if not result.attack_passed
@@ -248,21 +251,26 @@ class DefenderAgent:
             )
 
             print(
-                f"[defender] {technique_id}: attempt {attempt}/{MAX_RETRIES + 1} "
+                f"[defender] {technique_id}: attempt {attempt}/{max_attempts} "
                 f"failed — gate={gate} — "
                 f"{str(result.feedback or 'none')[:120]}"
             )
 
-
-            if attempt <= MAX_RETRIES:
+            if attempt < max_attempts:
                 retry_feedback = _build_retry_feedback(result, rule_yaml)
+
+                # Bump cap if gate (not lint) is failing — one extra attempt worth it
+                if gate in ("noise_gate", "attack_gate"):
+                    max_attempts = min(
+                        max_attempts,
+                        MAX_RETRIES_GATE_FAILURE + 1
+                    )
             else:
-                # All attempts exhausted — log and give up
                 print(
                     f"[defender] EXHAUSTED: {technique_id} — "
                     f"gate={gate}, "
-                    f"feedback={result.feedback or 'none'}\n"
-                    f"Final rule attempt:\n{rule_yaml}"
+                    f"feedback={result.feedback or 'none'}\\n"
+                    f"Final rule attempt:\\n{rule_yaml}"
                 )
 
         return None, last_result

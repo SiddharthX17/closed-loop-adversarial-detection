@@ -1,0 +1,42 @@
+title: PowerShell Remote Script Download and Execution via IEX
+id: 96283681-19e6-4336-9bec-7b1911b731c5
+status: experimental
+description: Detects PowerShell process execution with IEX (Invoke-Expression) combined with remote script download from GitHub, particularly targeting script download cradles that bypass execution policies and hide the window.
+references:
+    - https://github.com/enigma0x3/Misc-PowerShell-Stuff/blob/master/Invoke-AppPathBypass.ps1
+    - https://attack.mitre.org/techniques/T1059/001/
+author: Detection Engineer
+date: 2026-05-06
+modified: 2026-05-06
+tags:
+    - attack.execution
+    - attack.t1059.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_powershell:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+    selection_obfuscation:
+        CommandLine|contains:
+            - '-NoProfile'
+            - '-WindowStyle Hidden'
+    selection_iex_download:
+        CommandLine|contains|all:
+            - 'IEX'
+            - 'New-Object'
+            - 'Net.WebClient'
+            - 'DownloadString'
+    selection_github:
+        CommandLine|contains:
+            - 'raw.githubusercontent.com'
+            - 'github.com'
+    selection_parent_mshta:
+        ParentImage|endswith: '\mshta.exe'
+    condition: selection_powershell and selection_obfuscation and selection_iex_download and selection_github and selection_parent_mshta
+falsepositives:
+    - Legitimate administrative scripts downloaded from GitHub repositories
+    - Authorized security testing tools
+level: high

@@ -160,10 +160,16 @@ def run_instrumented_loop(
             total_attack = len(log_stream.get(tid, []))
             matched = len(dr.matched_events)
             ratio = f"{matched}/{total_attack}" if total_attack > 0 else "0/0"
-            status = "✓" if dr.covered else "✗"
-            partial = " (partial)" if dr.covered and matched < total_attack else ""
-            print(f"    {status} {tid}: {ratio} events matched{partial}")
-
+            if matched == total_attack and total_attack > 0:
+                label = "Fully Covered"
+                marker = "✓"
+            elif matched > 0:
+                label = "Partially Covered"
+                marker = "~"
+            else:
+                label = "Missed" if dr.total_rules > 0 else "No Rules"
+                marker = "✗"
+            print(f"    {marker} {tid}: {ratio} events matched — {label}")
         # Record metrics
         for tid, dr in detection_results.items():
             metrics.record_detection(

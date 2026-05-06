@@ -253,11 +253,17 @@ class Orchestrator:
             # Stored on self during iteration, cleared before next
 
         # Final coverage snapshot
-        if previous_results:
-            result.final_coverage = {
-                tid: dr.covered
-                for tid, dr in previous_results.items()
-            }
+        if result.summaries:
+            last = result.summaries[-1]
+            result.final_coverage = {}
+            for tid, ratio in last.event_coverage.items():
+                matched, total = map(int, ratio.split("/"))
+                if matched == total and total > 0:
+                    result.final_coverage[tid] = "full"
+                elif matched > 0:
+                    result.final_coverage[tid] = "partial"
+                else:
+                    result.final_coverage[tid] = "missed"
 
         # Finalise metrics
         self._metrics.finalise_iteration(
@@ -464,9 +470,13 @@ class Orchestrator:
 
         if result.final_coverage:
             print(f"\n  Final coverage:")
-            for tid, covered in result.final_coverage.items():
-                marker = "✓" if covered else "✗"
-                print(f"    {marker} {tid}")
+            for tid, status in result.final_coverage.items():
+                if status == "full":
+                    print(f"    ✓ {tid}: Fully Covered")
+                elif status == "partial":
+                    print(f"    ~ {tid}: Partially Covered")
+                else:
+                    print(f"    ✗ {tid}: Missed")
 
         # Cumulative drop stats — printed once after all iterations
         drop_stats = get_drop_stats()

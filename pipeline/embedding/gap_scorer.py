@@ -82,7 +82,16 @@ def score_gaps(
     gap_results: dict[str, GapScoringResult] = {}
 
     for technique_id, detection_result in detection_results.items():
-        if not getattr(detection_result, "gap", False):
+        is_gap = getattr(detection_result, "gap", False)
+        matched = len(getattr(detection_result, "matched_events", []))
+        total_rules = getattr(detection_result, "total_rules", 0)
+        # Also score partial coverage — covered but not all events matched
+        is_partial = (
+            getattr(detection_result, "covered", False)
+            and matched < len(log_stream.get(technique_id, []))
+            and total_rules > 0
+        )
+        if not is_gap and not is_partial:
             continue
 
         total_rules = getattr(detection_result, "total_rules", 0)

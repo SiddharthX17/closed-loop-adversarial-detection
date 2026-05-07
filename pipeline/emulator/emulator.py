@@ -223,10 +223,11 @@ def _emulate_technique(
 
     events = []
 
-    for cleaned in cleaned_tests:
+    for i, cleaned in enumerate(cleaned_tests):
         _dbg(f"{technique_id} / '{cleaned.test_name}': calling interpret_procedure")
 
-        interpretation = interpret_procedure(cleaned, evasion_hints=hints)
+        test_hints = hints if i == 0 else None
+        interpretation = interpret_procedure(cleaned, evasion_hints=test_hints)
 
         log_event = build_log_event(
             interpretation=interpretation,

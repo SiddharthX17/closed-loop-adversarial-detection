@@ -104,6 +104,8 @@ def _rule_filename(technique_id: str, rule_yaml: str) -> str:
     Multiple distinct rules per technique are intentional (different slugs).
     """
     title = _extract_title(rule_yaml)
+    if title.upper().startswith(technique_id.upper()):
+        title = title[len(technique_id):].lstrip(" -_:")
     slug = _slugify(title) if title else _slugify(technique_id)
     return f"{technique_id}-{slug}.yml"
 

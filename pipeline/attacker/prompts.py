@@ -61,9 +61,10 @@ def _base_instructions(technique_id: str, technique_name: str, tactic: str) -> s
         "$pid), substitute them with realistic concrete values "
         "(e.g. use a numeric PID like 632, a real URL. "
         "Do not propagate variable names into hint values.\n"
-        "Parent process rules:\n"
-        "- ParentImage must be realistic for the execution method.\n"
-        "- If the technique is process creation (EID 1), do NOT include network fields "
+        "ParentImage must be realistic for the execution method.\n"
+        "Masqueraded binaries/paths should use plausible user-writable or staging paths "
+        "(Temp, Downloads, AppData etc.) not protected paths unless explicitly stated in tests.\n"
+        "If the technique is process creation (EID 1), do NOT include network fields "
         "(DestinationIp, DestinationHostname, DestinationPort) in evasion_hints.\n\n"
     )
 
@@ -78,6 +79,8 @@ def _output_schema() -> str:
         "- Do not use PowerShell escape characters (backtick, unescaped single quotes) "
         "inside JSON string values.\n"
         "- If a command line contains quotes, escape them as \\\\\".\n\n"
+        "- Do not include literal newlines, tabs, or control characters "
+        "- inside JSON string values. Replace newlines with a space.\n"
         "Schema:\n"
         "{\n"
         '  "technique_id": "<technique ID>",\n'

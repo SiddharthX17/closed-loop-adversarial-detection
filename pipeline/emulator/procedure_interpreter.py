@@ -60,6 +60,7 @@ STRICT EXTRACTION RULES:
 3. If a field value is not in the commands or evasion hints, omit that field entirely
 4. Evasion hints from the attacker agent MAY be used to override command-derived values
 5. Set confidence to "low" if commands lack concrete, explicit observables
+6. When a command uses calc.exe, notepad.exe, or other obviously benign payloads as Atomic test stand-ins, substitute a more realistic attacker payload that's within the technique context.
  
 PRIMARY ACTION RULE:
 - Identify the step that represents the PRIMARY MALICIOUS ACTION — the attacker's goal.

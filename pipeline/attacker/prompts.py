@@ -64,8 +64,12 @@ def _base_instructions(technique_id: str, technique_name: str, tactic: str) -> s
         "ParentImage must be realistic for the execution method.\n"
         "Masqueraded binaries/paths should use plausible user-writable or staging paths "
         "(Temp, Downloads, AppData etc.) not protected paths unless explicitly stated in tests.\n"
-        "If the technique is process creation (EID 1), do NOT include network fields "
-        "(DestinationIp, DestinationHostname, DestinationPort) in evasion_hints.\n\n"
+        "Ensure evasion_hints remain strictly scoped to the current event category. Do not "
+        "include indicators, fields, behaviors, or cues that belong to unrelated event types. "
+        "For example, process-related events should not contain network or registry-specific hints, "
+        "network events should not contain process or registry-specific hints, and registry "
+        "events should not contain process or network-specific hints. "
+        "Keep all hints contextually relevant to the originating event type only.\n\n"
     )
 
 

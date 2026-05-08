@@ -34,7 +34,7 @@ from pipeline.emulator.output_writer import write_log_stream, write_stats
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 _CONFIG_PATH = Path("config/techniques.yaml")
 _MAX_TESTS_PER_TECHNIQUE = 4       # absolute cap (no selected guid)
-_MAX_TESTS_WITH_SELECTION = 2      # selected test + 1 diverse test per iteration
+_MAX_TESTS_WITH_SELECTION = 1      # selected test + 1 diverse test per iteration
 
 
 def _dbg(msg: str) -> None:

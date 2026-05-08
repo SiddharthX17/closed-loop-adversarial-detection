@@ -457,16 +457,8 @@ class Orchestrator:
         for s in result.summaries:
             print(f"\n  Iteration {s.iteration}:")
             print(f"    Techniques attempted : {s.techniques_attempted}")
-            full = sum(1 for r in s.event_coverage.values()
-                       if r != "0/0" and r.split("/")[0] == r.split("/")[1])
-            partial = sum(1 for r in s.event_coverage.values()
-                          if "0/0" != r
-                          and r.split("/")[0] != r.split("/")[1]
-                          and r.split("/")[0] != "0")
-            missed = sum(1 for r in s.event_coverage.values()
-                         if r.split("/")[0] == "0")
-            print(
-                f"    Coverage             : {full} full, {partial} partial, {missed} missed")
+            print(f"    Covered              : {s.techniques_covered}")
+            print(f"    Gaps                 : {s.techniques_with_gaps}")
             print(f"    Rules generated      : {s.rules_generated}")
             print(f"    Rules validated      : {s.rules_validated}")
             print(f"    PRs opened           : {len(s.prs_opened)}")

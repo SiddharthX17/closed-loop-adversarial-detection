@@ -1,0 +1,36 @@
+title: Legitimate System Binary Masquerading From Temp Directory
+id: 83133747-0970-497f-b423-760a8bc0a556
+status: experimental
+description: |
+  Detects execution of legitimate Windows system binaries (rundll32.exe, svchost.exe) from suspicious locations like Temp directories.
+  Adversaries copy or stage legitimate binaries to non-standard paths to evade detection while maintaining the appearance of legitimate system processes.
+  This rule specifically targets binaries executed from C:\Windows\Temp\ or similar temporary locations.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-05-06
+modified: 2026-05-06
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_rundll32_temp:
+    Image|contains: '\Temp\'
+    Image|endswith: '\rundll32.exe'
+    OriginalFileName: 'rundll32.exe'
+  selection_svchost_temp:
+    Image|contains: '\Temp\'
+    Image|endswith: '\svchost.exe'
+  filter_system32:
+    Image|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+  condition: (selection_rundll32_temp or selection_svchost_temp) and not filter_system32
+falsepositives:
+  - Legitimate administrative tools or installers that stage binaries in temp directories (rare)
+  - Development or testing environments
+level: high

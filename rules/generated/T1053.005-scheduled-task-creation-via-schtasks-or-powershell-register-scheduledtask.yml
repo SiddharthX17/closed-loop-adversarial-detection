@@ -24,6 +24,7 @@ detection:
         CommandLine|contains|windash:
             - ' /create '
             - ' /Create '
+    selection_schtasks_create_params:
         CommandLine|contains|windash:
             - ' /tn '
             - ' /tr '
@@ -34,7 +35,7 @@ detection:
             - '\pwsh.exe'
         CommandLine|contains:
             - 'Register-ScheduledTask'
-    condition: selection_schtasks_create or selection_powershell_register
+    condition: (selection_schtasks_create and  selection_schtasks_create_params) or selection_powershell_register
 falsepositives:
     - Legitimate system administration and software deployment tasks
     - Enterprise task scheduling for backups and maintenance

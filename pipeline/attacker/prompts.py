@@ -69,7 +69,15 @@ def _base_instructions(technique_id: str, technique_name: str, tactic: str) -> s
         "For example, process-related events should not contain network or registry-specific hints, "
         "network events should not contain process or registry-specific hints, and registry "
         "events should not contain process or network-specific hints. "
-        "Keep all hints contextually relevant to the originating event type only.\n\n"
+        "Keep all hints contextually relevant to the originating event type only.\n"
+        "Generate TWO execution variants for the selected test:\n"
+        "- evasion_hints: base execution — realistic mutation of the test procedure.\n"
+        "- evasion_hints_v2: a SECOND variant that meaningfully differs from v1.\n"
+        "  Change the execution chain, parent process, or binary staging path — not just string values.\n"
+        "  Example: v1 uses powershell.exe parent, v2 uses mshta.exe parent.\n"
+        "  Example: v1 stages to Downloads, v2 stages to AppData\\Local\\Temp.\n"
+        "  Both variants must stay within the technique's behavioural envelope.\n"
+        "  evasion_hints_v2 is REQUIRED — always populate it.\n\n"
     )
 
 
@@ -91,6 +99,13 @@ def _output_schema() -> str:
         '  "selected_test_name": "<name field from chosen candidate>",\n'
         '  "selected_test_guid": "<guid field from chosen candidate>",\n'
         '  "evasion_hints": {\n'
+        '    "<SysmonFieldName>": "<base value>"\n'
+        "    // include only fields you are actually mutating\n"
+        "    // use Sysmon field names: Image, CommandLine, ParentImage,\n"
+        "    // ParentCommandLine, TargetObject, DestinationIp,\n"
+        "    // DestinationHostname, OriginalFileName\n"
+        "  },\n"
+        '  "evasion_hints_v2": {\n'
         '    "<SysmonFieldName>": "<mutated value>"\n'
         "    // include only fields you are actually mutating\n"
         "    // use Sysmon field names: Image, CommandLine, ParentImage,\n"

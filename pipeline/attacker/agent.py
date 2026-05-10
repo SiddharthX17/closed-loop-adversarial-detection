@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from dotenv import load_dotenv
 from pathlib import Path
 
-from pipeline.data.atomic_loader import load_tests_for_technique
+from pipeline.data.atomic_loader import load_tests_for_technique_with_fallback
 from pipeline.data.atomic_cleaner import clean_test
 from pipeline.data.stix_loader import get_loader
 from pipeline.attacker.prompts import (
@@ -114,6 +114,7 @@ class TechniqueTask:
     selected_test_guid: str
     formatted_input: str
     evasion_hints: dict = field(default_factory=dict)
+    evasion_hints_v2: dict | None = None
     mutation_applied: bool = True
 
 
@@ -123,7 +124,7 @@ CampaignPlan = dict[str, TechniqueTask]
 
 def extract_emulator_inputs(
     plan: CampaignPlan,
-) -> tuple[list[str], dict[str, dict], dict[str, str]]:
+) -> tuple[list[str], dict[str, dict], dict[str, str], dict[str, dict]]:
     """
     Extract run_emulator() inputs from a CampaignPlan.
 
@@ -137,11 +138,16 @@ def extract_emulator_inputs(
         tid: (task.evasion_hints if task.mutation_applied else {})
         for tid, task in plan.items()
     }
+    evasion_hints_v2 = {
+        tid: task.evasion_hints_v2
+        for tid, task in plan.items()
+        if task.evasion_hints_v2
+    }
     selected_test_guids = {
         tid: task.selected_test_guid
         for tid, task in plan.items()
     }
-    return technique_ids, evasion_hints, selected_test_guids
+    return technique_ids, evasion_hints, selected_test_guids, evasion_hints_v2
 
 
 # ---------------------------------------------------------------------------
@@ -397,7 +403,7 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> dict | None:
     try:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=512,
+            max_tokens=2048,
             temperature=TEMPERATURE,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -429,7 +435,9 @@ def _parse_llm_output(
 
     selected_guid = raw.get("selected_test_guid")
     selected_name = raw.get("selected_test_name")
-    evasion_hints = raw.get("evasion_hints", {})
+    evasion_hints = raw.get(
+        "evasion_hints") or raw.get("evasion_hints", {})
+    evasion_hints_v2 = raw.get("evasion_hints_v2")
 
     if not isinstance(evasion_hints, dict):
         evasion_hints = {}
@@ -437,6 +445,13 @@ def _parse_llm_output(
         k: v for k, v in evasion_hints.items()
         if isinstance(k, str) and isinstance(v, str)
     }
+    if not isinstance(evasion_hints_v2, dict):
+        evasion_hints_v2 = None
+    if evasion_hints_v2:
+        evasion_hints_v2 = {
+            k: v for k, v in evasion_hints_v2.items()
+            if isinstance(k, str) and isinstance(v, str)
+        }
 
     # Resolve selected test — guid first, name fallback
     selected_cleaned = lookup.get(selected_guid)
@@ -465,6 +480,7 @@ def _parse_llm_output(
         selected_test_guid=selected_guid,
         formatted_input=selected_cleaned.formatted_input,
         evasion_hints=evasion_hints,
+        evasion_hints_v2=evasion_hints_v2,
         mutation_applied=True,
     )
 
@@ -507,7 +523,7 @@ class AttackerAgent:
                     f"[attacker] {technique_id}: no STIX metadata — skipping")
             return [], {}
 
-        raw_tests = load_tests_for_technique(technique_id)
+        raw_tests = load_tests_for_technique_with_fallback(technique_id)
         if not raw_tests:
             return [], {}
 
@@ -703,7 +719,7 @@ class AttackerAgent:
                 print(
                     f"[attacker] {tid}: selected '{task.selected_test_name}', "
                     f"evasion_hints={list(task.evasion_hints.keys())}, "
-                    f"mutation_applied={task.mutation_applied}"
-                )
+                    f"evasion_hints_v2={list(task.evasion_hints_v2.keys()) if task.evasion_hints_v2 else None}, "
+                    f"mutation_applied={task.mutation_applied}")
 
         return plan

@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 
 OPEN_PRS = os.getenv("OPEN_PRS", "0").lower() in ("1", "true")
-ITERATIONS = 1
+ITERATIONS = 2
 RULES_DIR = Path("rules")
 CORPUS_ROOT = Path("corpus/benign")
 OUTPUT_DIR = None  # suppress file writes during loop test
@@ -380,7 +380,7 @@ def main():
                 "selected_test_guid": task.selected_test_guid,
                 "selected_test_name": task.selected_test_name,
                 "evasion_hints": task.evasion_hints,
-                "evasion_hints_v2": task.evasion_hints_v2, #TODO: Check if 
+                "evasion_hints_v2": task.evasion_hints_v2,  # TODO: Check if
                 "mutation_applied": task.mutation_applied,
             }
             for tid, task in plan.items()

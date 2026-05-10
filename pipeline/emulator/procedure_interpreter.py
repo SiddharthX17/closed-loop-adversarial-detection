@@ -1,6 +1,7 @@
 import json
 import re
 import os
+import random
 import anthropic
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -34,6 +35,20 @@ MIN_CANONICAL_FIELDS = {
     "registry":         {"registry_path"},
     "network":          {"network_destination"},
 }
+
+_LOW_PRIV_USERS = [
+    "CORP\\jdoe", "CORP\\asmith", "CORP\\bwilliams",
+    "CORP\\cjohnson", "CORP\\dlee", "CORP\\mthompson",
+    "CORP\\kpatel", "CORP\\lwang", "CORP\\rgarcia", "CORP\\nhansen",
+]
+
+_HOSTNAMES = [
+    "WORKSTATION-01", "WORKSTATION-02", "DESKTOP-A7X2",
+    "LAPTOP-C9K1", "PC-JDOE", "PC-ASMITH", "DEVBOX-03",
+]
+
+_DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Sysmon-level minimum field requirements — used in build_log_event
@@ -160,6 +175,21 @@ def _normalize(val):
     return val
 
 
+def _resolve_user(elevation_required: bool) -> str:
+    """
+    Return a realistic user context for the emulated event.
+    Elevated tests run as SYSTEM. Non-elevated tests run as a
+    random low-privilege domain user.
+    """
+    if elevation_required:
+        return "SYSTEM"
+    return random.choice(_LOW_PRIV_USERS)
+
+
+def _resolve_host() -> str:
+    return random.choice(_HOSTNAMES)
+
+
 def _ground_fields(
     fields: dict,
     procedure_text: str,
@@ -215,9 +245,22 @@ def _ground_fields(
         # still get dropped.
         if evasion_hints and k in evasion_hints:
             hint_val = evasion_hints[k]
-            if isinstance(hint_val, str) and hint_val.lower() == v_lower:
-                grounded[k] = v
-                continue
+        if evasion_hints and k in evasion_hints:
+            hint_val = evasion_hints[k]
+
+            if isinstance(hint_val, str):
+                hint_lower = hint_val.lower()
+                value_lower = str(v).lower()
+
+                hint_base = os.path.basename(hint_lower)
+                value_base = os.path.basename(value_lower)
+
+                if (
+                    hint_lower == value_lower or
+                    (hint_base and hint_base == value_base)
+                ):
+                    grounded[k] = v
+                    continue
 
         print(f"[procedure_interpreter] Dropping ungrounded field {k}={v!r}")
         _drop_stats["ungrounded"] += 1
@@ -311,8 +354,9 @@ def interpret_procedure(
             raw += block.text
     raw = raw.strip()
 
-    print("\n[DEBUG] Raw LLM output:")
-    print(raw)
+    if _DEBUG:
+        print("\n[DEBUG] Raw LLM output:")
+        print(raw)
 
     # Strip markdown fences if present
     raw = _strip_markdown(raw)
@@ -340,10 +384,9 @@ def interpret_procedure(
 def build_log_event(
     interpretation: dict,
     procedure_text: str,
-    host: str = "WORKSTATION-01",
-    user: str = "SYSTEM",
     timestamp: str = None,
     evasion_hints: dict | None = None,
+    elevation_required: bool = False,
 ) -> LogEvent | None:
     """
     Build a validated LogEvent from an LLM interpretation dict.
@@ -387,8 +430,8 @@ def build_log_event(
     try:
         return LogEvent(
             timestamp=ts,
-            host=host,
-            user=user,
+            user=_resolve_user(elevation_required),
+            host=_resolve_host(),
             EventID=interpretation["EventID"],
             event_type=event_type,
             **grounded_fields,

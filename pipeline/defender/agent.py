@@ -101,7 +101,7 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> str | None:
     try:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=1024,
+            max_tokens=2048,
             temperature=0,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -197,9 +197,10 @@ class DefenderAgent:
         # Determine retry cap based on which gate fails.
         # Lint failures = prompt quality issue — more retries won't help.
         # Noise/attack gate failures = rule logic issue — one extra retry is worthwhile.
-        max_attempts = MAX_RETRIES + 1  # default: 3 total attempts
+        max_attempts = MAX_RETRIES + 1
+        attempt = 1
 
-        for attempt in range(1, max_attempts + 1):
+        while attempt <= max_attempts:
             if DEBUG:
                 print(
                     f"[defender] {technique_id}: attempt {attempt}/{max_attempts}"
@@ -256,21 +257,24 @@ class DefenderAgent:
                 f"{str(result.feedback or 'none')[:120]}"
             )
 
-            if attempt < max_attempts:
-                retry_feedback = _build_retry_feedback(result, rule_yaml)
+            retry_feedback = _build_retry_feedback(result, rule_yaml)
 
-                # Bump cap if gate (not lint) is failing — one extra attempt worth it
-                if gate in ("noise_gate", "attack_gate"):
-                    max_attempts = min(
-                        max_attempts,
-                        MAX_RETRIES_GATE_FAILURE + 1
-                    )
-            else:
+            # Allow one extra retry for logical rule failures.
+            if gate in ("attack_gate", "noise_gate"):
+                max_attempts = max(
+                    max_attempts,
+                    MAX_RETRIES_GATE_FAILURE + 1
+                )
+
+            if attempt == max_attempts:
                 print(
                     f"[defender] EXHAUSTED: {technique_id} — "
                     f"gate={gate}, "
-                    f"feedback={result.feedback or 'none'}\\n"
-                    f"Final rule attempt:\\n{rule_yaml}"
+                    f"feedback={result.feedback or 'none'}\n"
+                    f"Final rule attempt:\n{rule_yaml}"
                 )
+                break
+
+            attempt += 1
 
         return None, last_result

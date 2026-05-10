@@ -87,7 +87,7 @@ def validate(
     if not lint_result.passed:
         if debug:
             print(
-                f"[validation_pipeline] schema_linter FAILED: {lint_result.feedback}")
+                f"[validation_pipeline] schema_linter FAILED: {lint_result.feedback()}")
         return ValidationResult(
             passed=False,
             gate_failed="schema_linter",
@@ -112,11 +112,11 @@ def validate(
     if attack_result.skipped:
         if debug:
             print(
-                f"[validation_pipeline] attack_gate SKIPPED: {attack_result.feedback}")
+                f"[validation_pipeline] attack_gate SKIPPED: {attack_result.feedback()}")
         return ValidationResult(
             passed=False,
             gate_failed="attack_gate",
-            feedback=attack_result.feedback,
+            feedback=attack_result.feedback(),
             lint_passed=True,
             attack_passed=False,
             noise_passed=None,
@@ -125,11 +125,11 @@ def validate(
     if not attack_result.passed:
         if debug:
             print(
-                f"[validation_pipeline] attack_gate FAILED: {attack_result.feedback}")
+                f"[validation_pipeline] attack_gate FAILED: {attack_result.feedback()}")
         return ValidationResult(
             passed=False,
             gate_failed="attack_gate",
-            feedback=attack_result.feedback,
+            feedback=attack_result.feedback(),
             lint_passed=True,
             attack_passed=False,
             noise_passed=None,
@@ -153,11 +153,11 @@ def validate(
     if not noise_result.passed:
         if debug:
             print(
-                f"[validation_pipeline] noise_gate FAILED: {noise_result.feedback}")
+                f"[validation_pipeline] noise_gate FAILED: {noise_result.feedback()}")
         return ValidationResult(
             passed=False,
             gate_failed="noise_gate",
-            feedback=noise_result.feedback,
+            feedback=noise_result.feedback(),
             error=noise_result.error,
             lint_passed=True,
             attack_passed=True,

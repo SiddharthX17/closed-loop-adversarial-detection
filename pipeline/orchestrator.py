@@ -300,7 +300,7 @@ class Orchestrator:
 
         # ── Stage 2: Emulator ─────────────────────────────────────
         _dbg("Stage 2: emulator")
-        emulator_technique_ids, evasion_hints, selected_test_guids = (
+        emulator_technique_ids, evasion_hints, selected_test_guids, evasion_hints_v2 = (
             extract_emulator_inputs(plan)
         )
 
@@ -313,6 +313,7 @@ class Orchestrator:
         log_stream, emulator_stats = run_emulator(
             technique_ids=all_technique_ids,
             evasion_hints=evasion_hints,
+            evasion_hints_v2=evasion_hints_v2,
             selected_test_guids=selected_test_guids,
             output_dir=self._output_dir,
         )

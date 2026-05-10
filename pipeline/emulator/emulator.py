@@ -34,7 +34,7 @@ from pipeline.emulator.output_writer import write_log_stream, write_stats
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 _CONFIG_PATH = Path("config/techniques.yaml")
 _MAX_TESTS_PER_TECHNIQUE = 4       # absolute cap (no selected guid)
-_MAX_TESTS_WITH_SELECTION = 1      # selected test + 1 diverse test per iteration
+_MAX_TESTS_WITH_SELECTION = 1      # selected test
 
 
 def _dbg(msg: str) -> None:
@@ -199,6 +199,7 @@ def _emulate_technique(
     evasion_hints: dict | None,
     stats: EmulatorStats,
     selected_test_guids: dict[str, str] | None = None,
+    evasion_hints_v2: dict | None = None,
 ) -> list[LogEvent]:
     """
     Run the full emulation chain for a single technique.
@@ -218,32 +219,43 @@ def _emulate_technique(
         _dbg(f"{technique_id}: no valid tests after selection — 0 events")
         return []
 
-    # evasion_hints is keyed by technique_id — None until attacker agent wired in Phase 3
     hints = evasion_hints.get(technique_id) if evasion_hints else None
 
     events = []
 
+    hints = evasion_hints.get(technique_id) if evasion_hints else None
+    hints_v2 = evasion_hints_v2.get(technique_id) if evasion_hints_v2 else None
+    hint_sets = [hints, hints_v2] if hints_v2 is not None else [hints]
+
+    events = []
+
     for i, cleaned in enumerate(cleaned_tests):
-        _dbg(f"{technique_id} / '{cleaned.test_name}': calling interpret_procedure")
-
-        test_hints = hints if i == 0 else None
-        interpretation = interpret_procedure(cleaned, evasion_hints=test_hints)
-
-        log_event = build_log_event(
-            interpretation=interpretation,
-            procedure_text=cleaned.formatted_input,
-            evasion_hints=hints,
-        )
-
-        if log_event is not None:
-            events.append(log_event)
+        for variant_idx, variant_hints in enumerate(hint_sets):
             _dbg(
                 f"{technique_id} / '{cleaned.test_name}': "
-                f"LogEvent generated (EID {log_event.EventID}, {log_event.event_type})"
+                f"calling interpret_procedure (variant {variant_idx + 1})"
             )
-        else:
-            _dbg(
-                f"{technique_id} / '{cleaned.test_name}': build_log_event returned None — dropped")
+
+            interpretation = interpret_procedure(
+                cleaned, evasion_hints=variant_hints)
+
+            log_event = build_log_event(
+                interpretation=interpretation,
+                procedure_text=cleaned.formatted_input,
+                evasion_hints=variant_hints,
+            )
+
+            if log_event is not None:
+                events.append(log_event)
+                _dbg(
+                    f"{technique_id} / '{cleaned.test_name}': "
+                    f"LogEvent generated (EID {log_event.EventID}, {log_event.event_type})"
+                )
+            else:
+                _dbg(
+                    f"{technique_id} / '{cleaned.test_name}': "
+                    f"build_log_event returned None — dropped"
+                )
 
     return events
 
@@ -253,6 +265,7 @@ def _emulate_technique(
 def run_emulator(
     technique_ids: list[str] | None = None,
     evasion_hints: dict[str, dict] | None = None,
+    evasion_hints_v2: dict[str, dict] | None = None,
     selected_test_guids: dict[str, str] | None = None,
     # pass None to suppress file output
     output_dir: Path | None = Path("corpus/attack"),
@@ -291,7 +304,7 @@ def run_emulator(
         print(f"[emulator] Processing {technique_id}...")
 
         events = _emulate_technique(
-            technique_id, evasion_hints, stats, selected_test_guids=selected_test_guids)
+            technique_id, evasion_hints, stats, selected_test_guids=selected_test_guids, evasion_hints_v2=evasion_hints_v2)
 
         log_stream[technique_id] = events
         stats.per_technique[technique_id] = len(events)

@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 
 OPEN_PRS = os.getenv("OPEN_PRS", "0").lower() in ("1", "true")
-ITERATIONS = 2
+ITERATIONS = 1
 RULES_DIR = Path("rules")
 CORPUS_ROOT = Path("corpus/benign")
 OUTPUT_DIR = None  # suppress file writes during loop test
@@ -108,7 +108,7 @@ def run_instrumented_loop(
 
         # Stage 2: Emulator
         print(f"[{iteration}] Stage 2: emulator")
-        emulator_tids, evasion_hints, selected_guids = extract_emulator_inputs(
+        emulator_tids, evasion_hints, selected_guids, evasion_hints_v2 = extract_emulator_inputs(
             plan)
 
         all_tids = list(dict.fromkeys(
@@ -119,6 +119,7 @@ def run_instrumented_loop(
         log_stream, stats = run_emulator(
             technique_ids=all_tids,
             evasion_hints=evasion_hints,
+            evasion_hints_v2=evasion_hints_v2,
             selected_test_guids=selected_guids,
             output_dir=OUTPUT_DIR,
         )
@@ -379,6 +380,7 @@ def main():
                 "selected_test_guid": task.selected_test_guid,
                 "selected_test_name": task.selected_test_name,
                 "evasion_hints": task.evasion_hints,
+                "evasion_hints_v2": task.evasion_hints_v2, #TODO: Check if 
                 "mutation_applied": task.mutation_applied,
             }
             for tid, task in plan.items()

@@ -166,6 +166,12 @@ def build_mutation_prompt(
         "Do not reuse any of the above field values verbatim. "
         "Change the execution approach, not just the string representation.\n\n"
     )
+    prompt += (
+        "Both evasion_hints AND evasion_hints_v2 must avoid the caught "
+        "field values above. Additionally, evasion_hints_v2 must differ "
+        "from evasion_hints — use a different parent process, binary name, "
+        "or staging path than what you specify in evasion_hints.\n\n"
+    )
     prompt += "Candidates:\n\n"
     prompt += _format_candidates(candidates)
     prompt += "\n\n"

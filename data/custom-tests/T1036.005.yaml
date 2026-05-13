@@ -1,0 +1,105 @@
+attack_technique: T1036.005
+display_name: "Masquerading: Match Legitimate Resource Name or Location - Custom"
+
+atomic_tests:
+- name: Cmd Renamed as SecurityHealthHost
+  auto_generated_guid: 2e9f7f11-1111-4b61-9001-b11111111111
+  description: |
+    Copy cmd.exe to a Windows-like security binary name and execute it.
+  supported_platforms:
+  - windows
+  input_arguments:
+    fake_bin:
+      type: path
+      default: C:\Users\Public\SecurityHealthHost.exe
+  executor:
+    name: command_prompt
+    command: |
+      copy C:\Windows\System32\cmd.exe "#{fake_bin}" && "#{fake_bin}" /c whoami
+    cleanup_command: |
+      del "#{fake_bin}" >nul 2>nul
+
+- name: PowerShell Renamed as OneDriveUpdater
+  auto_generated_guid: 2e9f7f11-2222-4b61-9001-b22222222222
+  description: |
+    Masquerade powershell.exe as OneDrive updater.
+  supported_platforms:
+  - windows
+  input_arguments:
+    fake_bin:
+      type: path
+      default: C:\ProgramData\OneDriveUpdater.exe
+  executor:
+    name: command_prompt
+    command: |
+      copy C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe "#{fake_bin}" && "#{fake_bin}" -c hostname
+    cleanup_command: |
+      del "#{fake_bin}" >nul 2>nul
+
+- name: Rundll32 Renamed as TeamsUpdate
+  auto_generated_guid: 2e9f7f11-3333-4b61-9001-b33333333333
+  description: |
+    Rename rundll32.exe to collaboration-app style updater name.
+  supported_platforms:
+  - windows
+  input_arguments:
+    fake_bin:
+      type: path
+      default: C:\Users\Public\TeamsUpdate.exe
+  executor:
+    name: command_prompt
+    command: |
+      copy C:\Windows\System32\rundll32.exe "#{fake_bin}" && "#{fake_bin}" shell32.dll,Control_RunDLL
+    cleanup_command: |
+      del "#{fake_bin}" >nul 2>nul
+
+- name: Certutil Renamed as AdobeUpdater
+  auto_generated_guid: 2e9f7f11-4444-4b61-9001-b44444444444
+  description: |
+    Rename certutil.exe to trusted-software style updater.
+  supported_platforms:
+  - windows
+  input_arguments:
+    fake_bin:
+      type: path
+      default: C:\Users\Public\AdobeUpdater.exe
+  executor:
+    name: command_prompt
+    command: |
+      copy C:\Windows\System32\certutil.exe "#{fake_bin}" && "#{fake_bin}" -hashfile C:\Windows\win.ini MD5
+    cleanup_command: |
+      del "#{fake_bin}" >nul 2>nul
+
+- name: Mshta Renamed as ChromeUpdate
+  auto_generated_guid: 2e9f7f11-5555-4b61-9001-b55555555555
+  description: |
+    Rename mshta.exe to browser updater name.
+  supported_platforms:
+  - windows
+  input_arguments:
+    fake_bin:
+      type: path
+      default: C:\Users\Public\ChromeUpdate.exe
+  executor:
+    name: command_prompt
+    command: |
+      copy C:\Windows\System32\mshta.exe "#{fake_bin}" && "#{fake_bin}" vbscript:close
+    cleanup_command: |
+      del "#{fake_bin}" >nul 2>nul
+
+- name: Wscript Renamed as DefenderUpdate
+  auto_generated_guid: 2e9f7f11-6666-4b61-9001-b66666666666
+  description: |
+    Copy wscript.exe to a Microsoft security themed filename and execute it to emulate legitimate-name masquerading.
+  supported_platforms:
+  - windows
+  input_arguments:
+    fake_bin:
+      type: path
+      default: C:\Users\Public\MpCmdUpdate.exe
+  executor:
+    name: command_prompt
+    command: |
+      copy C:\Windows\System32\wscript.exe "#{fake_bin}" && "#{fake_bin}" //B C:\Windows\System32\Printing_Admin_Scripts\en-US\prnmngr.vbs
+    cleanup_command: |
+      del "#{fake_bin}" >nul 2>nul

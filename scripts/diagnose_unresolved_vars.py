@@ -19,7 +19,6 @@ def load_technique_ids() -> list[str]:
     config_path = PROJECT_ROOT / "config" / "techniques.yaml"
     with open(config_path) as f:
         data = yaml.safe_load(f)
-    # ⚠️ UNCERTAIN: assuming simple string list format
     return data["techniques"]
 
 
@@ -62,7 +61,6 @@ def main():
         all_unresolved_vars = []
 
         for test in raw_tests:
-            # confident — both args required
             cleaned = clean_test(test, metadata)
 
             if cleaned is None:

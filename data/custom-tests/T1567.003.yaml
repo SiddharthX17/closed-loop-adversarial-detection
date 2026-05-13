@@ -1,5 +1,5 @@
 attack_technique: T1567.003
-display_name: "Exfiltration Over Web Service: Exfiltration to Text Storage Sites"
+display_name: "Exfiltration Over Web Service: Exfiltration to Text Storage Sites - Custom"
 
 atomic_tests:
 - name: PowerShell Upload Recon Output to Pastebin API

@@ -1,5 +1,5 @@
 attack_technique: T1036.005
-display_name: "Masquerading: Match Legitimate Resource Name or Location"
+display_name: "Masquerading: Match Legitimate Resource Name or Location - Custom"
 
 atomic_tests:
 - name: Cmd Renamed as SecurityHealthHost

@@ -31,160 +31,165 @@ jobs:
           Start-Sleep -Seconds 3
           Write-Host "Sysmon installed"
 
-      # Cluster: singleton_11301b15-9a06-4c75-936b-ab1d9cbd69c1
-      # Intent: Detect unauthorized scheduled task creation through direct registry manipulation, a technique used to bypass Task Scheduler UI logging and evade detection.
-      # Rules: 11301b15-9a06-4c75-936b-ab1d9cbd69c1
-      - name: "Detect unauthorized scheduled task creation throug [IT admin workflow]"
+      # Cluster: singleton_27b670a5-e232-4e79-9215-7072e12ef158
+      # Intent: Detect malicious use of Windows Task Scheduler registry storage to hide scheduled task payloads using base64-encoded data stored by SYSTEM or service accounts.
+      # Rules: 27b670a5-e232-4e79-9215-7072e12ef158
+      - name: "Detect malicious use of Windows Task Scheduler reg [IT admin workflow]"
         shell: powershell
         run: |
-          # Legitimate scheduled task registry configuration for system backup
-          $regPath = "HKLM:\Software\atomic-t1053\BackupJobs\DailyBackup"
+          # IT Admin: Deploy scheduled task configuration via registry (maintenance automation)
+          # Realistic scenario: Admin tool storing task metadata for audit/compliance tracking
 
-          if (-not (Test-Path "HKLM:\Software\atomic-t1053")) {
-              New-Item -Path "HKLM:\Software\atomic-t1053" -Force | Out-Null
+          $regPath = "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\atomic-t1053-config"
+          $testPayload = "cmd.exe /c echo Maintenance task running" | ConvertTo-Base64
+
+          try {
+            if (-not (Test-Path $regPath)) {
+              New-Item -Path $regPath -Force | Out-Null
+            }
+
+            # Simulate legitimate admin storing encoded task command for later execution
+            # Base64 encoding: Y21kLmV4ZSAvYyBlY2hvIE1haW50ZW5hbmNlIHRhc2sgcnVubmluZw==
+            $encodedCmd = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("cmd.exe /c echo Maintenance task running"))
+
+            Set-ItemProperty -Path $regPath -Name "TaskPayload" -Value $encodedCmd -Type String -Force
+            Set-ItemProperty -Path $regPath -Name "Timestamp" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss") -Type String -Force
+            Set-ItemProperty -Path $regPath -Name "AdminAccount" -Value "$env:COMPUTERNAME\\Administrator" -Type String -Force
+
+            # Verify registry entry was created (realistic admin validation)
+            $stored = Get-ItemProperty -Path $regPath -Name "TaskPayload" -ErrorAction SilentlyContinue
+            if ($stored) {
+              Write-Output "Task configuration stored successfully in registry"
+            }
+
+            # Cleanup: Remove test registry entries
+            Remove-Item -Path $regPath -Force -ErrorAction SilentlyContinue
+
+          } catch {
+            Write-Error "Error during task configuration: $_"
+            Remove-Item -Path $regPath -Force -ErrorAction SilentlyContinue
           }
 
-          if (-not (Test-Path "HKLM:\Software\atomic-t1053\BackupJobs")) {
-              New-Item -Path "HKLM:\Software\atomic-t1053\BackupJobs" -Force | Out-Null
+          function ConvertTo-Base64 {
+            param([string]$InputString)
+            return [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($InputString))
           }
 
-          New-Item -Path $regPath -Force | Out-Null
 
-          # Store legitimate task metadata using base64-encoded configuration
-          # This simulates real admin tools that encode binary task data in registry
-          $backupConfig = @{
-              TaskName = "SystemBackupDaily"
-              Schedule = "0 2 * * *"
-              Action = "C:\Windows\System32\robocopy.exe"
-              Arguments = "C:\Users E:\Backups /MIR /Z"
-              RunAs = "SYSTEM"
-          }
-
-          # Encode configuration segments as real admin tools do
-          $segment1 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("cgluzy"))
-          $segment2 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("y21k"))
-          $segment3 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("cg93zxjzagvsba"))
-          $segment4 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("c2nozwr1bgu"))
-
-          Set-ItemProperty -Path $regPath -Name "TaskConfig" -Value "$segment1`|$segment2`|$segment3`|$segment4" -Force
-          Set-ItemProperty -Path $regPath -Name "LastModified" -Value (Get-Date).ToString() -Force
-          Set-ItemProperty -Path $regPath -Name "BackupPath" -Value "E:\Backups" -Force
-          Set-ItemProperty -Path $regPath -Name "RetentionDays" -Value "30" -Force
-
-          # Query the registry to verify configuration was written (real admin validation step)
-          Get-ItemProperty -Path $regPath | Select-Object -Property PSPath, TaskConfig, BackupPath, RetentionDays | Out-Null
-
-          # Cleanup: Remove test registry key
-          Remove-Item -Path "HKLM:\Software\atomic-t1053" -Recurse -Force -ErrorAction SilentlyContinue
-
-          Write-Output "Registry-based task configuration stress test completed"
-
-
-      - name: "Detect unauthorized scheduled task creation throug [Software installer/updater workflow]"
+      - name: "Detect malicious use of Windows Task Scheduler reg [Software installer/updater workflow]"
         shell: powershell
         run: |
-          # Software deployment framework writing scheduled task metadata to registry
-          # Simulates real enterprise deployment tools (Ansible, Chef, Puppet, SCCM) that configure tasks via registry
+          # Software Update Service: Store task scheduling metadata during installation
+          # Realistic scenario: Windows service storing encoded task parameters before scheduler creation
 
-          $appRegPath = "HKLM:\Software\atomic-t1053\DeploymentTasks"
+          $regPath = "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\atomic-t1053-updates"
 
-          if (-not (Test-Path "HKLM:\Software\atomic-t1053")) {
-              New-Item -Path "HKLM:\Software\atomic-t1053" -Force -ErrorAction SilentlyContinue | Out-Null
+          try {
+            # Simulate NETWORK SERVICE / LOCAL SERVICE account context
+            # In real scenario, installer runs under service account
+
+            if (-not (Test-Path $regPath)) {
+              New-Item -Path $regPath -Force | Out-Null
+            }
+
+            # Legitimate software update task payloads (common installer patterns)
+            $taskDefinitions = @(
+              "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\ProgramData\\UpdateAgent\\check.ps1",
+              "C:\\Program Files\\AppUpdater\\update.exe --silent --no-reboot",
+              "schtasks /create /tn 'Maintenance' /tr 'C:\\Program Files\\Maintenance\\scan.exe' /sc daily /st 03:00"
+            )
+
+            $counter = 0
+            foreach ($definition in $taskDefinitions) {
+              $counter++
+              $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($definition))
+
+              # Store with realistic registry value names from installer metadata
+              Set-ItemProperty -Path $regPath -Name "TaskCmd_$counter" -Value $encoded -Type String -Force
+              Set-ItemProperty -Path $regPath -Name "TaskSchedule_$counter" -Value "DAILY_03AM" -Type String -Force
+            }
+
+            Write-Output "Installer stored $counter task definitions in registry"
+
+            # Realistic validation: Service reads back and parses metadata
+            $stored = Get-ItemProperty -Path $regPath -Name "TaskCmd_1" -ErrorAction SilentlyContinue
+            if ($stored) {
+              $decoded = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($stored.TaskCmd_1))
+              Write-Output "Decoded task: $decoded"
+            }
+
+            # Cleanup
+            Remove-Item -Path $regPath -Force -ErrorAction SilentlyContinue
+
+          } catch {
+            Write-Error "Installer setup error: $_"
+            Remove-Item -Path $regPath -Force -ErrorAction SilentlyContinue
           }
 
-          if (-not (Test-Path $appRegPath)) {
-              New-Item -Path $appRegPath -Force -ErrorAction SilentlyContinue | Out-Null
-          }
 
-          # Create deployment task registry entries
-          $deploymentTasks = @(
-              @{Name="SecurityPatching"; Schedule="0 3 * * 0"; Command="C:\Program Files\PatchMgmt\apply.exe"},
-              @{Name="LogRotation"; Schedule="0 23 * * *"; Command="C:\Program Files\LogMgmt\rotate.exe"},
-              @{Name="SoftwareInventory"; Schedule="0 4 * * *"; Command="C:\Program Files\AssetMgmt\inventory.exe"}
-          )
-
-          foreach ($task in $deploymentTasks) {
-              $taskPath = "$appRegPath\$($task.Name)"
-              New-Item -Path $taskPath -Force -ErrorAction SilentlyContinue | Out-Null
-
-              # Write task metadata using encoded segments (mirrors installer behavior)
-              $encConfig = "cgluzy;y21k;cg93zxjzagvsba;c2nozwr1bgu"
-              Set-ItemProperty -Path $taskPath -Name "DeploymentConfig" -Value $encConfig -Force
-              Set-ItemProperty -Path $taskPath -Name "TaskCommand" -Value $task.Command -Force
-              Set-ItemProperty -Path $taskPath -Name "TaskSchedule" -Value $task.Schedule -Force
-              Set-ItemProperty -Path $taskPath -Name "DeployedBy" -Value "ConfigMgmtSystem" -Force
-              Set-ItemProperty -Path $taskPath -Name "DeploymentVersion" -Value "3.2.1" -Force
-          }
-
-          # Read back registry to verify deployment (installer validation)
-          Get-Item -Path $appRegPath | Get-ItemProperty | Out-Null
-
-          # Enumerate deployed tasks
-          Get-ChildItem -Path $appRegPath | ForEach-Object {
-              Get-ItemProperty -Path "$appRegPath\$($_.PSChildName)" | Select-Object -Property PSChildName, TaskCommand, TaskSchedule | Out-Null
-          }
-
-          # Cleanup: Remove deployment registry keys
-          Remove-Item -Path "HKLM:\Software\atomic-t1053" -Recurse -Force -ErrorAction SilentlyContinue
-
-          Write-Output "Software deployment registry configuration stress test completed"
-
-
-      - name: "Detect unauthorized scheduled task creation throug [User-driven workflow]"
+      - name: "Detect malicious use of Windows Task Scheduler reg [User-driven workflow]"
         shell: powershell
         run: |
-          # User configures system maintenance tasks via application settings stored in registry
-          # Simulates maintenance utility storing scheduled task metadata
+          # User Application: Backup tool storing scheduled task configuration
+          # Realistic scenario: Backup agent storing encoded task commands in registry during setup
 
-          $userTaskPath = "HKCU:\Software\atomic-t1053\UserTasks"
+          $regPath = "HKCU:\\Software\\Backup\\atomic-t1053-schedule"
+          $backupAppPath = "$env:APPDATA\\BackupAgent"
 
-          if (-not (Test-Path "HKCU:\Software\atomic-t1053")) {
-              New-Item -Path "HKCU:\Software\atomic-t1053" -Force -ErrorAction SilentlyContinue | Out-Null
+          try {
+            # Create legitimate application directory structure
+            if (-not (Test-Path $backupAppPath)) {
+              New-Item -Path $backupAppPath -ItemType Directory -Force | Out-Null
+            }
+
+            # Backup tool writes its scheduled task definitions to registry
+            if (-not (Test-Path $regPath)) {
+              New-Item -Path $regPath -Force | Out-Null
+            }
+
+            # Realistic backup agent task configurations
+            $backupTasks = @(
+              "c:\\Program Files\\BackupAgent\\backup.exe --full --destination=\\\\backup-server\\share",
+              "powershell.exe -ExecutionPolicy Bypass -File 'C:\\Program Files\\BackupAgent\\verify.ps1' -mode daily",
+              "C:\\Program Files\\BackupAgent\\incremental.exe --verify --compress --threads=4"
+            )
+
+            # Store configurations as base64 (standard practice for binary-safe storage)
+            foreach ($idx in 0..($backupTasks.Count - 1)) {
+              $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($backupTasks[$idx]))
+              $valueName = "Schedule_Day$idx"
+              Set-ItemProperty -Path $regPath -Name $valueName -Value $encoded -Type String -Force
+            }
+
+            # Application validates stored config
+            $schedules = Get-ItemProperty -Path $regPath | Select-Object -Property * -ExcludeProperty PSPath,PSParentPath,PSChildName,PSDrive,PSProvider
+            Write-Output "Backup Agent configured $(($schedules | Measure-Object).Count) scheduled tasks"
+
+            # Write sample backup config file (realistic user workflow artifact)
+            $configContent = @"
+          BackupSchedule=Daily
+          Retention=30days
+          Compression=LZMA
+          Verification=true
+          NotifyOnCompletion=true
+          "@
+
+            Set-Content -Path "$backupAppPath\\config.ini" -Value $configContent -Force
+
+            # Verify files exist
+            if (Test-Path "$backupAppPath\\config.ini") {
+              Write-Output "Backup configuration file created successfully"
+            }
+
+            # Cleanup
+            Remove-Item -Path $regPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $backupAppPath -Recurse -Force -ErrorAction SilentlyContinue
+
+          } catch {
+            Write-Error "Backup configuration error: $_"
+            Remove-Item -Path $regPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $backupAppPath -Recurse -Force -ErrorAction SilentlyContinue
           }
-
-          if (-not (Test-Path $userTaskPath)) {
-              New-Item -Path $userTaskPath -Force -ErrorAction SilentlyContinue | Out-Null
-          }
-
-          # User configures disk cleanup task
-          $cleanupTaskPath = "$userTaskPath\DiskCleanup"
-          New-Item -Path $cleanupTaskPath -Force -ErrorAction SilentlyContinue | Out-Null
-
-          Set-ItemProperty -Path $cleanupTaskPath -Name "Enabled" -Value "1" -Force
-          Set-ItemProperty -Path $cleanupTaskPath -Name "SchedTime" -Value "02:00" -Force
-          Set-ItemProperty -Path $cleanupTaskPath -Name "TaskName" -Value "Weekly Disk Cleanup" -Force
-          Set-ItemProperty -Path $cleanupTaskPath -Name "WorkingDirectory" -Value "$env:TEMP" -Force
-          Set-ItemProperty -Path $cleanupTaskPath -Name "ExecutablePath" -Value "C:\Windows\System32\cleanmgr.exe" -Force
-
-          # Store encoded configuration segments (utility data serialization)
-          $configSegments = @("cgluzy", "y21k", "cg93zxjzagvsba", "c2nozwr1bgu")
-          Set-ItemProperty -Path $cleanupTaskPath -Name "ConfigMetadata" -Value ($configSegments -join "|") -Force
-          Set-ItemProperty -Path $cleanupTaskPath -Name "CreatedDate" -Value (Get-Date).ToString("yyyy-MM-dd") -Force
-          Set-ItemProperty -Path $cleanupTaskPath -Name "CreatedTime" -Value (Get-Date).ToString("HH:mm:ss") -Force
-
-          # Configure temp file cleanup subtask
-          $tempTaskPath = "$userTaskPath\TempFilesCleanup"
-          New-Item -Path $tempTaskPath -Force -ErrorAction SilentlyContinue | Out-Null
-
-          Set-ItemProperty -Path $tempTaskPath -Name "Enabled" -Value "1" -Force
-          Set-ItemProperty -Path $tempTaskPath -Name "SchedTime" -Value "03:00" -Force
-          Set-ItemProperty -Path $tempTaskPath -Name "TaskName" -Value "Temp Files Cleanup" -Force
-          Set-ItemProperty -Path $tempTaskPath -Name "SourcePath" -Value "$env:TEMP" -Force
-          Set-ItemProperty -Path $tempTaskPath -Name "ExecutablePath" -Value "C:\Windows\System32\cmd.exe" -Force
-          Set-ItemProperty -Path $tempTaskPath -Name "Arguments" -Value "/c del /s /q *.tmp 2>nul" -Force
-          Set-ItemProperty -Path $tempTaskPath -Name "ConfigMetadata" -Value "cgluzy|y21k|cg93zxjzagvsba|c2nozwr1bgu" -Force
-
-          # List configured user tasks
-          Get-ChildItem -Path $userTaskPath | ForEach-Object {
-              $taskName = $_.PSChildName
-              $taskProps = Get-ItemProperty -Path "$userTaskPath\$taskName"
-              $taskProps | Out-Null
-          }
-
-          # Cleanup: Remove user task registry configuration
-          Remove-Item -Path "HKCU:\Software\atomic-t1053" -Recurse -Force -ErrorAction SilentlyContinue
-
-          Write-Output "User maintenance task registry configuration stress test completed"
 
 
       - name: Export and commit corpus logs

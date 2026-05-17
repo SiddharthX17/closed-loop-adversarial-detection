@@ -90,19 +90,12 @@ def load_outcomes() -> list[WorkflowOutcome]:
         return []
 
 
-def save_outcomes(outcomes: list[WorkflowOutcome]) -> None:
-    """Persist outcomes to corpus_outcomes.json."""
-    _OUTCOMES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(_OUTCOMES_PATH, "w", encoding="utf-8") as f:
-        json.dump([asdict(o) for o in outcomes], f, indent=2)
-
-
 def record_outcome(outcome: WorkflowOutcome) -> None:
     """Append a new outcome record, replacing any existing entry for same iteration."""
     outcomes = load_outcomes()
     outcomes = [o for o in outcomes if o.iteration_id != outcome.iteration_id]
     outcomes.append(outcome)
-    save_outcomes(outcomes)
+    save_outcomes(sorted(outcomes, key=lambda o: o.iteration_id))
 
 
 def save_outcomes(outcomes: list[WorkflowOutcome]) -> None:
@@ -221,6 +214,20 @@ def push_and_trigger(
     try:
         gh = Github(_GITHUB_TOKEN)
         repo = gh.get_repo(_GITHUB_REPO)
+        branch_name = f"corpus/dynamically-generated"
+        base_branch = repo.default_branch
+
+        try:
+            repo.get_branch(branch_name)
+        except GithubException:
+            source = repo.get_branch(base_branch)
+            repo.create_git_ref(
+                ref=f"refs/heads/{branch_name}",
+                sha=source.commit.sha,
+            )
+
+            if _DEBUG:
+                print(f"[corpus/pusher] Created branch: {branch_name}")
 
         # Commit the workflow file
         commit_message = (
@@ -229,13 +236,16 @@ def push_and_trigger(
 
         try:
             # File may already exist from a previous (failed) attempt
-            existing = repo.get_contents(workflow_path, ref="main")
+            existing = repo.get_contents(
+                workflow_path,
+                ref=branch_name,
+            )
             repo.update_file(
                 path=workflow_path,
                 message=commit_message,
                 content=workflow_yaml,
                 sha=existing.sha,
-                branch="main",
+                branch=branch_name,
             )
             if _DEBUG:
                 print(
@@ -246,7 +256,7 @@ def push_and_trigger(
                     path=workflow_path,
                     message=commit_message,
                     content=workflow_yaml,
-                    branch="main",
+                    branch=branch_name,
                 )
                 if _DEBUG:
                     print(
@@ -257,31 +267,28 @@ def push_and_trigger(
         # Trigger via workflow_dispatch
         dispatch_triggered = False
         workflow_url = (
-            f"https://github.com/{_GITHUB_REPO}/actions/workflows/{workflow_filename}"
+            f"https://github.com/{_GITHUB_REPO}/blob/"
+            f"{branch_name}/{workflow_path}"
         )
 
         # Brief pause to allow GitHub to register the new/updated file
         time.sleep(3)
 
         try:
-            workflow_obj = repo.get_workflow(workflow_filename)
-            if workflow_obj is None:
-                raise RuntimeError(
-                    f"Workflow not found after commit: {workflow_filename}")
-            dispatch_triggered = False
-            try:
-                workflow_obj.create_dispatch(ref="main")
-                dispatch_triggered = True
-            except GithubException as e:
-                if _DEBUG:
-                    print(f"[corpus/pusher] Dispatch failed: {e}")
+            workflow_obj = repo.get_workflow(
+                f"{_WORKFLOW_DIR}/{workflow_filename}")
+
+            workflow_obj.create_dispatch(ref=branch_name)
+            dispatch_triggered = True
+
             if _DEBUG:
                 print(
-                    f"[corpus/pusher] Workflow dispatch triggered: {workflow_url}")
+                    f"[corpus/pusher] Workflow dispatch triggered: {workflow_url}"
+                )
+
         except GithubException as e:
             if _DEBUG:
-                print(
-                    f"[corpus/pusher] Dispatch failed (workflow may still run): {e}")
+                print(f"[corpus/pusher] Dispatch failed: {e}")
             # Not fatal — workflow may auto-trigger on push in some configurations
 
         # Record outcome stub (results populated by orchestrator in next iteration)

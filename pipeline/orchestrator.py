@@ -33,8 +33,11 @@ from pipeline.github.pr_creator import PRCreator, PRResult
 from pipeline.metrics.tracker import MetricsTracker
 from pipeline.data.stix_loader import get_loader
 from pipeline.emulator.procedure_interpreter import get_drop_stats
+from pipeline.corpus.learner import run as run_corpus_learner
+from pipeline.corpus.pusher import update_outcome
 
 import yaml
+import anthropic
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
@@ -155,6 +158,20 @@ def _build_gap_context(
     )
 
 
+def _new_corpus_files_exist(iter_id: str) -> bool:
+    """Check if corpus/benign/ has files tagged with this iteration ID."""
+    corpus_root = Path("corpus/benign")
+    return any(corpus_root.rglob(f"*{iter_id}*"))
+
+
+def _rules_fired_on_new_corpus(iter_id: str) -> list[str]:
+    """
+    Placeholder — returns rule IDs that fired on corpus files from this iteration.
+    Wire to detection engine results when detection-on-new-corpus is implemented.
+    """
+    return []
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -194,6 +211,7 @@ class Orchestrator:
 
         # PR creator — optional, only init if opening PRs
         self._pr_creator = None
+        self._anthropic_client = anthropic.Anthropic()
         if open_prs:
             try:
                 self._pr_creator = PRCreator()
@@ -391,6 +409,8 @@ class Orchestrator:
 
         _dbg(f"Stage 5: defender agent ({len(gaps)} gap(s))")
 
+        validated_rule_yamls: list[str] = []
+
         for technique_id in gaps:
             dr = detection_results[technique_id]
             _dbg(f"Processing gap: {technique_id}")
@@ -427,6 +447,7 @@ class Orchestrator:
                 continue
 
             summary.rules_validated += 1
+            validated_rule_yamls.append(rule_yaml)
             print(f"[orchestrator] {technique_id}: rule validated ✓")
 
             # ── Stage 7: PR creator ───────────────────────────────
@@ -449,6 +470,31 @@ class Orchestrator:
                 except Exception as e:
                     print(
                         f"[orchestrator] PR creation failed for {technique_id}: {e}")
+
+        # ── Corpus stress-test learner ────────────────────────────
+        if validated_rule_yamls:
+            _dbg(
+                f"Corpus learner: {len(validated_rule_yamls)} validated rule(s)")
+            corpus_result = run_corpus_learner(
+                rule_yamls=validated_rule_yamls,
+                iteration_id=f"iter_{iteration:03d}",
+                anthropic_client=self._anthropic_client,
+            )
+            _dbg(
+                f"Corpus learner: {corpus_result.n_clusters} cluster(s), "
+                f"{corpus_result.n_variants_generated} variant(s), "
+                f"push={'ok' if corpus_result.push_succeeded else 'failed'}"
+            )
+
+        # Update previous iteration's outcome now that detection has run
+        if iteration > 1:
+            prev_iter_id = f"iter_{(iteration - 1):03d}"
+            update_outcome(
+                iteration_id=prev_iter_id,
+                workflow_ran=True,
+                logs_produced=_new_corpus_files_exist(prev_iter_id),
+                rules_hit=_rules_fired_on_new_corpus(prev_iter_id),
+            )
 
         return summary, detection_results
 

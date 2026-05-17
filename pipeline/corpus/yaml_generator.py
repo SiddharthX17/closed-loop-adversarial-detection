@@ -325,12 +325,12 @@ _EXPORT_STEP = """\
           $count = (git diff --cached --name-only | Measure-Object -Line).Lines
           if ($count -gt 0) {{
             git commit -m "corpus: targeted stress-test iteration {iteration_id} [skip ci]"
-            try {
+            try {{
                 git push
                 Write-Host "Committed $count corpus files"
-                } catch {
+                }} catch {{
                 Write-Host "git push failed: $_"
-                }
+                }}
           }} else {{
             Write-Host "No new corpus files to commit"
           }}
@@ -450,10 +450,12 @@ def generate_workflow(
                                  " ", intent.behavioral_intent)
             safe_intent = re.sub(r"\s+", " ", safe_intent).strip()
 
-            step_name = (
-                f"{safe_intent[:50]} "
-                f"[{variant.archetype}]"
-            )
+            # Truncate at word boundary to avoid mid-word cuts in step names
+            _truncated = safe_intent[:50]
+            if len(safe_intent) > 50:
+                _last_space = _truncated.rfind(" ")
+                _truncated = _truncated[:_last_space] if _last_space > 0 else _truncated
+            step_name = f"{_truncated} [{variant.archetype}]".replace('"', "'")
 
             # Normalise line endings before embedding in YAML block scalar.
             # Strip trailing whitespace per line (GH Actions YAML is sensitive

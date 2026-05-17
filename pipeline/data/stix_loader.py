@@ -3,7 +3,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 # Relative to pipeline/data/ → up 2 levels = project root
-_DEFAULT_STIX_PATH = Path(__file__).parents[2] / "data" / "mitre" / "enterprise-attack.json"
+_DEFAULT_STIX_PATH = Path(
+    __file__).parents[2] / "data" / "mitre" / "enterprise-attack.json"
 
 
 @dataclass
@@ -14,6 +15,7 @@ class MITREMetadata:
     tactics: list[str]               # all tactics this technique appears under
     data_sources: list[str]          # e.g. ["Process: Process Creation"]
     permissions_required: list[str]  # e.g. ["Administrator", "SYSTEM"]
+    detection_hint: str = ""         # MITRE x_mitre_detection free-text guidance
 
 
 class STIXLoader:
@@ -72,7 +74,9 @@ class STIXLoader:
                 tactic=tactics[0] if tactics else "unknown",
                 tactics=tactics,
                 data_sources=obj.get("x_mitre_data_sources", []),
-                permissions_required=obj.get("x_mitre_permissions_required", []),
+                permissions_required=obj.get(
+                    "x_mitre_permissions_required", []),
+                detection_hint=obj.get("x_mitre_detection", ""),
             )
             count += 1
 

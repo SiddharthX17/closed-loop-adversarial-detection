@@ -4,6 +4,7 @@ Coordinates all 7 pipeline stages:
   2. Emulator        → log stream per technique
   3. Detection Layer → per-technique match results
   4. Gap Scorer      → embedding proximity for missed events
+  4.5 Detection Planner   → technique-level detection strategy (invariants, FP profile)
   5. Defender Agent  → candidate Sigma rules for gaps
   6. Validation      → schema linter + attack gate + noise gate (inside DefenderAgent)
   7. PR Creator      → opens GitHub PRs for validated rules
@@ -29,6 +30,7 @@ from pipeline.embedding.scorer import EmbeddingScorer
 from pipeline.embedding.gap_scorer import score_gaps
 from pipeline.embedding.embedder import EMBEDDINGS_PATH
 from pipeline.defender.agent import DefenderAgent, GapContext, find_existing_rule_paths
+from pipeline.detection_planner.planner import DetectionPlanner
 from pipeline.github.pr_creator import PRCreator, PRResult
 from pipeline.metrics.tracker import MetricsTracker
 from pipeline.data.stix_loader import get_loader
@@ -200,6 +202,7 @@ class Orchestrator:
         self._stix = get_loader()
         self._attacker = AttackerAgent()
         self._defender = DefenderAgent(corpus_root=corpus_root)
+        self._planner = DetectionPlanner()
         self._metrics = MetricsTracker()
 
         # EmbeddingScorer — load once, reuse across iterations
@@ -423,6 +426,23 @@ class Orchestrator:
             )
             if not gap_context:
                 continue
+
+            # ── Stage 4.5: Detection planner ──────────────────────
+            _dbg(f"Stage 4.5: detection planner ({technique_id})")
+            strategy = self._planner.run(
+                technique_id=technique_id,
+                missed_events=gap_context.missed_events,
+                stix_metadata=self._stix.lookup(technique_id),
+            )
+            gap_context.detection_strategy = strategy
+            if strategy:
+                _dbg(
+                    f"{technique_id}: planner produced strategy — "
+                    f"{len(strategy.key_behaviors)} behavior(s), "
+                    f"{len(strategy.detection_invariants)} invariant(s)"
+                )
+            else:
+                _dbg(f"{technique_id}: planner returned None — defender runs unassisted")
 
             rule_yaml, validation_result = self._defender.run(gap_context)
             summary.rules_generated += 1

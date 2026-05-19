@@ -72,10 +72,18 @@ Cluster confidence (intra-similarity): {confidence:.2f}
    - Specific internal IPs or non-public network targets
    - Driver or kernel-level activity
 
-2. If feasible, generate 2-3 DISTINCT benign activity variants that exercise the
-   detection pattern from different angles.
+2. If feasible, generate 2-3 DISTINCT benign activity variants. Think entirely
+   from the perspective of what this enterprise system legitimately does —
+   NOT from the attacker behavior and how to make it look benign.
+   The right question is: "What does a real [archetype] naturally do that
+   produces these Windows event types as a side effect of normal operation?"
+   NOT: "How do I reproduce attacker observables in a benign way?"
+   Real enterprise tooling produces these events incidentally. Your scripts
+   should feel like they were written by the tool vendor, not by a SOC analyst
+   trying to be stealthy.
 
-   Each variant must use a DIFFERENT workflow archetype:
+   Each variant must use a DIFFERENT workflow archetype.
+   Each archetype label MUST appear AT MOST ONCE across all variants — no repeats:
    - IT admin workflow: sysadmin performing a legitimate maintenance task
    - User-driven workflow: standard end-user performing a normal task
    - Software installer/updater workflow: installation or update process
@@ -83,18 +91,39 @@ Cluster confidence (intra-similarity): {confidence:.2f}
 
    Choose the 2-3 most realistic archetypes for this specific pattern.
    Do NOT generate all 4 if some are a poor fit.
+   Do NOT repeat an archetype label — if IT admin is used once, it cannot appear again.
+   If a user-driven workflow is unrealistic for this pattern (e.g. HKLM writes
+   require admin rights), skip it and use only the archetypes that make sense.
+
+   Choose the 2-3 most realistic archetypes for this specific pattern.
+   Do NOT generate all 4 if some are a poor fit.
 
 3. For each variant, generate a complete script in the appropriate shell that:
    - Uses the shell most natural for the activity (PowerShell, CMD, or native binary)
    - Generates real Sysmon events (the target EventIDs)
-   - Reads like real enterprise activity, not test scaffolding. Specifically:
-     AVOID: comments like "# Simulate X activity", variable names like $testScript,
-     one-liners that just Write-Host a message, placeholder paths like C:\test\thing,
-     invented registry paths like HKLM:\Software\myapp-test, words like "test",
-     "stress test", "stress-test" anywhere in scripts or comments
-     USE: real tool invocations with realistic parameters, actual paths like
-     $env:TEMP\report_Q3.csv or $env:APPDATA\CompanyName\config.ini, plausible
-     operational reasons for each action
+   - Reads like it was written by the tool vendor or IT team, not by someone
+     who read the ATT&CK page first. Specifically:
+     AVOID:
+     - Comments narrating what the script is testing or simulating
+       ("# Simulate X", "# This represents Y", "# Reproduce Z observable")
+     - Self-aware variable names: $testScript, $encodedPayload, $taskDefBase64,
+       $Flag1, $Flag2, $Segment1, $attackSimulation
+     - Random pseudo-encoded string values as registry data — cgluzya,
+       cg93zxjzagvsba, or any invented base64 fragment that isn't real data.
+       If a tool stores encoded data in the registry, encode REAL operational
+       values: actual paths, version strings, real configuration content
+     - Evenly-named registry value sequences (Flag1/Flag2/Flag3, Segment1/Segment2)
+       — real tools use domain-specific names (Actions, Triggers, Principal, Path)
+     - $ErrorActionPreference = 'SilentlyContinue' at script scope. Use per-cmdlet
+       -ErrorAction SilentlyContinue or try/catch blocks. Blanket error suppression
+       is an offensive tooling signature, not an enterprise scripting pattern
+     - Any ATT&CK identifier anywhere: atomic-t1053, T1053.005, t1053, or variants
+     - Words like "test", "stress", "payload", "simulate", "encoded" in variable
+       names, comments, or registry value names
+     USE: real Windows subsystem paths, genuine operational data as values,
+     domain-specific registry value names that match what the real tool uses,
+     comments that explain business context ("# Weekly patch validation window")
+     not technical intent ("# Write encoded task definition to registry")
    - For registry operations: use real Windows subsystem paths, not invented ones.
      Examples: Task Scheduler tasks live under
      HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks\

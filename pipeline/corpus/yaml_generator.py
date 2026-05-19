@@ -135,7 +135,14 @@ def _call_llm(
     feasible = bool(parsed.get("feasible", False))
     variants = []
     if feasible:
+        seen_archetypes: set[str] = set()
+        deduped_variants = []
         for v in parsed.get("variants", []):
+            archetype = v.get("archetype", "unknown")
+            if archetype not in seen_archetypes:
+                seen_archetypes.add(archetype)
+                deduped_variants.append(v)
+        for v in deduped_variants:
             variants.append(ScriptVariant(
                 archetype=v.get("archetype", "unknown"),
                 description=v.get("description", ""),
@@ -266,7 +273,9 @@ jobs:
           .\\Sysmon\\Sysmon64.exe -accepteula -i sysmonconfig.xml
           Start-Sleep -Seconds 3
           Write-Host "Sysmon installed"
-
+          # Record start time — export step filters to events after this point only
+          $ts = (Get-Date).ToString("o")
+          echo "CORPUS_START_TIME=$ts" >> $env:GITHUB_ENV
 """
 
 _STEP_TEMPLATE = """\
@@ -277,7 +286,7 @@ _STEP_TEMPLATE = """\
 
 """
 
-_EXPORT_STEP = """\
+_EXPORT_STEP = _EXPORT_STEP = """\
       - name: Export and commit corpus logs
         shell: powershell
         run: |
@@ -287,36 +296,87 @@ _EXPORT_STEP = """\
           $registryDir = "$exportDir\\\\registry"
           New-Item -ItemType Directory -Force -Path $processDir, $networkDir, $registryDir | Out-Null
 
-          # Query Sysmon EventLog and export by EventID
+          # Map Sysmon Properties array positions to field names per EventID.
+          # Positional mapping matches SwiftOnSecurity sysmonconfig field order.
+          function Export-SysmonEvent {{
+              param($Event, $Eid)
+              $p = $Event.Properties
+              $obj = [ordered]@{{
+                  Channel     = "Microsoft-Windows-Sysmon/Operational"
+                  EventID     = $Eid
+                  TimeCreated = $Event.TimeCreated.ToString("o")
+              }}
+              switch ($Eid) {{
+                  1 {{
+                      $obj["Image"]             = if ($p.Count -gt 4)  {{ [string]$p[4].Value  }} else {{ "" }}
+                      $obj["CommandLine"]        = if ($p.Count -gt 10) {{ [string]$p[10].Value }} else {{ "" }}
+                      $obj["ParentImage"]        = if ($p.Count -gt 20) {{ [string]$p[20].Value }} else {{ "" }}
+                      $obj["ParentCommandLine"]  = if ($p.Count -gt 21) {{ [string]$p[21].Value }} else {{ "" }}
+                      $obj["ProcessId"]          = if ($p.Count -gt 3)  {{ [string]$p[3].Value  }} else {{ "" }}
+                      $obj["ParentProcessId"]    = if ($p.Count -gt 19) {{ [string]$p[19].Value }} else {{ "" }}
+                      $obj["User"]               = if ($p.Count -gt 12) {{ [string]$p[12].Value }} else {{ "" }}
+                      $obj["CurrentDirectory"]   = if ($p.Count -gt 11) {{ [string]$p[11].Value }} else {{ "" }}
+                      $obj["IntegrityLevel"]     = if ($p.Count -gt 16) {{ [string]$p[16].Value }} else {{ "" }}
+                      $obj["OriginalFileName"]   = if ($p.Count -gt 9)  {{ [string]$p[9].Value  }} else {{ "" }}
+                  }}
+                  3 {{
+                      $obj["Image"]               = if ($p.Count -gt 4)  {{ [string]$p[4].Value  }} else {{ "" }}
+                      $obj["Protocol"]            = if ($p.Count -gt 6)  {{ [string]$p[6].Value  }} else {{ "" }}
+                      $obj["Initiated"]           = if ($p.Count -gt 7)  {{ [string]$p[7].Value  }} else {{ "" }}
+                      $obj["SourceIp"]            = if ($p.Count -gt 9)  {{ [string]$p[9].Value  }} else {{ "" }}
+                      $obj["SourcePort"]          = if ($p.Count -gt 11) {{ [string]$p[11].Value }} else {{ "" }}
+                      $obj["DestinationIp"]       = if ($p.Count -gt 14) {{ [string]$p[14].Value }} else {{ "" }}
+                      $obj["DestinationHostname"] = if ($p.Count -gt 15) {{ [string]$p[15].Value }} else {{ "" }}
+                      $obj["DestinationPort"]     = if ($p.Count -gt 16) {{ [string]$p[16].Value }} else {{ "" }}
+                  }}
+                  11 {{
+                      $obj["Image"]          = if ($p.Count -gt 4) {{ [string]$p[4].Value }} else {{ "" }}
+                      $obj["TargetFilename"] = if ($p.Count -gt 6) {{ [string]$p[6].Value }} else {{ "" }}
+                  }}
+                  12 {{
+                      $obj["EventType"]    = if ($p.Count -gt 1) {{ [string]$p[1].Value }} else {{ "" }}
+                      $obj["Image"]        = if ($p.Count -gt 5) {{ [string]$p[5].Value }} else {{ "" }}
+                      $obj["TargetObject"] = if ($p.Count -gt 6) {{ [string]$p[6].Value }} else {{ "" }}
+                  }}
+                  13 {{
+                      $obj["EventType"]    = if ($p.Count -gt 1) {{ [string]$p[1].Value }} else {{ "" }}
+                      $obj["Image"]        = if ($p.Count -gt 5) {{ [string]$p[5].Value }} else {{ "" }}
+                      $obj["TargetObject"] = if ($p.Count -gt 6) {{ [string]$p[6].Value }} else {{ "" }}
+                      $obj["Details"]      = if ($p.Count -gt 7) {{ [string]$p[7].Value }} else {{ "" }}
+                  }}
+              }}
+              return $obj
+          }}
+
           $eidMap = @{{
-            1  = $processDir
-            11 = $processDir
-            3  = $networkDir
-            12 = $registryDir
-            13 = $registryDir
+              1  = $processDir
+              11 = $processDir
+              3  = $networkDir
+              12 = $registryDir
+              13 = $registryDir
           }}
 
           foreach ($eid in $eidMap.Keys) {{
-            $outFile = "$($eidMap[$eid])\\\\targeted_{iteration_id}_eid${{eid}}.jsonl"
-            try {{
-              Get-WinEvent -FilterHashtable @{{
-                LogName = "Microsoft-Windows-Sysmon/Operational"
-                Id = $eid
-              }} -ErrorAction SilentlyContinue |
-              ForEach-Object {{
-                $props = $_.Properties | ForEach-Object {{ $_.Value }}
-                [PSCustomObject]@{{
-                  Channel   = "Microsoft-Windows-Sysmon/Operational"
-                  EventID   = $eid
-                  TimeCreated = $_.TimeCreated.ToString("o")
-                  Message   = $_.Message
-                  RawProps  = ($props -join "|")
-                }} | ConvertTo-Json -Compress
-              }} | Out-File -Append -Encoding utf8 $outFile
-              Write-Host "EID $eid: exported to $outFile"
-            }} catch {{
-              Write-Host "EID $eid: no events or error: $_"
-            }}
+              $outFile = "$($eidMap[$eid])\\\\targeted_{iteration_id}_eid${{eid}}.jsonl"
+              try {{
+                  $startTime = if ($env:CORPUS_START_TIME) {{
+                      [datetime]::Parse($env:CORPUS_START_TIME)
+                  }} else {{
+                      (Get-Date).AddMinutes(-30)
+                  }}
+                  Get-WinEvent -FilterHashtable @{{
+                      LogName = "Microsoft-Windows-Sysmon/Operational"
+                      Id      = $eid
+                      StartTime = $startTime
+                  }} -ErrorAction SilentlyContinue |
+                  ForEach-Object {{
+                      Export-SysmonEvent -Event $_ -Eid $eid | ConvertTo-Json -Compress
+                  }} | Out-File -Append -Encoding utf8 $outFile
+                  $n = if (Test-Path $outFile) {{ (Get-Content $outFile | Measure-Object -Line).Lines }} else {{ 0 }}
+                  Write-Host "EID ${{eid}}: $n events → $outFile"
+              }} catch {{
+                  Write-Host "EID ${{eid}}: error — $_"
+              }}
           }}
 
           git config user.name "corpus-bot"
@@ -324,15 +384,15 @@ _EXPORT_STEP = """\
           git add corpus/benign/
           $count = (git diff --cached --name-only | Measure-Object -Line).Lines
           if ($count -gt 0) {{
-            git commit -m "corpus: targeted stress-test iteration {iteration_id} [skip ci]"
-            try {{
-                git push
-                Write-Host "Committed $count corpus files"
-                }} catch {{
-                Write-Host "git push failed: $_"
-                }}
+              git commit -m "corpus: targeted stress-test iteration {iteration_id} [skip ci]"
+              try {{
+                  git push
+                  Write-Host "Committed $count corpus files"
+              }} catch {{
+                  Write-Host "git push failed: $_"
+              }}
           }} else {{
-            Write-Host "No new corpus files to commit"
+              Write-Host "No new corpus files to commit"
           }}
 
 """

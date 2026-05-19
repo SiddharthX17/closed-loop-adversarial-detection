@@ -3,15 +3,37 @@
     "iteration_id": "iter_001",
     "workflow_path": ".github/workflows/corpus_targeted_iter_001.yml",
     "cluster_ids": [
-      "singleton_27b670a5-e232-4e79-9215-7072e12ef158"
+      "singleton_bf10c4b2-f631-4693-ae5a-4ac6f1b78acc"
     ],
     "archetype_tags": [
       "registry"
     ],
     "behavioral_intents": [
-      "Detect malicious use of Windows Task Scheduler registry storage to hide scheduled task payloads using base64-encoded data stored by SYSTEM or service accounts."
+      "Detect adversaries creating scheduled tasks via direct registry manipulation rather than the standard Task Scheduler API, which bypasses normal audit logs and UI restrictions."
     ],
-    "committed_at": 1778947594.5735075,
+    "committed_at": 1779026614.2142453,
+    "workflow_ran": true,
+    "logs_produced": false,
+    "rules_hit": [],
+    "useful_corpus": false
+  },
+  {
+    "iteration_id": "iter_002",
+    "workflow_path": ".github/workflows/corpus_targeted_iter_002.yml",
+    "cluster_ids": [
+      "singleton_bd89dbb7-79c4-4240-a877-60179d64d9be"
+    ],
+    "archetype_tags": [
+      "commandline",
+      "download",
+      "encoding",
+      "invocation",
+      "powershell"
+    ],
+    "behavioral_intents": [
+      "Detect adversaries using PowerShell to create scheduled tasks with encoded commands that download and execute remote code with elevated privileges."
+    ],
+    "committed_at": 1779190403.3068888,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

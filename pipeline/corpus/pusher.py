@@ -214,18 +214,17 @@ def push_and_trigger(
     try:
         gh = Github(_GITHUB_TOKEN)
         repo = gh.get_repo(_GITHUB_REPO)
-        branch_name = f"corpus/dynamically-generated"
-        base_branch = repo.default_branch
+        target_branch = repo.default_branch
+        branch_name = "corpus/dynamically-generated"
 
         try:
             repo.get_branch(branch_name)
         except GithubException:
-            source = repo.get_branch(base_branch)
+            source = repo.get_branch(target_branch)
             repo.create_git_ref(
                 ref=f"refs/heads/{branch_name}",
                 sha=source.commit.sha,
             )
-
             if _DEBUG:
                 print(f"[corpus/pusher] Created branch: {branch_name}")
 
@@ -235,11 +234,7 @@ def push_and_trigger(
         )
 
         try:
-            # File may already exist from a previous (failed) attempt
-            existing = repo.get_contents(
-                workflow_path,
-                ref=branch_name,
-            )
+            existing = repo.get_contents(workflow_path, ref=branch_name)
             repo.update_file(
                 path=workflow_path,
                 message=commit_message,
@@ -264,32 +259,46 @@ def push_and_trigger(
             else:
                 raise
 
-        # Trigger via workflow_dispatch
         dispatch_triggered = False
         workflow_url = (
-            f"https://github.com/{_GITHUB_REPO}/blob/"
-            f"{branch_name}/{workflow_path}"
+            f"https://github.com/{_GITHUB_REPO}/actions/workflows/{workflow_filename}"
         )
 
-        # Brief pause to allow GitHub to register the new/updated file
-        time.sleep(3)
-
+        # Open PR for human review — workflow runs after approval and merge,
+        # then trigger manually from the Actions tab.
+        pr_body = (
+            f"Auto-generated corpus stress-test workflow\n\n"
+            f"**Iteration:** `{iteration_id}`  \n"
+            f"**Clusters:** {len(intents)}  \n"
+            f"**Variants:** {sum(len(i.variants) for i in intents if i.feasible)}\n\n"
+            f"**Behavioral intents:**\n"
+            + "\n".join(
+                f"- {i.behavioral_intent}"
+                for i in intents
+                if i.feasible and i.behavioral_intent
+            )
+            + "\n\nReview the workflow YAML, merge, then trigger manually "
+            f"from the [Actions tab]({workflow_url})."
+        )
         try:
-            workflow_obj = repo.get_workflow(
-                f"{_WORKFLOW_DIR}/{workflow_filename}")
-
-            workflow_obj.create_dispatch(ref=branch_name)
-            dispatch_triggered = True
-
+            pr = repo.create_pull(
+                title=f"corpus: stress-test workflow — {iteration_id}",
+                body=pr_body,
+                head=branch_name,
+                base=target_branch,
+            )
+            workflow_url = pr.html_url
             if _DEBUG:
-                print(
-                    f"[corpus/pusher] Workflow dispatch triggered: {workflow_url}"
-                )
-
+                print(f"[corpus/pusher] PR opened for review: {pr.html_url}")
         except GithubException as e:
-            if _DEBUG:
-                print(f"[corpus/pusher] Dispatch failed: {e}")
-            # Not fatal — workflow may auto-trigger on push in some configurations
+            if e.status == 422:
+                # PR already exists for this branch from a previous iteration
+                if _DEBUG:
+                    print(f"[corpus/pusher] PR already exists for {branch_name} — "
+                          f"update committed to branch")
+            else:
+                if _DEBUG:
+                    print(f"[corpus/pusher] PR creation failed: {e}")
 
         # Record outcome stub (results populated by orchestrator in next iteration)
         all_tags = sorted({

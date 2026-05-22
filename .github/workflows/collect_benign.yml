@@ -406,9 +406,9 @@ jobs:
                       Export-SysmonEvent -Event $_ -Eid $eid | ConvertTo-Json -Compress
                   } | Out-File -Append -Encoding utf8 $outFile
                   $n = if (Test-Path $outFile) { (Get-Content $outFile | Measure-Object -Line).Lines } else { 0 }
-                  Write-Host "EID ${eid}: $n events → $outFile"
+                  Write-Host "EID ${eid}: $n events -> $outFile"
               } catch {
-                  Write-Host "EID ${eid}: error — $_"
+                  Write-Host "EID ${eid}: error - $_"
               }
           }
 

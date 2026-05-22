@@ -250,10 +250,25 @@ jobs:
             "CorpConfigSync"
           )
           $triggers = @(
-            { New-ScheduledTaskTrigger -Daily    -At "$(Get-Random -Minimum 1 -Maximum 5):00AM" },
-            { New-ScheduledTaskTrigger -Weekly   -DaysOfWeek (Get-Random -InputObject @("Monday","Tuesday","Wednesday","Thursday","Friday")) -At "2:00AM" },
-            { New-ScheduledTaskTrigger -AtStartup },
-            { New-ScheduledTaskTrigger -AtLogOn  }
+            {
+              $hour = Get-Random -Minimum 1 -Maximum 5
+              New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours($hour))
+            },
+            {
+              $hour = Get-Random -Minimum 1 -Maximum 5
+              $day  = Get-Random -InputObject @("Monday","Tuesday","Wednesday","Thursday","Friday")
+          
+              New-ScheduledTaskTrigger `
+                -Weekly `
+                -DaysOfWeek $day `
+                -At ([datetime]::Today.AddHours($hour))
+            },
+            {
+              New-ScheduledTaskTrigger -AtStartup
+            },
+            {
+              New-ScheduledTaskTrigger -AtLogOn
+            }
           )
 
           $taskName = $taskNames | Get-Random
@@ -440,4 +455,5 @@ jobs:
         if: always()
         run: |
           .\Sysmon\Sysmon64.exe -u force 2>$null
-          Write-Host "Sysmon uninstalled"
+          $LASTEXITCODE = 0
+          Write-Host "Sysmon uninstall attempted"

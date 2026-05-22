@@ -338,46 +338,39 @@ jobs:
                   Channel     = "Microsoft-Windows-Sysmon/Operational"
                   EventID     = $Eid
                   TimeCreated = $Event.TimeCreated.ToString("o")
-                  WorkflowRun = $env:GITHUB_RUN_ID
               }
-              switch ($Eid) {
-                  1  {
-                      $obj["Image"]            = if ($p.Count -gt 4)  { [string]$p[4].Value  } else { "" }
-                      $obj["CommandLine"]       = if ($p.Count -gt 10) { [string]$p[10].Value } else { "" }
-                      $obj["ParentImage"]       = if ($p.Count -gt 20) { [string]$p[20].Value } else { "" }
-                      $obj["ParentCommandLine"] = if ($p.Count -gt 21) { [string]$p[21].Value } else { "" }
-                      $obj["ProcessId"]         = if ($p.Count -gt 3)  { [string]$p[3].Value  } else { "" }
-                      $obj["ParentProcessId"]   = if ($p.Count -gt 19) { [string]$p[19].Value } else { "" }
-                      $obj["User"]              = if ($p.Count -gt 12) { [string]$p[12].Value } else { "" }
-                      $obj["CurrentDirectory"]  = if ($p.Count -gt 11) { [string]$p[11].Value } else { "" }
-                      $obj["IntegrityLevel"]    = if ($p.Count -gt 16) { [string]$p[16].Value } else { "" }
-                      $obj["OriginalFileName"]  = if ($p.Count -gt 9)  { [string]$p[9].Value  } else { "" }
-                  }
-                  3  {
-                      $obj["Image"]               = if ($p.Count -gt 4)  { [string]$p[4].Value  } else { "" }
-                      $obj["Protocol"]            = if ($p.Count -gt 6)  { [string]$p[6].Value  } else { "" }
-                      $obj["Initiated"]           = if ($p.Count -gt 7)  { [string]$p[7].Value  } else { "" }
-                      $obj["SourceIp"]            = if ($p.Count -gt 9)  { [string]$p[9].Value  } else { "" }
-                      $obj["SourcePort"]          = if ($p.Count -gt 11) { [string]$p[11].Value } else { "" }
-                      $obj["DestinationIp"]       = if ($p.Count -gt 14) { [string]$p[14].Value } else { "" }
-                      $obj["DestinationHostname"] = if ($p.Count -gt 15) { [string]$p[15].Value } else { "" }
-                      $obj["DestinationPort"]     = if ($p.Count -gt 16) { [string]$p[16].Value } else { "" }
-                  }
-                  11 {
-                      $obj["Image"]          = if ($p.Count -gt 4) { [string]$p[4].Value } else { "" }
-                      $obj["TargetFilename"] = if ($p.Count -gt 6) { [string]$p[6].Value } else { "" }
-                  }
-                  12 {
-                      $obj["EventType"]    = if ($p.Count -gt 1) { [string]$p[1].Value } else { "" }
-                      $obj["Image"]        = if ($p.Count -gt 5) { [string]$p[5].Value } else { "" }
-                      $obj["TargetObject"] = if ($p.Count -gt 6) { [string]$p[6].Value } else { "" }
-                  }
-                  13 {
-                      $obj["EventType"]    = if ($p.Count -gt 1) { [string]$p[1].Value } else { "" }
-                      $obj["Image"]        = if ($p.Count -gt 5) { [string]$p[5].Value } else { "" }
-                      $obj["TargetObject"] = if ($p.Count -gt 6) { [string]$p[6].Value } else { "" }
-                      $obj["Details"]      = if ($p.Count -gt 7) { [string]$p[7].Value } else { "" }
-                  }
+              if ($Eid -eq 1) {
+                  if ($p.Count -gt 4)  { $obj["Image"]            = [string]$p[4].Value  }
+                  if ($p.Count -gt 10) { $obj["CommandLine"]       = [string]$p[10].Value }
+                  if ($p.Count -gt 20) { $obj["ParentImage"]       = [string]$p[20].Value }
+                  if ($p.Count -gt 21) { $obj["ParentCommandLine"] = [string]$p[21].Value }
+                  if ($p.Count -gt 3)  { $obj["ProcessId"]         = [string]$p[3].Value  }
+                  if ($p.Count -gt 19) { $obj["ParentProcessId"]   = [string]$p[19].Value }
+                  if ($p.Count -gt 12) { $obj["User"]              = [string]$p[12].Value }
+                  if ($p.Count -gt 11) { $obj["CurrentDirectory"]  = [string]$p[11].Value }
+                  if ($p.Count -gt 16) { $obj["IntegrityLevel"]    = [string]$p[16].Value }
+                  if ($p.Count -gt 9)  { $obj["OriginalFileName"]  = [string]$p[9].Value  }
+              } elseif ($Eid -eq 3) {
+                  if ($p.Count -gt 4)  { $obj["Image"]               = [string]$p[4].Value  }
+                  if ($p.Count -gt 6)  { $obj["Protocol"]            = [string]$p[6].Value  }
+                  if ($p.Count -gt 7)  { $obj["Initiated"]           = [string]$p[7].Value  }
+                  if ($p.Count -gt 9)  { $obj["SourceIp"]            = [string]$p[9].Value  }
+                  if ($p.Count -gt 11) { $obj["SourcePort"]          = [string]$p[11].Value }
+                  if ($p.Count -gt 14) { $obj["DestinationIp"]       = [string]$p[14].Value }
+                  if ($p.Count -gt 15) { $obj["DestinationHostname"] = [string]$p[15].Value }
+                  if ($p.Count -gt 16) { $obj["DestinationPort"]     = [string]$p[16].Value }
+              } elseif ($Eid -eq 11) {
+                  if ($p.Count -gt 4) { $obj["Image"]          = [string]$p[4].Value }
+                  if ($p.Count -gt 6) { $obj["TargetFilename"] = [string]$p[6].Value }
+              } elseif ($Eid -eq 12) {
+                  if ($p.Count -gt 1) { $obj["EventType"]    = [string]$p[1].Value }
+                  if ($p.Count -gt 5) { $obj["Image"]        = [string]$p[5].Value }
+                  if ($p.Count -gt 6) { $obj["TargetObject"] = [string]$p[6].Value }
+              } elseif ($Eid -eq 13) {
+                  if ($p.Count -gt 1) { $obj["EventType"]    = [string]$p[1].Value }
+                  if ($p.Count -gt 5) { $obj["Image"]        = [string]$p[5].Value }
+                  if ($p.Count -gt 6) { $obj["TargetObject"] = [string]$p[6].Value }
+                  if ($p.Count -gt 7) { $obj["Details"]      = [string]$p[7].Value }
               }
               return $obj
           }

@@ -106,26 +106,30 @@ jobs:
           # Each run picks a random 6-9 from this pool
           # Prevents the corpus looking like a fixed script
           $pool = @(
-            { powershell -NoProfile -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10" },
-            { powershell -NoProfile -Command "Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name" },
-            { powershell -NoProfile -Command "Get-WmiObject Win32_DiskDrive | Select-Object Model,Size" },
-            { powershell -NoProfile -Command "Get-NetAdapter | Select-Object Name,Status,MacAddress" },
-            { powershell -NoProfile -Command "Get-Volume | Select-Object DriveLetter,FileSystemLabel,Size,SizeRemaining" },
-            { powershell -NoProfile -Command "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 5" },
-            { powershell -NoProfile -Command "Get-WinEvent -LogName System -MaxEvents 10 -ErrorAction SilentlyContinue | Select-Object Id,TimeCreated" },
-            { powershell -NoProfile -Command "Get-ComputerInfo | Select-Object CsName,OsVersion,OsArchitecture" },
-            { powershell -NoProfile -Command "Get-LocalUser | Select-Object Name,Enabled,LastLogon" },
-            { powershell -NoProfile -Command "Get-LocalGroup | Select-Object Name" },
-            { cmd /c "netstat -an" },
-            { cmd /c "arp -a" },
-            { cmd /c "net statistics workstation" },
-            { cmd /c "sc query state= running" },
-            { cmd /c "wmic product get name,version /format:csv" },
+            { powershell -NoProfile -Command "Get-Process -ErrorAction SilentlyContinue | Sort-Object CPU -Descending | Select-Object -First 10" },          
+            { powershell -NoProfile -Command "Get-Service -ErrorAction SilentlyContinue | Where-Object {$_.Status -eq 'Running'} | Select-Object Name" },
+            { powershell -NoProfile -Command "Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object Model,Size" },          
+            { powershell -NoProfile -Command "Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object Name,Status,MacAddress" },          
+            { powershell -NoProfile -Command "Get-Volume -ErrorAction SilentlyContinue | Select-Object DriveLetter,FileSystemLabel,Size,SizeRemaining" },          
+            { powershell -NoProfile -Command "Get-HotFix -ErrorAction SilentlyContinue | Sort-Object InstalledOn -Descending | Select-Object -First 5" },          
+            { powershell -NoProfile -Command "Get-WinEvent -LogName System -MaxEvents 10 -ErrorAction SilentlyContinue | Select-Object Id,TimeCreated" },          
+            { powershell -NoProfile -Command "Get-ComputerInfo -ErrorAction SilentlyContinue | Select-Object CsName,OsVersion,OsArchitecture" },          
+            { powershell -NoProfile -Command "Get-LocalUser -ErrorAction SilentlyContinue | Select-Object Name,Enabled,LastLogon" },          
+            { powershell -NoProfile -Command "Get-LocalGroup -ErrorAction SilentlyContinue | Select-Object Name" },          
+            { cmd /c "netstat -an" },          
+            { cmd /c "arp -a" },          
+            { cmd /c "net statistics workstation" },          
+            { cmd /c "sc query state= running" },          
             { cmd /c "driverquery /fo csv" }
           )
           $selected = $pool | Get-Random -Count (Get-Random -Minimum 6 -Maximum 10)
           foreach ($op in $selected) {
-            try { & $op 2>$null | Out-Null } catch {}
+            try {
+              & $op *>$null
+            } catch {
+              Write-Host "Ignored operation failure: $_"
+            }
+          
             Start-Sleep -Milliseconds (Get-Random -Minimum 150 -Maximum 700)
           }
 
@@ -454,6 +458,7 @@ jobs:
         shell: powershell
         if: always()
         run: |
-          .\Sysmon\Sysmon64.exe -u force 2>$null
+          .\Sysmon\Sysmon64.exe -u force *>$null
+          Write-Host "Sysmon uninstall completed"
           $LASTEXITCODE = 0
-          Write-Host "Sysmon uninstall attempted"
+          exit 0

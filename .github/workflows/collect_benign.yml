@@ -394,7 +394,7 @@ jobs:
 
           $runDate = Get-Date -Format "yyyyMMdd_HHmm"
           foreach ($eid in $eidMap.Keys) {
-              $outFile = "$($eidMap[$eid])\baseline_${runDate}_eid${eid}.jsonl"
+              $outFile = "$($eidMap[$eid])\baseline_$($runDate)_eid$($eid).jsonl"
               try {
                   Get-WinEvent -FilterHashtable @{
                       LogName   = "Microsoft-Windows-Sysmon/Operational"
@@ -406,9 +406,9 @@ jobs:
                       Export-SysmonEvent -Event $_ -Eid $eid | ConvertTo-Json -Compress
                   } | Out-File -Append -Encoding utf8 $outFile
                   $n = if (Test-Path $outFile) { (Get-Content $outFile | Measure-Object -Line).Lines } else { 0 }
-                  Write-Host "EID ${eid}: $n events -> $outFile"
+                  Write-Host ("EID {0}: {1} events -> {2}" -f $eid, $n, $outFile)
               } catch {
-                  Write-Host "EID ${eid}: error - $_"
+                  Write-Host ("EID {0}: error - {1}" -f $eid, $_)
               }
           }
 

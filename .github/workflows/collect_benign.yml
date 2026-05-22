@@ -241,11 +241,10 @@ jobs:
             } catch {}
             Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 600)
           }
-
+          
       - name: Randomised — scheduled task lifecycle
         shell: powershell
         run: |
-          # Random task name and trigger type each run
           $taskNames = @(
             "CorpHealthMonitor",
             "CorpLogArchiver",
@@ -254,39 +253,26 @@ jobs:
             "CorpConfigSync"
           )
           $triggers = @(
-            {
-              $hour = Get-Random -Minimum 1 -Maximum 5
-              New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddDays(1).AddHours($hour))
-            },
-            {
-              $hour = Get-Random -Minimum 1 -Maximum 5
-              $day  = Get-Random -InputObject @("Monday","Tuesday","Wednesday","Thursday","Friday")
-              New-ScheduledTaskTrigger -Weekly -DaysOfWeek $day `
-                -At ([datetime]::Today.AddDays(1).AddHours($hour))
-            },
-            {
-              New-ScheduledTaskTrigger -AtStartup
-            },
-            {
-              New-ScheduledTaskTrigger -AtLogOn
-            }
+            { New-ScheduledTaskTrigger -Daily   -At ([datetime]::Today.AddDays(1).AddHours((Get-Random -Minimum 1 -Maximum 5))) },
+            { New-ScheduledTaskTrigger -Weekly  -DaysOfWeek (Get-Random -InputObject @("Monday","Tuesday","Wednesday","Thursday","Friday")) -At ([datetime]::Today.AddDays(1).AddHours((Get-Random -Minimum 1 -Maximum 5))) },
+            { New-ScheduledTaskTrigger -AtStartup },
+            { New-ScheduledTaskTrigger -AtLogOn  }
           )
 
           $taskName = $taskNames | Get-Random
           $trigger  = & ($triggers | Get-Random)
 
-          try {
-            $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-              -Argument "-NoProfile -NonInteractive -Command `"Get-Date | Add-Content `$env:TEMP\corp_health.log`""
-            $principal = New-ScheduledTaskPrincipal -UserId "BUILTIN\Administrators" -RunLevel Highest
+          $action    = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -NonInteractive -Command "Get-Date | Out-Null"'
+          $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
+          try {
             Register-ScheduledTask -TaskName $taskName -Action $action `
               -Trigger $trigger -Principal $principal `
               -Description "Corporate monitoring task" -Force -ErrorAction Stop
-
             Start-Sleep -Milliseconds (Get-Random -Minimum 300 -Maximum 800)
             Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null
-
+          } catch {
+            Write-Host "Task registration skipped: $_"
           } finally {
             Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
           }

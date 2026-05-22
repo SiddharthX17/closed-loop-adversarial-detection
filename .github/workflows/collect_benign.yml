@@ -1,4 +1,7 @@
 name: collect-benign-corpus
+
+permissions:
+  contents: write
 # Periodic baseline benign corpus collection.
 # Combines fixed baseline coverage (guaranteed EID diversity) with randomised
 # activity pools so no two runs produce identical event sequences.
@@ -19,8 +22,11 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout repository
+      - name: Checkout corpus branch
         uses: actions/checkout@v4
+        with:
+          ref: corpus/baseline-generated
+          fetch-depth: 0
 
       - name: Install Sysmon
         shell: powershell

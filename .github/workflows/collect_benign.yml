@@ -262,7 +262,8 @@ jobs:
           $taskName = $taskNames | Get-Random
           $trigger  = & ($triggers | Get-Random)
 
-          $action    = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -NonInteractive -Command "Get-Date | Out-Null"'
+          $arg = '-NoProfile -NonInteractive -Command Get-Date'
+          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg
           $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
           try {
@@ -292,7 +293,13 @@ jobs:
               $f    = Join-Path $env:TEMP $name
               $content = switch ($ext) {
                 "xml"  { "<config><version>1.0</version><mode>production</mode></config>" }
-                "json" { '{"version":"1.0","environment":"production","lastUpdated":"' + (Get-Date -Format "o") + '"}' }
+                "json" {
+                    @{
+                        version      = "1.0"
+                        environment  = "production"
+                        lastUpdated  = (Get-Date -Format "o")
+                    } | ConvertTo-Json -Compress
+                }
                 "csv"  { "Timestamp,Level,Message`n$(Get-Date -Format 'o'),INFO,Service started" }
                 "ini"  { "[General]`nVersion=1.0`nMode=production`nLogLevel=warn" }
                 default{ "$(Get-Date -Format 'o') INFO Process started" }
@@ -394,7 +401,7 @@ jobs:
 
           $runDate = Get-Date -Format "yyyyMMdd_HHmm"
           foreach ($eid in $eidMap.Keys) {
-              $outFile = "$($eidMap[$eid])\baseline_${runDate}_eid${eid}.jsonl"
+              $outFile = "$($eidMap[$eid])\baseline_$($runDate)_eid$($eid).jsonl"
               try {
                   Get-WinEvent -FilterHashtable @{
                       LogName   = "Microsoft-Windows-Sysmon/Operational"
@@ -406,9 +413,9 @@ jobs:
                       Export-SysmonEvent -Event $_ -Eid $eid | ConvertTo-Json -Compress
                   } | Out-File -Append -Encoding utf8 $outFile
                   $n = if (Test-Path $outFile) { (Get-Content $outFile | Measure-Object -Line).Lines } else { 0 }
-                  Write-Host "EID ${eid}: $n events → $outFile"
+                  Write-Host ("EID {0}: {1} events -> {2}" -f $eid, $n, $outFile)
               } catch {
-                  Write-Host "EID ${eid}: error — $_"
+                  Write-Host ("EID {0}: error - {1}" -f $eid, $_.Exception.Message)
               }
           }
 

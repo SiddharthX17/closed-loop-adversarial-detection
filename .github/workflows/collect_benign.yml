@@ -335,12 +335,10 @@ jobs:
               param($Event, $Eid)
               $p   = $Event.Properties
               $obj = [ordered]@{
-                  CorpusType  = "baseline"
-                  WorkflowRun = "${{ github.run_id }}"
-                  GeneratedAt = (Get-Date).ToString("o")
                   Channel     = "Microsoft-Windows-Sysmon/Operational"
                   EventID     = $Eid
                   TimeCreated = $Event.TimeCreated.ToString("o")
+                  WorkflowRun = $env:GITHUB_RUN_ID
               }
               switch ($Eid) {
                   1  {

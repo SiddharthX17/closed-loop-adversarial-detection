@@ -256,16 +256,13 @@ jobs:
           $triggers = @(
             {
               $hour = Get-Random -Minimum 1 -Maximum 5
-              New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours($hour))
+              New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddDays(1).AddHours($hour))
             },
             {
               $hour = Get-Random -Minimum 1 -Maximum 5
               $day  = Get-Random -InputObject @("Monday","Tuesday","Wednesday","Thursday","Friday")
-          
-              New-ScheduledTaskTrigger `
-                -Weekly `
-                -DaysOfWeek $day `
-                -At ([datetime]::Today.AddHours($hour))
+              New-ScheduledTaskTrigger -Weekly -DaysOfWeek $day `
+                -At ([datetime]::Today.AddDays(1).AddHours($hour))
             },
             {
               New-ScheduledTaskTrigger -AtStartup
@@ -458,7 +455,6 @@ jobs:
         shell: powershell
         if: always()
         run: |
-          .\Sysmon\Sysmon64.exe -u force *>$null
+          try { .\Sysmon\Sysmon64.exe -u force 2>&1 | Out-Null } catch {}
           Write-Host "Sysmon uninstall completed"
-          $LASTEXITCODE = 0
           exit 0

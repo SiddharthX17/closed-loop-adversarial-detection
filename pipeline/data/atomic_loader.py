@@ -12,7 +12,6 @@ _SKIP_EXECUTORS = {"manual"}
 DEBUG = False  # set to True to see verbose loader warnings
 
 _CUSTOM_TESTS_DIR = Path(__file__).parents[2] / "data" / "custom-tests"
-_CUSTOM_TESTS_FALLBACK_THRESHOLD = 2  # minimum atomic tests per technique
 
 
 @dataclass
@@ -226,26 +225,26 @@ def load_custom_tests_for_technique(technique_id: str) -> list[AtomicTest]:
 def load_tests_for_technique_with_fallback(
     technique_id: str,
     atomics_path: Path = _DEFAULT_ATOMICS_PATH,
-    threshold: int = _CUSTOM_TESTS_FALLBACK_THRESHOLD,
 ) -> list[AtomicTest]:
     """
-    Load Atomic tests for a technique. If fewer than `threshold` non-manual
-    Windows tests exist in the Atomic repo, supplement with custom tests
+    Load Atomic tests for a technique and always append any custom tests
     from data/custom-tests/{technique_id}.yaml.
-    Custom tests are appended after Atomic tests, not replacing them.
+
+    Custom tests are included unconditionally when they exist — the old
+    threshold gate is removed. Atomic tests are listed first so the
+    complexity scorer sees them in natural YAML order; custom tests
+    compete on their own merit in the weighted draw.
     """
     atomic_tests = load_tests_for_technique(technique_id, atomics_path)
+    custom_tests = load_custom_tests_for_technique(technique_id)
 
-    if len(atomic_tests) < threshold:
-        custom_tests = load_custom_tests_for_technique(technique_id)
-        if custom_tests:
-            debug = os.environ.get(
-                "PIPELINE_DEBUG", "").lower() in ("1", "true")
-            if debug:
-                print(
-                    f"[atomic_loader] {technique_id}: {len(atomic_tests)} Atomic "
-                    f"test(s) below threshold — adding {len(custom_tests)} custom"
-                )
-            atomic_tests = atomic_tests + custom_tests
+    if custom_tests:
+        debug = os.environ.get("PIPELINE_DEBUG", "").lower() in ("1", "true")
+        if debug:
+            print(
+                f"[atomic_loader] {technique_id}: appending {len(custom_tests)} "
+                f"custom test(s) to {len(atomic_tests)} Atomic"
+            )
+        return atomic_tests + custom_tests
 
     return atomic_tests

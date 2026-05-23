@@ -24,6 +24,7 @@ from pipeline.attacker.agent import AttackerAgent, extract_emulator_inputs, Camp
 from pipeline.orchestrator import Orchestrator, OrchestrationResult
 from pipeline.corpus.learner import run as run_corpus_learner
 from pipeline.corpus.pusher import update_outcome
+from pipeline.detection_planner.planner import DetectionPlanner
 
 import sys
 import os
@@ -219,6 +220,8 @@ def run_instrumented_loop(
 
         validated_rule_yamls: list[str] = []
 
+        planner = DetectionPlanner()
+
         for technique_id in gaps:
             dr = detection_results[technique_id]
             gap_context = _build_gap_context(
@@ -229,6 +232,14 @@ def run_instrumented_loop(
             )
             if not gap_context:
                 continue
+
+            # Stage 4.5: Detection planner
+            strategy = planner.run(
+                technique_id=technique_id,
+                missed_events=gap_context.missed_events,
+                stix_metadata=stix.lookup(technique_id),
+            )
+            gap_context.detection_strategy = strategy
 
             rule_yaml, validation_result = defender.run(gap_context)
             rules_generated += 1

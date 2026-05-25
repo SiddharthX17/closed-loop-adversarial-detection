@@ -87,6 +87,8 @@ Cluster confidence (intra-similarity): {confidence:.2f}
 3. For each variant, generate a complete script in the appropriate shell that:
    - Uses the shell most natural for the activity (PowerShell, CMD, or native binary)
    - Generates real Sysmon events (the target EventIDs)
+   - Avoid escaped quotes inside PowerShell strings.
+     Prefer Join-Path and ArgumentList arrays over manually constructed command strings.
    - Reads like real enterprise activity, not test scaffolding. Specifically:
      AVOID: comments like "# Simulate X activity", variable names like $testScript,
      one-liners that just Write-Host a message, placeholder paths like C:\test\thing,

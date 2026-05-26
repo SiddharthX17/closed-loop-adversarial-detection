@@ -250,11 +250,16 @@ def _score_complexity(cleaned) -> tuple[float, list[str]]:
 def _select_candidates(
     cleaned_all: list[tuple[str, object]],
     technique_id: str,
+    selected_guid: str | None = None,
 ) -> list:
     """
     Weighted random sampling without replacement.
 
     Priority = base_score × seen_penalty × uniform(0.35, 1.0)
+
+    If selected_guid is provided (attacker's choice), that test is guaranteed
+    to appear first in the result regardless of its sampled priority. The
+    remaining slots are filled by the weighted draw as normal.
 
     Floor of 0.35 prevents a high-value test from being completely wiped out
     by an unlucky draw while still allowing a seen high-scorer to lose to a
@@ -266,6 +271,7 @@ def _select_candidates(
     Updates _prior_attempts[technique_id] with the selected GUIDs.
     """
     seen = _prior_attempts.get(technique_id, set())
+    pinned: tuple | None = None          # (guid, cleaned) for selected_guid
     candidates: list[tuple[float, str, list[str], object]] = []
 
     for guid, cleaned in cleaned_all:
@@ -273,6 +279,11 @@ def _select_candidates(
         if score < 1.0:
             _dbg(f"  {cleaned.test_name}: score={score:.2f} < 1.0 — dropped")
             continue
+
+        if selected_guid and guid == selected_guid:
+            pinned = (guid, cleaned)
+            _dbg(f"  {cleaned.test_name}: pinned (attacker selection)")
+            continue                     # exclude from random draw
 
         weight = score * (_SEEN_PENALTY if guid in seen else 1.0)
         priority = weight * random.uniform(0.35, 1.0)
@@ -283,17 +294,22 @@ def _select_candidates(
             f"buckets={fired} weight={weight:.2f} priority={priority:.3f}"
         )
 
-    if not candidates:
-        return []
-
     candidates.sort(reverse=True)
-    top = candidates[:_MAX_CANDIDATES]
+    fill_slots = _MAX_CANDIDATES - (1 if pinned else 0)
+    top = candidates[:fill_slots]
 
     seen_set = _prior_attempts.setdefault(technique_id, set())
-    for _, guid, _, _ in top:
-        seen_set.add(guid)
 
-    return [cleaned for _, _, _, cleaned in top]
+    result: list = []
+    if pinned:
+        seen_set.add(pinned[0])
+        result.append(pinned[1])
+
+    for _, guid, _, cleaned in top:
+        seen_set.add(guid)
+        result.append(cleaned)
+
+    return result if result else []
 
 
 def _select_tests(
@@ -339,7 +355,8 @@ def _select_tests(
     if not cleaned_all:
         return []
 
-    selected = _select_candidates(cleaned_all, technique_id)
+    selected = _select_candidates(
+        cleaned_all, technique_id, selected_guid=selected_guid)
 
     for i, cleaned in enumerate(selected):
         _dbg(
@@ -376,16 +393,16 @@ def _emulate_technique(
         return []
 
     hints = evasion_hints.get(technique_id) if evasion_hints else None
+    hints_v2 = evasion_hints_v2.get(technique_id) if evasion_hints_v2 else None
 
     events = []
 
-    hints = evasion_hints.get(technique_id) if evasion_hints else None
-    hints_v2 = evasion_hints_v2.get(technique_id) if evasion_hints_v2 else None
+    # Always: attacker picks one test (pinned first by _select_candidates),
+    # generate base + mutated variant from it. 1 test × 2 events per iteration.
+    tests_to_emit = cleaned_tests[:1]
     hint_sets = [hints, hints_v2] if hints_v2 is not None else [hints]
 
-    events = []
-
-    for i, cleaned in enumerate(cleaned_tests):
+    for cleaned in tests_to_emit:
         for variant_idx, variant_hints in enumerate(hint_sets):
             _dbg(
                 f"{technique_id} / '{cleaned.test_name}': "

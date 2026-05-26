@@ -115,23 +115,40 @@ class GateResult:
 
         # Build unmatched event summary for agent context
         unmatched_summary = _format_unmatched(self.unmatched_events)
+        fields_note = _available_fields(self.unmatched_events)
 
         if self.match_count == 0:
             return (
                 f"Attack gate failed — rule did not fire on any of the "
-                f"{self.total_events} attack events. "
-                f"Broaden the detection conditions "
-                f"the following unmatched patterns:\n{unmatched_summary}"
+                f"{self.total_events} attack events.\n"
+                f"{fields_note}\n"
+                f"Write conditions that match the fields above. "
+                f"Do not reference fields absent from the list.\n"
+                f"Unmatched patterns:\n{unmatched_summary}"
             )
 
         # Partial match
         return (
             f"Attack gate failed — rule fired on {self.match_count} of "
             f"{self.total_events} attack events ({self.match_ratio:.0%}), "
-            f"below the required threshold. "
-            f"Broaden the detection conditions "
-            f"without removing existing conditions:\n{unmatched_summary}"
+            f"below the required threshold.\n"
+            f"{fields_note}\n"
+            f"Broaden conditions without removing existing ones:\n{unmatched_summary}"
         )
+
+
+def _available_fields(events: list[dict]) -> str:
+    """
+    Summarise which fields are populated across the attack event set.
+    Shown in feedback so the defender agent knows what it can key on
+    and avoids writing conditions for fields that are absent from the events.
+    """
+    fields: set[str] = set()
+    for e in events:
+        fields.update(k for k, v in e.items() if v is not None and v != "")
+    skip = {"timestamp", "host", "user", "event_type", "Channel"}
+    useful = sorted(fields - skip)
+    return f"  Fields present in attack events: {useful}"
 
 
 def _format_unmatched(unmatched_events: list[dict]) -> str:
@@ -143,12 +160,14 @@ def _format_unmatched(unmatched_events: list[dict]) -> str:
         return "  (no unmatched event details available)"
 
     key_fields = ("Image", "CommandLine", "ParentImage", "TargetObject",
-                  "DestinationIp", "DestinationHostname", "EventID")
+                  "Details", "OriginalFileName", "DestinationIp",
+                  "DestinationHostname", "DestinationPort", "EventID")
     cap = UNMATCHED_FEEDBACK_CAP
     shown = unmatched_events[:cap]
     lines = []
     for i, event in enumerate(shown, 1):
-        parts = {k: event[k] for k in key_fields if event.get(k)}
+        parts = {k: event[k] for k in key_fields if event.get(
+            k) is not None and event.get(k) != ""}
         lines.append(f"  [{i}] {parts}")
     if len(unmatched_events) > cap:
         lines.append(

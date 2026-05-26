@@ -1,0 +1,32 @@
+title: Potential LSASS Memory Dump Via Rdrleakdiag
+id: 260bd16d-e1cf-4671-b3c7-4fbd72b253dd
+status: experimental
+description: |
+  Detects potential credential harvesting attempts through LSASS memory dumps using rdrleakdiag.exe.
+  Rdrleakdiag is a legitimate Windows diagnostic tool that can be abused to dump process memory including LSASS.
+  The /fullmemdmp flag combined with targeting a specific process ID indicates suspicious memory dumping activity.
+references:
+  - https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/rdrleakdiag
+  - https://www.elastic.co/security-labs/detecting-credential-dumping-with-sysmon
+author: Detection Engineering
+date: 2026-05-06
+modified: 2026-05-06
+tags:
+  - attack.credential-access
+  - attack.t1003.001
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_image:
+    Image|endswith: '\rdrleakdiag.exe'
+    OriginalFileName: 'rdrleakdiag.exe'
+  selection_commandline:
+    CommandLine|contains|all:
+      - '/p '
+      - '/fullmemdmp'
+  condition: all of selection_*
+falsepositives:
+  - Legitimate use of rdrleakdiag for memory diagnostics by system administrators
+  - Authorized memory dump operations for troubleshooting
+level: high

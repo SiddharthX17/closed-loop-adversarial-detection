@@ -1,0 +1,43 @@
+title: PowerShell Script Loading and Execution via ScriptBlock Creation
+id: 055a4350-0aff-4411-8289-161381c99b0a
+status: experimental
+description: Detects PowerShell processes that load and execute scripts via ScriptBlock.Create() method, commonly used to bypass detection and execute remote or local payloads
+references:
+    - https://github.com/BloodHoundAD/BloodHound
+    - https://github.com/PowerShellMafia/PowerSploit
+    - https://attack.mitre.org/techniques/T1059/001/
+author: Detection Engineer
+date: 2025-01-01
+modified: 2025-01-01
+tags:
+    - attack.execution
+    - attack.t1059.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_scriptblock:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+        CommandLine|contains|all:
+            - 'ScriptBlock'
+            - '::Create'
+    selection_iex_download:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+        CommandLine|contains|all:
+            - 'IEX'
+            - 'New-Object'
+            - 'Net.WebClient'
+            - 'DownloadString'
+    filter_legitimate_paths:
+        CommandLine|contains:
+            - 'chocolatey'
+            - 'community.chocolatey.org'
+    condition: (selection_scriptblock or selection_iex_download) and not filter_legitimate_paths
+falsepositives:
+    - Legitimate PowerShell-based deployment tools
+    - Software installation scripts using ScriptBlock execution
+level: high

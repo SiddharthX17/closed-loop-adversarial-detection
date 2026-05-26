@@ -72,14 +72,28 @@ Cluster confidence (intra-similarity): {confidence:.2f}
    - Specific internal IPs or non-public network targets
    - Driver or kernel-level activity
 
-2. If feasible, generate 2-3 DISTINCT benign activity variants that exercise the
-   detection pattern from different angles.
+2. If feasible, generate 2-3 DISTINCT benign activity variants. Think entirely
+   from the perspective of what this enterprise system legitimately does —
+   NOT from the attacker behavior and how to make it look benign.
+   The right question is: "What does a real [archetype] naturally do that
+   produces these Windows event types as a side effect of normal operation?"
+   NOT: "How do I reproduce attacker observables in a benign way?"
+   Real enterprise tooling produces these events incidentally. Your scripts
+   should feel like they were written by the tool vendor, not by a SOC analyst
+   trying to be stealthy.
 
-   Each variant must use a DIFFERENT workflow archetype:
+   Each variant must use a DIFFERENT workflow archetype.
+   Each archetype label MUST appear AT MOST ONCE across all variants — no repeats:
    - IT admin workflow: sysadmin performing a legitimate maintenance task
    - User-driven workflow: standard end-user performing a normal task
    - Software installer/updater workflow: installation or update process
    - Document/file operation workflow: user opening, editing, saving files
+
+   Choose the 2-3 most realistic archetypes for this specific pattern.
+   Do NOT generate all 4 if some are a poor fit.
+   Do NOT repeat an archetype label — if IT admin is used once, it cannot appear again.
+   If a user-driven workflow is unrealistic for this pattern (e.g. HKLM writes
+   require admin rights), skip it and use only the archetypes that make sense.
 
    Choose the 2-3 most realistic archetypes for this specific pattern.
    Do NOT generate all 4 if some are a poor fit.

@@ -136,7 +136,14 @@ def _call_llm(
     feasible = bool(parsed.get("feasible", False))
     variants = []
     if feasible:
+        seen_archetypes: set[str] = set()
+        deduped_variants = []
         for v in parsed.get("variants", []):
+            archetype = v.get("archetype", "unknown")
+            if archetype not in seen_archetypes:
+                seen_archetypes.add(archetype)
+                deduped_variants.append(v)
+        for v in deduped_variants:
             variants.append(ScriptVariant(
                 archetype=v.get("archetype", "unknown"),
                 description=v.get("description", ""),
@@ -283,7 +290,7 @@ _STEP_TEMPLATE = """\
 
 """
 
-_EXPORT_STEP = """\
+_EXPORT_STEP = _EXPORT_STEP = """\
       - name: Export and commit corpus logs
         shell: powershell
         run: |

@@ -1,24 +1,23 @@
 """
 pipeline/corpus/yaml_generator.py
 
-Drives LLM calls per cluster and assembles the GH Actions workflow YAML.
+Drives LLM calls per cluster and assembles a PowerShell .ps1 corpus
+stress-test script.
 
 Two responsibilities:
-  1. Call the LLM for each cluster → ClusterIntent (post-LLM data contract)
-  2. Assemble all ClusterIntents into a complete GH Actions workflow YAML
+  1. Call the LLM for each cluster -> ClusterIntent
+  2. Assemble all ClusterIntents into a single .ps1 script
 
-The LLM receives all member rules (not just cluster centroid) so it can
-identify behaviorally distinct sub-patterns within a cluster.
+The .ps1 is committed to corpus/scripts/ and executed by the static
+corpus_runner.yml workflow. No YAML escaping -- PowerShell lives in a
+real .ps1 file.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
-import textwrap
-import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import anthropic
@@ -29,49 +28,197 @@ from pipeline.corpus.prompts import SYSTEM_PROMPT, build_cluster_prompt
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true", "yes")
 
 _LLM_MODEL = "claude-haiku-4-5-20251001"
-_MAX_TOKENS = 4096  # 2048 truncates multi-rule clusters with 3 variants
-_MAX_VARIANTS_PER_WORKFLOW = 40
+_MAX_TOKENS = 4096
 
 
 # ---------------------------------------------------------------------------
-# Post-LLM data contract
+# Data contracts
 # ---------------------------------------------------------------------------
 
 @dataclass
 class ScriptVariant:
-    """A single benign activity variant for a cluster."""
-    archetype: str          # IT admin / user-driven / software installer / document
+    archetype: str
     description: str
-    shell: str              # powershell | cmd | binary
-    script: str             # full script content
+    shell: str
+    script: str
     expected_eids: list[int]
     covers_sub_patterns: list[str]
 
 
 @dataclass
 class ClusterIntent:
-    """
-    Post-LLM representation of a cluster.
-    Extends RuleCluster with LLM-derived semantic content.
-    """
-    # Provenance from RuleCluster
     cluster_id: str
     member_rule_ids: list[str]
     cluster_size: int
     confidence: float
     archetype_tags: list[str]
     target_eids: list[int]
-
-    # LLM output
     feasible: bool
     infeasible_reason: Optional[str]
     behavioral_intent: str
     sub_patterns: list[str]
     variants: list[ScriptVariant]
-
-    # Metadata
     llm_call_succeeded: bool = True
     llm_error: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# PowerShell script templates
+#
+# These are raw strings (r"...") so backslashes are literal.
+# All substitution uses .replace("__TOKEN__", value) -- never .format().
+# This means PS @{}, ${var}, {0} etc. are never touched by Python.
+# ---------------------------------------------------------------------------
+
+_PS_HEADER = r"""# Auto-generated corpus stress-test script
+# Pipeline: closed-loop-adversarial-detection
+# Iteration:  __ITERATION_ID__
+# Clusters:   __N_CLUSTERS__  |  Feasible: __N_FEASIBLE__  |  Variants: __N_VARIANTS__
+# Runner:     corpus_runner.yml (GH Actions)
+
+$ProgressPreference    = 'SilentlyContinue'
+$VerbosePreference     = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
+
+$iterationId = '__ITERATION_ID__'
+
+"""
+
+_VARIANT_HEADER = r"""# -- Cluster: __CLUSTER_ID__  (__CLUSTER_SIZE__ rule(s)) ---------------------
+# Intent:    __INTENT__
+# Rules:     __RULE_IDS__
+# Archetype: __ARCHETYPE__
+
+"""
+
+# Export block uses PS -f operator and Join-Path to avoid any Python
+# format-field ambiguity. Raw string so backslashes are literal.
+_PS_EXPORT = r"""
+# ===========================================================================
+# Export Sysmon events to corpus/benign/
+# ===========================================================================
+
+$exportDir   = Join-Path (Get-Location) 'corpus\benign'
+$processDir  = Join-Path $exportDir 'process'
+$networkDir  = Join-Path $exportDir 'network'
+$registryDir = Join-Path $exportDir 'registry'
+New-Item -ItemType Directory -Force -Path $processDir, $networkDir, $registryDir | Out-Null
+
+function Export-SysmonEvent {
+    param($Event, $Eid)
+    $p   = $Event.Properties
+    $obj = [ordered]@{
+        Channel     = 'Microsoft-Windows-Sysmon/Operational'
+        EventID     = $Eid
+        TimeCreated = $Event.TimeCreated.ToString('o')
+    }
+    if ($Eid -eq 1) {
+        if ($p.Count -gt 4)  { $obj['Image']            = [string]$p[4].Value  }
+        if ($p.Count -gt 10) { $obj['CommandLine']       = [string]$p[10].Value }
+        if ($p.Count -gt 20) { $obj['ParentImage']       = [string]$p[20].Value }
+        if ($p.Count -gt 21) { $obj['ParentCommandLine'] = [string]$p[21].Value }
+        if ($p.Count -gt 3)  { $obj['ProcessId']         = [string]$p[3].Value  }
+        if ($p.Count -gt 19) { $obj['ParentProcessId']   = [string]$p[19].Value }
+        if ($p.Count -gt 12) { $obj['User']              = [string]$p[12].Value }
+        if ($p.Count -gt 11) { $obj['CurrentDirectory']  = [string]$p[11].Value }
+        if ($p.Count -gt 16) { $obj['IntegrityLevel']    = [string]$p[16].Value }
+        if ($p.Count -gt 9)  { $obj['OriginalFileName']  = [string]$p[9].Value  }
+    } elseif ($Eid -eq 3) {
+        if ($p.Count -gt 4)  { $obj['Image']               = [string]$p[4].Value  }
+        if ($p.Count -gt 6)  { $obj['Protocol']            = [string]$p[6].Value  }
+        if ($p.Count -gt 7)  { $obj['Initiated']           = [string]$p[7].Value  }
+        if ($p.Count -gt 9)  { $obj['SourceIp']            = [string]$p[9].Value  }
+        if ($p.Count -gt 11) { $obj['SourcePort']          = [string]$p[11].Value }
+        if ($p.Count -gt 14) { $obj['DestinationIp']       = [string]$p[14].Value }
+        if ($p.Count -gt 15) { $obj['DestinationHostname'] = [string]$p[15].Value }
+        if ($p.Count -gt 16) { $obj['DestinationPort']     = [string]$p[16].Value }
+    } elseif ($Eid -eq 11) {
+        if ($p.Count -gt 4) { $obj['Image']          = [string]$p[4].Value }
+        if ($p.Count -gt 6) { $obj['TargetFilename'] = [string]$p[6].Value }
+    } elseif ($Eid -eq 12) {
+        if ($p.Count -gt 1) { $obj['EventType']    = [string]$p[1].Value }
+        if ($p.Count -gt 5) { $obj['Image']        = [string]$p[5].Value }
+        if ($p.Count -gt 6) { $obj['TargetObject'] = [string]$p[6].Value }
+    } elseif ($Eid -eq 13) {
+        if ($p.Count -gt 1) { $obj['EventType']    = [string]$p[1].Value }
+        if ($p.Count -gt 5) { $obj['Image']        = [string]$p[5].Value }
+        if ($p.Count -gt 6) { $obj['TargetObject'] = [string]$p[6].Value }
+        if ($p.Count -gt 7) { $obj['Details']      = [string]$p[7].Value }
+    }
+    return $obj
+}
+
+$startTime = if ($env:CORPUS_START_TIME) {
+    [datetime]::Parse($env:CORPUS_START_TIME)
+} else {
+    (Get-Date).AddMinutes(-30)
+}
+
+$eidMap = @{
+    1  = $processDir
+    11 = $processDir
+    3  = $networkDir
+    12 = $registryDir
+    13 = $registryDir
+}
+
+foreach ($eid in $eidMap.Keys) {
+    $outFile = Join-Path $eidMap[$eid] ('targeted_' + $iterationId + '_eid' + $eid + '.jsonl')
+    try {
+        Get-WinEvent -FilterHashtable @{
+            LogName   = 'Microsoft-Windows-Sysmon/Operational'
+            Id        = $eid
+            StartTime = $startTime
+        } -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            Export-SysmonEvent -Event $_ -Eid $eid | ConvertTo-Json -Compress
+        } | Out-File -Append -Encoding utf8 $outFile
+        $n = if (Test-Path $outFile) { (Get-Content $outFile | Measure-Object -Line).Lines } else { 0 }
+        Write-Host ('EID ' + $eid + ': ' + $n + ' events -> ' + $outFile)
+    } catch {
+        Write-Host ('EID ' + $eid + ': error - ' + $_.Exception.Message)
+    }
+}
+
+Write-Host ('Export complete for iteration: ' + $iterationId)
+"""
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def _validate_script(script: str, shell: str) -> tuple[bool, str]:
+    """
+    Static safety floor -- not a security control.
+    Catches obviously wrong LLM output without enumerating obfuscation variants.
+    """
+    if not script.strip():
+        return False, "empty script"
+
+    s = script.lower()
+
+    _blocklist = [
+        ("invoke-mimikatz",               "credential dumping"),
+        ("net user /add",                 "user creation"),
+        ("net localgroup administrators", "privilege escalation"),
+        ("sekurlsa",                      "credential access"),
+        ("downloadfile(",                 "payload download"),
+        ("start-bitstransfer",            "payload download"),
+        ("-windowstyle hidden",           "hidden window"),
+        ("reg add hklm\\sam",             "SAM tampering"),
+        ("wevtutil cl ",                  "log clearing"),
+        ("clear-eventlog",                "log clearing"),
+    ]
+
+    for pattern, reason in _blocklist:
+        if pattern in s:
+            return False, f"blocked pattern: {reason} ('{pattern}')"
+
+    if shell == "powershell" and len(script.strip().splitlines()) < 2:
+        return False, "powershell script too short (< 2 lines)"
+
+    return True, "ok"
 
 
 # ---------------------------------------------------------------------------
@@ -83,15 +230,10 @@ def _call_llm(
     client: anthropic.Anthropic,
     prior_context: str = "",
 ) -> ClusterIntent:
-    """
-    Call the LLM for a single cluster and parse the response.
-    Returns a ClusterIntent with feasible=False and llm_call_succeeded=False
-    on error rather than raising — caller continues with other clusters.
-    """
     prompt = build_cluster_prompt(cluster, prior_context)
 
     if _DEBUG:
-        print(f"[corpus/yaml_generator] LLM call for cluster {cluster.cluster_id} "
+        print(f"[corpus/yaml_generator] LLM call for {cluster.cluster_id} "
               f"({cluster.cluster_size} rules)")
 
     try:
@@ -101,51 +243,41 @@ def _call_llm(
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
-        # Extract text block defensively — don't assume content[0] is text.
-        # Anthropic response shape is stable but tool_use blocks can appear.
+
         text_blocks = [b for b in response.content if hasattr(b, "text")]
         if not text_blocks:
-            raise ValueError("No text content block in LLM response")
+            raise ValueError("No text block in LLM response")
         raw_text = text_blocks[0].text.strip()
-
-        # Strip markdown fences if the model adds them despite instructions
-        if raw_text.startswith("```"):
-            raw_text = raw_text.split("\n", 1)[-1]
-            raw_text = raw_text.rsplit("```", 1)[0].strip()
 
         start = raw_text.find("{")
         end = raw_text.rfind("}")
-
         if start == -1 or end == -1:
-            raise ValueError("No JSON object found in LLM response")
-
-        raw_text = raw_text[start:end + 1]
-        parsed = json.loads(raw_text)
+            raise ValueError("No JSON object in LLM response")
+        parsed = json.loads(raw_text[start:end + 1])
 
     except json.JSONDecodeError as e:
         if _DEBUG:
             print(
-                f"[corpus/yaml_generator] JSON parse error for {cluster.cluster_id}: {e}")
+                f"[corpus/yaml_generator] JSON error {cluster.cluster_id}: {e}")
         return _failed_intent(cluster, f"JSON parse error: {e}")
     except Exception as e:
         if _DEBUG:
             print(
-                f"[corpus/yaml_generator] LLM error for {cluster.cluster_id}: {e}")
+                f"[corpus/yaml_generator] LLM error {cluster.cluster_id}: {e}")
         return _failed_intent(cluster, str(e))
 
     feasible = bool(parsed.get("feasible", False))
-    variants = []
+    variants: list[ScriptVariant] = []
+
     if feasible:
-        seen_archetypes: set[str] = set()
-        deduped_variants = []
+        seen: set[str] = set()
         for v in parsed.get("variants", []):
-            archetype = v.get("archetype", "unknown")
-            if archetype not in seen_archetypes:
-                seen_archetypes.add(archetype)
-                deduped_variants.append(v)
-        for v in deduped_variants:
+            arch = v.get("archetype", "unknown")
+            if arch in seen:
+                continue
+            seen.add(arch)
             variants.append(ScriptVariant(
-                archetype=v.get("archetype", "unknown"),
+                archetype=arch,
                 description=v.get("description", ""),
                 shell=v.get("shell", "powershell").lower(),
                 script=v.get("script", ""),
@@ -187,400 +319,109 @@ def _failed_intent(cluster: RuleCluster, error: str) -> ClusterIntent:
     )
 
 
-# ---------------------------------------------------------------------------
-# Dry-run validator
-# ---------------------------------------------------------------------------
-
-def _validate_script(script: str, shell: str) -> tuple[bool, str]:
-    """
-    Lightweight pre-commit script validation.
-    Checks for obvious safety violations and structural issues.
-    Does NOT execute the script — pure static analysis.
-
-    Returns (passed, reason).
-    """
-    if not script.strip():
-        return False, "empty script"
-
-    script_lower = script.lower()
-
-    # Safety floor — not a malware sandbox. Catches obviously wrong LLM output
-    # (credential dumpers, log clearers) without attempting to enumerate all
-    # obfuscation variants. Do not expand this into a security control.
-    _blocklist = [
-        ("invoke-mimikatz", "credential dumping"),
-        ("net user /add", "user creation"),
-        ("net localgroup administrators", "privilege escalation"),
-        ("sekurlsa", "credential access"),
-        ("downloadfile(", "payload download"),
-        ("start-bitstransfer", "payload download"),
-        ("iex(", "inline execution"),
-        # benign uses shouldn't need this
-        ("invoke-expression", "inline execution"),
-        ("-windowstyle hidden", "hidden window"),
-        ("reg add hklm\\sam", "SAM tampering"),
-        ("cacls ", "permission tampering"),
-        ("icacls ", "permission tampering"),
-        ("wevtutil cl ", "log clearing"),
-        ("clear-eventlog", "log clearing"),
-    ]
-
-    for pattern, reason in _blocklist:
-        if pattern in script_lower:
-            return False, f"blocked pattern: {reason} ('{pattern}')"
-
-    # Structural: PowerShell scripts should not be empty or one-liners
-    # claiming to be full workflows
-    if shell == "powershell" and len(script.strip().splitlines()) < 2:
-        return False, "powershell script suspiciously short (< 2 lines)"
-
-    return True, "ok"
+def _lookup_prior_context(
+    cluster: RuleCluster,
+    prior_context_map: dict[str, str],
+) -> str:
+    if not prior_context_map:
+        return ""
+    cluster_tags = set(cluster.archetype_tags)
+    matches = []
+    for tag_key, desc in prior_context_map.items():
+        if len(cluster_tags & set(tag_key.split(","))) >= 2:
+            matches.append(desc)
+    return "\n".join(matches) if matches else ""
 
 
 # ---------------------------------------------------------------------------
-# GH Actions YAML assembly
+# Public interfaces
 # ---------------------------------------------------------------------------
-
-_WORKFLOW_HEADER = """\
-
-permissions:
-  contents: write
-name: corpus-targeted-{iteration_id}
-# Auto-generated by pipeline/corpus/yaml_generator.py
-# Iteration: {iteration_id}
-# Clusters: {n_clusters} | Feasible: {n_feasible} | Variants: {n_variants}
-# Do not edit manually — regenerated each iteration.
-
-on:
-  workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-jobs:
-  generate-corpus:
-    runs-on: windows-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Sysmon
-        shell: powershell
-        run: |
-          $sysmonUrl = "https://download.sysinternals.com/files/Sysmon.zip"
-          $configUrl = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"
-          Invoke-WebRequest -Uri $sysmonUrl -OutFile Sysmon.zip
-          Expand-Archive -Path Sysmon.zip -DestinationPath Sysmon
-          Invoke-WebRequest -Uri $configUrl -OutFile sysmonconfig.xml
-          .\\Sysmon\\Sysmon64.exe -accepteula -i sysmonconfig.xml
-          Start-Sleep -Seconds 3
-          Write-Host "Sysmon installed"
-          $ts = (Get-Date).ToString("o")
-          echo "CORPUS_START_TIME=$ts" >> $env:GITHUB_ENV
-
-"""
-
-_STEP_TEMPLATE = """\
-      - name: "{step_name}"
-        shell: {shell}
-        run: |
-{script_indented}
-
-"""
-
-_EXPORT_STEP = _EXPORT_STEP = """\
-      - name: Export and commit corpus logs
-        shell: powershell
-        run: |
-          $exportDir   = "corpus\\benign"
-          $processDir  = "$exportDir\\process"
-          $networkDir  = "$exportDir\\network"
-          $registryDir = "$exportDir\\registry"
-          New-Item -ItemType Directory -Force -Path $processDir, $networkDir, $registryDir | Out-Null
-
-          function Export-SysmonEvent {
-              param($Event, $Eid)
-              $p   = $Event.Properties
-              $obj = [ordered]@{
-                  Channel     = "Microsoft-Windows-Sysmon/Operational"
-                  EventID     = $Eid
-                  TimeCreated = $Event.TimeCreated.ToString("o")
-              }
-              if ($Eid -eq 1) {
-                  if ($p.Count -gt 4)  { $obj["Image"]            = [string]$p[4].Value  }
-                  if ($p.Count -gt 10) { $obj["CommandLine"]       = [string]$p[10].Value }
-                  if ($p.Count -gt 20) { $obj["ParentImage"]       = [string]$p[20].Value }
-                  if ($p.Count -gt 21) { $obj["ParentCommandLine"] = [string]$p[21].Value }
-                  if ($p.Count -gt 3)  { $obj["ProcessId"]         = [string]$p[3].Value  }
-                  if ($p.Count -gt 19) { $obj["ParentProcessId"]   = [string]$p[19].Value }
-                  if ($p.Count -gt 12) { $obj["User"]              = [string]$p[12].Value }
-                  if ($p.Count -gt 11) { $obj["CurrentDirectory"]  = [string]$p[11].Value }
-                  if ($p.Count -gt 16) { $obj["IntegrityLevel"]    = [string]$p[16].Value }
-                  if ($p.Count -gt 9)  { $obj["OriginalFileName"]  = [string]$p[9].Value  }
-              } elseif ($Eid -eq 3) {
-                  if ($p.Count -gt 4)  { $obj["Image"]               = [string]$p[4].Value  }
-                  if ($p.Count -gt 6)  { $obj["Protocol"]            = [string]$p[6].Value  }
-                  if ($p.Count -gt 7)  { $obj["Initiated"]           = [string]$p[7].Value  }
-                  if ($p.Count -gt 9)  { $obj["SourceIp"]            = [string]$p[9].Value  }
-                  if ($p.Count -gt 11) { $obj["SourcePort"]          = [string]$p[11].Value }
-                  if ($p.Count -gt 14) { $obj["DestinationIp"]       = [string]$p[14].Value }
-                  if ($p.Count -gt 15) { $obj["DestinationHostname"] = [string]$p[15].Value }
-                  if ($p.Count -gt 16) { $obj["DestinationPort"]     = [string]$p[16].Value }
-              } elseif ($Eid -eq 11) {
-                  if ($p.Count -gt 4) { $obj["Image"]          = [string]$p[4].Value }
-                  if ($p.Count -gt 6) { $obj["TargetFilename"] = [string]$p[6].Value }
-              } elseif ($Eid -eq 12) {
-                  if ($p.Count -gt 1) { $obj["EventType"]    = [string]$p[1].Value }
-                  if ($p.Count -gt 5) { $obj["Image"]        = [string]$p[5].Value }
-                  if ($p.Count -gt 6) { $obj["TargetObject"] = [string]$p[6].Value }
-              } elseif ($Eid -eq 13) {
-                  if ($p.Count -gt 1) { $obj["EventType"]    = [string]$p[1].Value }
-                  if ($p.Count -gt 5) { $obj["Image"]        = [string]$p[5].Value }
-                  if ($p.Count -gt 6) { $obj["TargetObject"] = [string]$p[6].Value }
-                  if ($p.Count -gt 7) { $obj["Details"]      = [string]$p[7].Value }
-              }
-              return $obj
-          }
-
-          $startTime = if ($env:CORPUS_START_TIME) {
-              [datetime]::Parse($env:CORPUS_START_TIME)
-          } else {
-              (Get-Date).AddMinutes(-30)
-          }
-
-          $eidMap = @{
-              1  = $processDir
-              11 = $processDir
-              3  = $networkDir
-              12 = $registryDir
-              13 = $registryDir
-          }
-
-          foreach ($eid in $eidMap.Keys) {
-              $outFile = "$($eidMap[$eid])\\targeted_{iteration_id}_eid$($eid).jsonl"
-              try {
-                  Get-WinEvent -FilterHashtable @{
-                      LogName   = "Microsoft-Windows-Sysmon/Operational"
-                      Id        = $eid
-                      StartTime = $startTime
-                  } -ErrorAction SilentlyContinue |
-                  ForEach-Object {
-                      Export-SysmonEvent -Event $_ -Eid $eid | ConvertTo-Json -Compress
-                  } | Out-File -Append -Encoding utf8 $outFile
-                  $n = if (Test-Path $outFile) { (Get-Content $outFile | Measure-Object -Line).Lines } else { 0 }
-                  Write-Host ("EID {0}: {1} events -> {2}" -f $eid, $n, $outFile)
-              } catch {
-                  Write-Host ("EID {0}: error - {1}" -f $eid, $_.Exception.Message)
-              }
-          }
-
-          git config user.name "corpus-bot"
-          git config user.email "corpus-bot@pipeline"
-          git add corpus/benign/
-          $count = (git diff --cached --name-only | Measure-Object -Line).Lines
-          if ($count -gt 0) {
-              git commit -m "corpus: targeted stress-test iteration {iteration_id} [skip ci]"
-              try {
-                  git push origin corpus/dynamically-generated
-                  Write-Host "Committed $count corpus files"
-              } catch {
-                  Write-Host "git push failed: $_"
-              }
-          } else {
-              Write-Host "No new corpus files to commit"
-          }
-
-"""
-
-_WORKFLOW_FOOTER = """\
-      - name: Uninstall Sysmon
-        shell: powershell
-        if: always()
-        run: |
-          try { .\\Sysmon\\Sysmon64.exe -u force 2>&1 | Out-Null } catch {}
-          Write-Host "Sysmon uninstall completed"
-          exit 0
-"""
-
-
-def _shell_to_gha(shell: str) -> str:
-    """Map shell name to GH Actions shell identifier."""
-    mapping = {"powershell": "powershell",
-               "cmd": "cmd", "binary": "powershell"}
-    return mapping.get(shell, "powershell")
-
 
 def generate_intents(
     clusters: list[RuleCluster],
     client: anthropic.Anthropic,
     prior_context_map: dict[str, str] | None = None,
 ) -> list[ClusterIntent]:
-    """
-    Call LLM for each cluster and return ClusterIntent list.
-
-    Args:
-        clusters:          From clusterer.cluster_rules()
-        client:            Anthropic client instance
-        prior_context_map: Optional map of cluster behavioral tags → prior
-                           effective activity descriptions from outcomes.
-    """
+    """Call LLM for each cluster, return ClusterIntent list."""
     if prior_context_map is None:
         prior_context_map = {}
-
     intents = []
     for cluster in clusters:
-        # Match prior context by archetype tags overlap
         prior = _lookup_prior_context(cluster, prior_context_map)
         intent = _call_llm(cluster, client, prior)
-
         if _DEBUG:
             status = "feasible" if intent.feasible else f"infeasible: {intent.infeasible_reason}"
-            variants = len(intent.variants) if intent.feasible else 0
-            print(f"[corpus/yaml_generator] {cluster.cluster_id}: {status}, "
-                  f"{variants} variant(s)")
-
+            n = len(intent.variants) if intent.feasible else 0
+            print(
+                f"[corpus/yaml_generator] {cluster.cluster_id}: {status}, {n} variant(s)")
         intents.append(intent)
-
     return intents
 
 
-def generate_workflow(
+def generate_ps_script(
     intents: list[ClusterIntent],
     iteration_id: str,
 ) -> str:
     """
-    Assemble a complete GH Actions workflow YAML from ClusterIntents.
+    Assemble a .ps1 corpus stress-test script from ClusterIntents.
 
-    Skips infeasible clusters with a comment noting the reason.
-    Validates each script before inclusion — invalid scripts are skipped.
-    Returns the complete YAML string.
+    Returns the complete PS script string.
+    pusher.py writes it to corpus/scripts/targeted_{iteration_id}.ps1.
+    corpus_runner.yml executes it.
     """
     feasible = [i for i in intents if i.feasible and i.llm_call_succeeded]
     n_variants = sum(len(i.variants) for i in feasible)
 
     if _DEBUG:
-        skipped = [
-            i for i in intents if not i.feasible or not i.llm_call_succeeded]
-        print(f"[corpus/yaml_generator] Assembling workflow: "
-              f"{len(feasible)} feasible clusters, {n_variants} variants, "
-              f"{len(skipped)} skipped")
+        print(f"[corpus/yaml_generator] Building PS script -- "
+              f"{len(feasible)} feasible clusters, {n_variants} variants")
 
-    parts = [
-        _WORKFLOW_HEADER.format(
-            iteration_id=iteration_id,
-            n_clusters=len(intents),
-            n_feasible=len(feasible),
-            n_variants=n_variants,
-        )
-    ]
+    parts: list[str] = []
 
-    included_variants = 0
+    # Header
+    parts.append(
+        _PS_HEADER
+        .replace("__ITERATION_ID__", iteration_id)
+        .replace("__N_CLUSTERS__",   str(len(intents)))
+        .replace("__N_FEASIBLE__",   str(len(feasible)))
+        .replace("__N_VARIANTS__",   str(n_variants))
+    )
 
+    # Activity blocks
     for intent in feasible:
-        if included_variants >= _MAX_VARIANTS_PER_WORKFLOW:
-            parts.append(
-                "      # Variant limit reached — remaining clusters skipped\n")
-            break
-        parts.append(
-            f"      # Cluster: {intent.cluster_id}\n"
-            f"      # Intent: {intent.behavioral_intent}\n"
-            f"      # Rules: {', '.join(intent.member_rule_ids)}\n"
-        )
-
         for variant in intent.variants:
-            if included_variants >= _MAX_VARIANTS_PER_WORKFLOW:
-                parts.append(
-                    "      # Variant limit reached — remaining variants skipped\n")
-                break
             passed, reason = _validate_script(variant.script, variant.shell)
             if not passed:
                 if _DEBUG:
-                    print(f"[corpus/yaml_generator] Script validation failed for "
-                          f"{intent.cluster_id}/{variant.archetype}: {reason}")
+                    print(f"[corpus/yaml_generator] Skipping '{variant.archetype}' "
+                          f"in {intent.cluster_id}: {reason}")
                 parts.append(
-                    f"      # SKIPPED variant '{variant.archetype}': {reason}\n"
-                )
+                    f"# SKIPPED variant '{variant.archetype}': {reason}\n\n")
                 continue
 
-            safe_intent = re.sub(r"[\r\n:\"'\[\]{}]+",
-                                 " ", intent.behavioral_intent)
-            safe_intent = re.sub(r"\s+", " ", safe_intent).strip()
+            parts.append(
+                _VARIANT_HEADER
+                .replace("__CLUSTER_ID__",   intent.cluster_id)
+                .replace("__CLUSTER_SIZE__", str(intent.cluster_size))
+                .replace("__INTENT__",       intent.behavioral_intent[:80])
+                .replace("__RULE_IDS__",     ", ".join(intent.member_rule_ids))
+                .replace("__ARCHETYPE__",    variant.archetype)
+            )
 
-            # Truncate at word boundary to avoid mid-word cuts in step names
-            _truncated = safe_intent[:50]
-            if len(safe_intent) > 50:
-                _last_space = _truncated.rfind(" ")
-                _truncated = _truncated[:_last_space] if _last_space > 0 else _truncated
-            step_name = f"{_truncated} [{variant.archetype}]".replace('"', "'")
-
-            # Normalise line endings before embedding in YAML block scalar.
-            # Strip trailing whitespace per line (GH Actions YAML is sensitive
-            # to trailing spaces). Ensure terminal newline for clean block end.
+            # Normalise: strip trailing whitespace per line
             script_clean = "\n".join(
                 line.rstrip() for line in variant.script.splitlines()
-            )
-            if not script_clean.endswith("\n"):
-                script_clean += "\n"
-            indented = textwrap.indent(script_clean, " " * 10)
+            ).rstrip()
+            parts.append(script_clean)
+            parts.append("\n\n")
 
-            script = variant.script
-
-            # Normalize unicode/newlines/indentation
-            script = unicodedata.normalize("NFKC", script)
-            script = script.replace("\r\n", "\n").replace("\r", "\n")
-            script = script.replace("\t", "    ")
-
-            # Replace problematic unicode punctuation
-            script = script.replace("—", "-")
-            script = script.replace("–", "-")
-            script = script.replace("“", '"')
-            script = script.replace("”", '"')
-
-            # Remove trailing whitespace
-            script = "\n".join(line.rstrip() for line in script.splitlines())
-
-            # Indent for YAML block
-            indented = textwrap.indent(script, " " * 10)
-
-            parts.append(
-                _STEP_TEMPLATE
-                .replace("{step_name}", step_name)
-                .replace("{shell}", _shell_to_gha(variant.shell))
-                .replace("{script_indented}", indented)
-            )
-            included_variants += 1
-
-    # Skip comments for infeasible clusters
+    # Infeasible cluster notes
     for intent in intents:
         if not intent.feasible or not intent.llm_call_succeeded:
             reason = intent.infeasible_reason or intent.llm_error or "unknown"
-            parts.append(
-                f"      # SKIPPED cluster {intent.cluster_id}: {reason}\n"
-            )
+            parts.append(f"# SKIPPED cluster {intent.cluster_id}: {reason}\n")
 
-    parts.append(_EXPORT_STEP.replace("{iteration_id}", iteration_id))
-    parts.append(_WORKFLOW_FOOTER)
+    # Export block
+    parts.append(_PS_EXPORT)
 
     return "".join(parts)
-
-
-def _lookup_prior_context(
-    cluster: RuleCluster,
-    prior_context_map: dict[str, str],
-) -> str:
-    """
-    Find prior effective activity context for a cluster by tag overlap.
-    Returns empty string if no relevant prior context found.
-    """
-    if not prior_context_map:
-        return ""
-    cluster_tags = set(cluster.archetype_tags)
-    matches = []
-    for tag_key, description in prior_context_map.items():
-        key_tags = set(tag_key.split(","))
-        overlap = cluster_tags & key_tags
-        if len(overlap) >= 2:  # any overlap
-            matches.append(description)
-    return "\n".join(matches) if matches else ""

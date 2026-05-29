@@ -31,7 +31,7 @@ from pipeline.corpus.pusher import (
 from pipeline.corpus.yaml_generator import (
     ClusterIntent,
     generate_intents,
-    generate_workflow,
+    generate_ps_script,
 )
 
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true", "yes")
@@ -171,7 +171,7 @@ def run(
         )
 
     # --- 5. Assemble workflow YAML ---
-    workflow_yaml = generate_workflow(intents, iteration_id)
+    ps_script = generate_ps_script(intents, iteration_id)
 
     if _DEBUG:
         print(f"[corpus/learner] Workflow assembled — "
@@ -179,7 +179,7 @@ def run(
 
     # --- 6. Push + trigger ---
     push_result: PushResult = push_and_trigger(
-        workflow_yaml=workflow_yaml,
+        workflow_yaml=ps_script,
         iteration_id=iteration_id,
         intents=intents,
     )

@@ -1,0 +1,111 @@
+name: corpus-runner
+# Static workflow -- never regenerated.
+# Triggered when corpus/scripts/*.ps1 files are pushed (by the learner via PR merge).
+# Installs Sysmon, runs all PS scripts in corpus/scripts/, exports logs.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'corpus/scripts/**.ps1'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run-corpus-scripts:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Sysmon
+        shell: powershell
+        run: |
+          Invoke-WebRequest 'https://download.sysinternals.com/files/Sysmon.zip' -OutFile Sysmon.zip
+          Expand-Archive Sysmon.zip -DestinationPath Sysmon
+          Invoke-WebRequest 'https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml' -OutFile sysmonconfig.xml
+          .\Sysmon\Sysmon64.exe -accepteula -i sysmonconfig.xml
+          Start-Sleep -Seconds 5
+          Write-Host 'Sysmon installed'
+          $ts = (Get-Date).ToString('o')
+          echo "CORPUS_START_TIME=$ts" >> $env:GITHUB_ENV
+
+      - name: Run corpus scripts
+        shell: powershell
+        run: |
+          $scripts = Get-ChildItem 'corpus\scripts\*.ps1' -ErrorAction SilentlyContinue
+          if (-not $scripts) {
+            Write-Host 'No PS scripts found in corpus/scripts/'
+            exit 0
+          }
+          foreach ($s in $scripts) {
+            Write-Host "Running: $($s.Name)"
+            try {
+              & $s.FullName
+            } catch {
+              Write-Host "Script error in $($s.Name): $_"
+            }
+          }
+
+      - name: Commit corpus logs
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'SilentlyContinue'
+          git config user.name 'corpus-bot'
+          git config user.email 'corpus-bot@pipeline'
+          git fetch origin 2>&1 | Out-Null
+          $remoteExists = git ls-remote --heads origin corpus/baseline-generated
+          if ($localExists) {
+              git checkout corpus/baseline-generated 2>&1 | Out-Null
+          }
+          elseif ($remoteExists) {
+              git checkout --track origin/corpus/baseline-generated 2>&1 | Out-Null
+          }
+          else {
+              git checkout -b corpus/baseline-generated 2>&1 | Out-Null
+          }
+          git add corpus/benign/
+          $count = (git diff --cached --name-only | Measure-Object -Line).Lines
+          if ($count -gt 0) {
+            $dateStr = Get-Date -Format 'yyyy-MM-dd'
+            git commit -m "corpus: targeted stress-test $dateStr [skip ci]"
+            try {
+              git push origin corpus/baseline-generated
+              Write-Host "Committed $count corpus files to corpus/baseline-generated"
+              $mergeBody = '{"base":"main","head":"corpus/baseline-generated","commit_message":"corpus: auto-merge targeted logs [skip ci]"}'
+              Invoke-RestMethod `
+                -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/merges" `
+                -Method POST `
+                -Headers @{
+                  Authorization          = "Bearer $env:GITHUB_TOKEN"
+                  Accept                 = 'application/vnd.github+json'
+                  'X-GitHub-Api-Version' = '2022-11-28'
+                } `
+                -Body $mergeBody `
+                -ContentType 'application/json' `
+                -ErrorAction SilentlyContinue
+              Write-Host 'Auto-merged corpus/baseline-generated -> main'
+            } catch {
+              Write-Host "Push failed: $_"
+            }
+          } else {
+            Write-Host 'No new corpus files to commit'
+          }
+
+      - name: Uninstall Sysmon
+        shell: powershell
+        if: always()
+        run: |
+          try { .\Sysmon\Sysmon64.exe -u force 2>&1 | Out-Null } catch {}
+          Write-Host 'Sysmon uninstalled'
+          exit 0

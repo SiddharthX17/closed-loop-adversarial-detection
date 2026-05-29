@@ -34,7 +34,7 @@ _GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 _GITHUB_REPO = os.getenv("GITHUB_REPO", "")
 
 _OUTCOMES_PATH = Path("corpus") / "corpus_outcomes.json"
-_WORKFLOW_DIR = ".github/workflows"
+_WORKFLOW_DIR = "corpus/scripts"
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +208,7 @@ def push_and_trigger(
             error="GITHUB_REPO not set",
         )
 
-    workflow_filename = f"corpus_targeted_{iteration_id}.yml"
+    workflow_filename = f"targeted_{iteration_id}.ps1"
     workflow_path = f"{_WORKFLOW_DIR}/{workflow_filename}"
 
     try:
@@ -260,9 +260,10 @@ def push_and_trigger(
                 raise
 
         dispatch_triggered = False
-        workflow_url = (
-            f"https://github.com/{_GITHUB_REPO}/actions/workflows/{workflow_filename}"
-        )
+        workflow_url = f"https://github.com/{_GITHUB_REPO}/blob/{branch_name}/{workflow_path}"
+        if _DEBUG:
+            print(
+                f"[corpus/pusher] PS script committed. corpus_runner.yml triggers on merge.")
 
         # Open PR for human review — workflow runs after approval and merge,
         # then trigger manually from the Actions tab.

@@ -243,7 +243,13 @@ def build_defender_prompt(
             "  Use AND logic to combine high-signal conditions — avoid single-field rules.\n"
             "  FP filtering: use the false positive categories in the strategy as a starting\n"
             "  point for exclusion conditions (NOT / filter logic). Lower priority than\n"
-            "  detection coverage — filters must not introduce false negatives.\n\n"
+            "  detection coverage — filters must not introduce false negatives.\n"
+            "  Critical: verify each filter condition does NOT match any field value visible\n"
+            "  in the attack evidence above. A filter term that appears in attacker-controlled\n"
+            "  strings (task names, command lines, paths) will exclude the detection entirely.\n"
+            "  Use specific binary names or known-good path prefixes — not generic keywords\n"
+            "  that could appear in attacker-chosen strings (e.g. 'Maintenance', 'Update',\n"
+            "  'System') are too broad and will cause false negatives.\n\n"
         )
     else:
         prompt += (
@@ -264,16 +270,43 @@ def build_defender_prompt(
         "      category: process_creation  # or registry_set, network_connection, etc.\n"
         "      product: windows\n\n"
 
+        "Multiple event types:\n"
+        "  If the attack evidence contains events with different EventIDs (e.g. EID 1 and\n"
+        "  EID 3, or EID 1 and EID 13), write a SINGLE rule targeting whichever event type\n"
+        "  provides the strongest, most specific detection signal for this technique.\n"
+        "  One rule = one logsource category. Do not attempt to cover multiple event types\n"
+        "  in one rule — it is not possible in Sigma.\n\n"
+
+        "Registry paths:\n"
+        "  Registry keys appear in two equivalent forms in Windows telemetry:\n"
+        "  'HKCU' (shorthand) and 'HKEY_CURRENT_USER' (full form). Both may appear\n"
+        "  in the same event stream for the same key. Use contains with a path fragment\n"
+        "  that appears in both forms — never startswith with one specific prefix.\n"
+        "  Correct:   TargetObject|contains: '\\SOFTWARE\\MyKey'\n"
+        "  Wrong:     TargetObject|startswith: 'HKEY_CURRENT_USER\\SOFTWARE\\MyKey'\n"
+        "  Backslashes in single-quoted YAML strings are literal — no escaping needed.\n"
+        "  Correct:   TargetObject|contains: '\\SOFTWARE\\'\n"
+        "  Wrong:     TargetObject|contains: '\\\\SOFTWARE\\\\'\n\n"
+
+        "Encoded content matching:\n"
+        "  Use a minimum of 16 non-padding characters when matching base64 in Details\n"
+        "  or CommandLine — not 20 or higher. Short payloads (16-24 chars) are common.\n"
+        "  Correct:   Details|re: '^[A-Za-z0-9+/]{16,}={0,2}$'\n"
+        "  Wrong:     Details|re: '^[A-Za-z0-9+/]{20,}={0,2}$'\n\n"
+
         "Modifiers:\n"
-        "  Use Sigma modifiers correctly: contains, startswith, endswith, re (regex), all (all conditions must match).\n"
-        "  Do not hardcode full URLs, file hashes, or exact string payloads unless\n"
-        "  they are definitively unique to malicious activity.\n\n"
+        "  Valid: contains, startswith, endswith, re, all, base64, windash, exists.\n"
+        "  Invalid (will fail schema linter): notcontains, not_contains, excludes.\n"
+        "  For negative matching, use a filter selection and 'not' in the condition.\n"
+        "  Do not hardcode full URLs, file hashes, or exact payloads unless definitively\n"
+        "  unique to malicious activity.\n\n"
 
         "Metadata:\n"
         "  - Descriptive title\n"
         f"  - tags: attack.{technique_id.lower()}\n"
         "  - status: experimental\n"
         f"  - Rule filename convention (for your title): {technique_id}-<short-description>\n\n"
+
         "Output the Sigma YAML rule only. No explanation, no markdown fences, no preamble."
     )
 

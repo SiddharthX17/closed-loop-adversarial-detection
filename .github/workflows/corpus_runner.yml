@@ -60,11 +60,20 @@ jobs:
       - name: Commit corpus logs
         shell: powershell
         run: |
+          $ErrorActionPreference = 'SilentlyContinue'
           git config user.name 'corpus-bot'
           git config user.email 'corpus-bot@pipeline'
-          git fetch origin
-          git checkout corpus/baseline-generated 2>$null
-          if ($LASTEXITCODE -ne 0) { git checkout -b corpus/baseline-generated }
+          git fetch origin 2>&1 | Out-Null
+          $remoteExists = git ls-remote --heads origin corpus/baseline-generated
+          if ($localExists) {
+              git checkout corpus/baseline-generated 2>&1 | Out-Null
+          }
+          elseif ($remoteExists) {
+              git checkout --track origin/corpus/baseline-generated 2>&1 | Out-Null
+          }
+          else {
+              git checkout -b corpus/baseline-generated 2>&1 | Out-Null
+          }
           git add corpus/benign/
           $count = (git diff --cached --name-only | Measure-Object -Line).Lines
           if ($count -gt 0) {

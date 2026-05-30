@@ -118,6 +118,43 @@ def _build_detection_results(
     return result_map
 
 
+def _select_dominant_event_group(
+    events: list[dict],
+) -> tuple[list[dict], Optional[int]]:
+    """
+    When missed events span multiple EventIDs, return only the group with
+    the strongest detection signal.
+
+    A single Sigma rule targets one logsource category (one EventID type).
+    Sending mixed EventIDs causes the LLM to write rules that span event
+    types — structurally invalid in Sigma.
+
+    Selection: group with most events; tie-break by total populated field count.
+    """
+    if not events:
+        return events, None
+
+    event_ids = {e.get("EventID") for e in events}
+    if len(event_ids) <= 1:
+        return events, next(iter(event_ids), None)
+
+    groups: dict = {}
+    for e in events:
+        eid = e.get("EventID")
+        groups.setdefault(eid, []).append(e)
+
+    def _score(group: list[dict]) -> tuple[int, int]:
+        return len(group), sum(len(e) for e in group)
+
+    dominant_eid = max(groups, key=lambda eid: _score(groups[eid]))
+    _dbg(
+        f"_select_dominant_event_group: EventIDs {sorted(event_ids)} → "
+        f"selected EID {dominant_eid} "
+        f"({len(groups[dominant_eid])}/{len(events)} events)"
+    )
+    return groups[dominant_eid], dominant_eid
+
+
 def _build_gap_context(
     technique_id: str,
     log_stream: dict,
@@ -146,6 +183,21 @@ def _build_gap_context(
         if hasattr(e, "model_dump") else dict(e)
         for e in raw_events
     ]
+
+    # If events span multiple EventIDs, focus on the dominant group.
+    # A Sigma rule targets one logsource category — mixed EventIDs cause
+    # the LLM to write structurally invalid multi-type rules.
+    missed_events, dominant_eid = _select_dominant_event_group(missed_events)
+
+    # Filter attack_sample to match — attack_gate only tests events of the
+    # type the rule is designed for, avoiding spurious unmatched feedback.
+    if dominant_eid is not None:
+        attack_sample = [
+            e for e in raw_events
+            if getattr(e, "EventID", None) == dominant_eid
+        ] or raw_events  # fallback to all if filter empties the list
+    else:
+        attack_sample = raw_events
 
     existing_rule_paths = find_existing_rule_paths(technique_id, RULES_DIR)
 
@@ -442,7 +494,8 @@ class Orchestrator:
                     f"{len(strategy.detection_invariants)} invariant(s)"
                 )
             else:
-                _dbg(f"{technique_id}: planner returned None — defender runs unassisted")
+                _dbg(
+                    f"{technique_id}: planner returned None — defender runs unassisted")
 
             rule_yaml, validation_result = self._defender.run(gap_context)
             summary.rules_generated += 1

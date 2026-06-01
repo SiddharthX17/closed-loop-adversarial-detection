@@ -99,7 +99,9 @@ Cluster confidence (intra-similarity): {confidence:.2f}
    Do NOT generate all 4 if some are a poor fit.
 
 3. For each variant, generate a complete script in the appropriate shell that:
-   - Uses the shell most natural for the activity (PowerShell, CMD, or native binary)
+   - Always generates a PowerShell (.ps1) script regardless of archetype
+   - CMD invocations use cmd /c inside PowerShell, not standalone batch syntax
+   - Native binary invocations use Start-Process or direct call from PowerShell
    - Generates real Sysmon events (the target EventIDs)
    - Avoid escaped quotes inside PowerShell strings.
      Prefer Join-Path and ArgumentList arrays over manually constructed command strings.

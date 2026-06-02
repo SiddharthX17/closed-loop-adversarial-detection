@@ -59,6 +59,53 @@ _SYSMON_MIN: dict[str, dict] = {
     "network":          {"required_any": {"DestinationIp", "DestinationHostname"}},
 }
 
+# ─── EID 3 structural enrichment ─────────────────────────────────────────────
+# Real Sysmon EID 3 events always carry Image and ParentImage — the process
+# that opened the socket. The grounding layer correctly drops these from
+# network events since they don't appear in procedure_text (which describes
+# the connection, not the process). Enrich deterministically post-grounding
+# using the test's known executor type.
+
+_EXECUTOR_IMAGE: dict[str, str] = {
+    "powershell":       r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+    "cmd":              r"C:\Windows\System32\cmd.exe",
+    "command_prompt":   r"C:\Windows\System32\cmd.exe",
+}
+
+_EXECUTOR_PARENT: dict[str, str] = {
+    "powershell":       r"C:\Windows\System32\cmd.exe",
+    "cmd":              r"C:\Windows\explorer.exe",
+    "command_prompt":   r"C:\Windows\explorer.exe",
+}
+
+_EID3_FALLBACK_IMAGE  = r"C:\Windows\System32\cmd.exe"
+_EID3_FALLBACK_PARENT = r"C:\Windows\explorer.exe"
+
+
+def _enrich_network_event(fields: dict, executor_name: str | None) -> dict:
+    """
+    For EID 3 events, populate Image and ParentImage from the test executor
+    if they are absent after grounding.
+
+    This is structural enrichment, not grounding — EID 3 events in real
+    Sysmon telemetry always carry the initiating process. The executor IS
+    that process for any Atomic test.
+    """
+    if fields.get("Image") and fields.get("ParentImage"):
+        return fields  # already populated, nothing to do
+
+    key = (executor_name or "").lower()
+    enriched = dict(fields)
+
+    if not enriched.get("Image"):
+        enriched["Image"] = _EXECUTOR_IMAGE.get(key, _EID3_FALLBACK_IMAGE)
+    if not enriched.get("ParentImage"):
+        enriched["ParentImage"] = _EXECUTOR_PARENT.get(key, _EID3_FALLBACK_PARENT)
+
+    return enriched
+
+
+
 # ─── Prompts ──────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are a threat intelligence analyst generating synthetic Windows Sysmon log artifacts from ATT&CK procedure implementations.
@@ -262,6 +309,14 @@ def _ground_fields(
                     grounded[k] = v
                     continue
 
+        # OriginalFileName is a PE header field — it cannot appear verbatim
+        # in procedure_text because it is embedded in the binary, not in the
+        # command that runs it. Pass through unconditionally and let the
+        # attack_gate backstop hallucinated values.
+        if k == "OriginalFileName":
+            grounded[k] = v
+            continue
+
         print(f"[procedure_interpreter] Dropping ungrounded field {k}={v!r}")
         _drop_stats["ungrounded"] += 1
 
@@ -387,6 +442,7 @@ def build_log_event(
     timestamp: str = None,
     evasion_hints: dict | None = None,
     elevation_required: bool = False,
+    executor_name: str | None = None,
 ) -> LogEvent | None:
     """
     Build a validated LogEvent from an LLM interpretation dict.
@@ -418,6 +474,10 @@ def build_log_event(
     if not grounded_fields:
         print("[build_log_event] Dropped: no fields survived grounding")
         return None
+    
+    # 1b. EID 3 structural enrichment — populate Image/ParentImage from executor
+    if interpretation.get("EventID") == 3:
+        grounded_fields = _enrich_network_event(grounded_fields, executor_name)
 
     # 2. Sysmon minimum field validation
     if not _validate_minimum_sysmon_fields(event_type, grounded_fields):

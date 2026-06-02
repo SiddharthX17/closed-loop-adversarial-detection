@@ -416,6 +416,7 @@ def _emulate_technique(
                 interpretation=interpretation,
                 procedure_text=cleaned.formatted_input,
                 evasion_hints=variant_hints,
+                executor_name=cleaned.executor_name,
             )
 
             if log_event is not None:

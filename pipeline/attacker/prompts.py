@@ -27,7 +27,6 @@ def _format_candidates(candidates: list[AtomicCandidate]) -> str:
         lines.append(
             f"Candidate {i}:\n"
             f"  name: {c.name}\n"
-            f"  guid: {c.guid}\n"
             f"  executor: {c.executor}\n"
             f"  procedure:\n    {c.procedure_text.strip()}"
         )
@@ -40,10 +39,10 @@ def _base_instructions(technique_id: str, technique_name: str, tactic: str) -> s
         f"Technique: {technique_id} — {technique_name}\n"
         f"Tactic: {tactic}\n\n"
         "Your job:\n"
-        "1. Select the best candidate test from the list below.\n"
-        "2. Generate a realistic variation of that test that might evade naive detection rules.\n"
-        "   Treat the Atomic test as a seed — a starting point, not gospel.\n"
-        "   The goal is to vary execution in ways that stress pattern-matching rules.\n\n"
+        "Generate realistic execution variants for this technique that might evade naive "
+        "detection rules. Reference the candidate test(s) below for execution context.\n"
+        "Treat the Atomic test as a seed — a starting point, not gospel.\n"
+        "The goal is to vary execution in ways that stress pattern-matching rules.\n\n"
         "Mutation rules (follow strictly):\n"
         "- All mutations must remain executable and realistic on a Windows endpoint.\n"
         "- Do not invent flags, binaries, command arguments, or syntax that does not exist.\n"
@@ -96,8 +95,6 @@ def _output_schema() -> str:
         "Schema:\n"
         "{\n"
         '  "technique_id": "<technique ID>",\n'
-        '  "selected_test_name": "<name field from chosen candidate>",\n'
-        '  "selected_test_guid": "<guid field from chosen candidate>",\n'
         '  "evasion_hints": {\n'
         '    "<SysmonFieldName>": "<base value>"\n'
         "    // include only fields you are actually mutating\n"

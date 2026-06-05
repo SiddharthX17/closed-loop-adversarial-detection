@@ -19,9 +19,6 @@ Design notes
 - All columns are created as TEXT; sqlite3 numeric coercion handles
   gt/gte/lt/lte comparisons transparently
 - Column names use backtick quoting throughout to match pySigma output
-- Missing fields (sparse Phase 1 logs) surface as sqlite3.OperationalError
-  at execution time — caught and labelled "execution_error: <field>" so
-  result_parser.py can distinguish "no match" from "field not present"
 - REGEXP UDF uses re.IGNORECASE by default — Windows path/field values are
   case-insensitive and Sigma |re patterns don't consistently include (?i)
 - One bad rule file never aborts the batch — each rule is isolated
@@ -205,7 +202,11 @@ def _build_db(events: list[dict]) -> sqlite3.Connection:
 
     Column names are backtick-quoted to match pySigma's generated SQL.
     All values are stored as TEXT; sqlite3 type affinity handles numeric ops.
-    Missing fields for any given event are stored as NULL.
+    Missing fields for any given event are stored as empty string ("") not NULL.
+    This prevents NULL propagation in NOT filter conditions — e.g. a rule with
+    NOT (Image|endswith: 'chrome.exe') on a network event with no Image field
+    correctly evaluates to TRUE rather than NULL (which SQLite treats as FALSE
+    in a WHERE clause, silently killing the match).
     """
     if not events:
         raise ValueError("Cannot build detection DB — event list is empty.")
@@ -222,7 +223,7 @@ def _build_db(events: list[dict]) -> sqlite3.Connection:
     placeholders = ", ".join("?" for _ in columns)
     insert_sql = f"INSERT INTO {_TABLE} ({col_list}) VALUES ({placeholders})"
 
-    rows = [tuple(str(e[c]) if e.get(c) is not None else None for c in columns)
+    rows = [tuple(str(e[c]) if e.get(c) is not None else "" for c in columns)
             for e in events]
     conn.executemany(insert_sql, rows)
     conn.commit()

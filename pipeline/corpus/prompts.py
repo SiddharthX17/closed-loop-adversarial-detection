@@ -72,10 +72,18 @@ Cluster confidence (intra-similarity): {confidence:.2f}
    - Specific internal IPs or non-public network targets
    - Driver or kernel-level activity
 
-2. If feasible, generate 2-3 DISTINCT benign activity variants that exercise the
-   detection pattern from different angles.
+2. If feasible, generate 2-3 DISTINCT benign activity variants. Think entirely
+   from the perspective of what this enterprise system legitimately does —
+   NOT from the attacker behavior and how to make it look benign.
+   The right question is: "What does a real [archetype] naturally do that
+   produces these Windows event types as a side effect of normal operation?"
+   NOT: "How do I reproduce attacker observables in a benign way?"
+   Real enterprise tooling produces these events incidentally. Your scripts
+   should feel like they were written by the tool vendor, not by a SOC analyst
+   trying to be stealthy.
 
-   Each variant must use a DIFFERENT workflow archetype:
+   Each variant must use a DIFFERENT workflow archetype.
+   Each archetype label MUST appear AT MOST ONCE across all variants — no repeats:
    - IT admin workflow: sysadmin performing a legitimate maintenance task
    - User-driven workflow: standard end-user performing a normal task
    - Software installer/updater workflow: installation or update process
@@ -83,16 +91,34 @@ Cluster confidence (intra-similarity): {confidence:.2f}
 
    Choose the 2-3 most realistic archetypes for this specific pattern.
    Do NOT generate all 4 if some are a poor fit.
+   Do NOT repeat an archetype label — if IT admin is used once, it cannot appear again.
+   If a user-driven workflow is unrealistic for this pattern (e.g. HKLM writes
+   require admin rights), skip it and use only the archetypes that make sense.
+
+   Choose the 2-3 most realistic archetypes for this specific pattern.
+   Do NOT generate all 4 if some are a poor fit.
 
 3. For each variant, generate a complete script in the appropriate shell that:
-   - Uses the shell most natural for the activity (PowerShell, CMD, or native binary)
+   - Always generates a PowerShell (.ps1) script regardless of archetype
+   - CMD invocations use cmd /c inside PowerShell, not standalone batch syntax
+   - Native binary invocations use Start-Process or direct call from PowerShell
    - Generates real Sysmon events (the target EventIDs)
+   - Avoid escaped quotes inside PowerShell strings.
+     Prefer Join-Path and ArgumentList arrays over manually constructed command strings.
    - Reads like real enterprise activity, not test scaffolding. Specifically:
      AVOID: comments like "# Simulate X activity", variable names like $testScript,
-     one-liners that just Write-Host a message, placeholder paths like C:\test\thing
+     one-liners that just Write-Host a message, placeholder paths like C:\test\thing,
+     invented registry paths like HKLM:\Software\myapp-test, words like "test",
+     "stress test", "stress-test" anywhere in scripts or comments
      USE: real tool invocations with realistic parameters, actual paths like
-     $env:TEMP\report_Q3.csv or $env:APPDATA\Company\config.ini, plausible
+     $env:TEMP\report_Q3.csv or $env:APPDATA\CompanyName\config.ini, plausible
      operational reasons for each action
+   - For registry operations: use real Windows subsystem paths, not invented ones.
+     Examples: Task Scheduler tasks live under
+     HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks\
+     Run keys live under HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+     Services live under HKLM:\SYSTEM\CurrentControlSet\Services\
+     Use the real path the rule is monitoring, not a stand-in
    - Cleans up any files or registry keys it creates
    - Includes brief inline comments explaining the legitimate business use case
    - Scripts must complete within a few minutes on a GitHub Actions runner.
@@ -152,13 +178,23 @@ def build_cluster_prompt(
         cluster.archetype_tags) if cluster.archetype_tags else "none inferred"
     prior_str = prior_context.strip() if prior_context.strip() else "None recorded yet."
 
+    # Sigma rule values and prior context can contain { } characters —
+    # e.g. #{var} placeholders, regex patterns, PowerShell scriptblocks.
+    # Escape them before .format() or Python raises KeyError trying to
+    # resolve them as named format placeholders.
+    safe_rules_block = rules_block.replace("{", "{{").replace("}", "}}")
+    safe_prior_str = prior_str.replace("{", "{{").replace("}", "}}")
+
     return _CLUSTER_PROMPT_TEMPLATE.format(
         cluster_size=cluster.cluster_size,
-        rules_block=rules_block,
+        rules_block=safe_rules_block,
         target_eids=eids_str,
         archetype_tags=tags_str,
-        confidence=cluster.confidence,
-        prior_context=prior_str,
+        confidence=(
+            cluster.confidence
+            if cluster.confidence is not None
+            else 0.0),
+        prior_context=safe_prior_str,
     )
 
 

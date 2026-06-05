@@ -4,6 +4,7 @@ Coordinates all 7 pipeline stages:
   2. Emulator        → log stream per technique
   3. Detection Layer → per-technique match results
   4. Gap Scorer      → embedding proximity for missed events
+  4.5 Detection Planner   → technique-level detection strategy (invariants, FP profile)
   5. Defender Agent  → candidate Sigma rules for gaps
   6. Validation      → schema linter + attack gate + noise gate (inside DefenderAgent)
   7. PR Creator      → opens GitHub PRs for validated rules
@@ -29,12 +30,16 @@ from pipeline.embedding.scorer import EmbeddingScorer
 from pipeline.embedding.gap_scorer import score_gaps
 from pipeline.embedding.embedder import EMBEDDINGS_PATH
 from pipeline.defender.agent import DefenderAgent, GapContext, find_existing_rule_paths
+from pipeline.detection_planner.planner import DetectionPlanner
 from pipeline.github.pr_creator import PRCreator, PRResult
 from pipeline.metrics.tracker import MetricsTracker
 from pipeline.data.stix_loader import get_loader
 from pipeline.emulator.procedure_interpreter import get_drop_stats
+from pipeline.corpus.learner import run as run_corpus_learner
+from pipeline.corpus.pusher import update_outcome
 
 import yaml
+import anthropic
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
@@ -113,6 +118,43 @@ def _build_detection_results(
     return result_map
 
 
+def _select_dominant_event_group(
+    events: list[dict],
+) -> tuple[list[dict], Optional[int]]:
+    """
+    When missed events span multiple EventIDs, return only the group with
+    the strongest detection signal.
+
+    A single Sigma rule targets one logsource category (one EventID type).
+    Sending mixed EventIDs causes the LLM to write rules that span event
+    types — structurally invalid in Sigma.
+
+    Selection: group with most events; tie-break by total populated field count.
+    """
+    if not events:
+        return events, None
+
+    event_ids = {e.get("EventID") for e in events}
+    if len(event_ids) <= 1:
+        return events, next(iter(event_ids), None)
+
+    groups: dict = {}
+    for e in events:
+        eid = e.get("EventID")
+        groups.setdefault(eid, []).append(e)
+
+    def _score(group: list[dict]) -> tuple[int, int]:
+        return len(group), sum(len(e) for e in group)
+
+    dominant_eid = max(groups, key=lambda eid: _score(groups[eid]))
+    _dbg(
+        f"_select_dominant_event_group: EventIDs {sorted(event_ids)} → "
+        f"selected EID {dominant_eid} "
+        f"({len(groups[dominant_eid])}/{len(events)} events)"
+    )
+    return groups[dominant_eid], dominant_eid
+
+
 def _build_gap_context(
     technique_id: str,
     log_stream: dict,
@@ -142,6 +184,21 @@ def _build_gap_context(
         for e in raw_events
     ]
 
+    # If events span multiple EventIDs, focus on the dominant group.
+    # A Sigma rule targets one logsource category — mixed EventIDs cause
+    # the LLM to write structurally invalid multi-type rules.
+    missed_events, dominant_eid = _select_dominant_event_group(missed_events)
+
+    # Filter attack_sample to match — attack_gate only tests events of the
+    # type the rule is designed for, avoiding spurious unmatched feedback.
+    if dominant_eid is not None:
+        attack_sample = [
+            e for e in raw_events
+            if getattr(e, "EventID", None) == dominant_eid
+        ] or raw_events  # fallback to all if filter empties the list
+    else:
+        attack_sample = raw_events
+
     existing_rule_paths = find_existing_rule_paths(technique_id, RULES_DIR)
 
     return GapContext(
@@ -153,6 +210,20 @@ def _build_gap_context(
         attack_sample=raw_events,       # list[LogEvent] for validation
         corpus_root=corpus_root,
     )
+
+
+def _new_corpus_files_exist(iter_id: str) -> bool:
+    """Check if corpus/benign/ has files tagged with this iteration ID."""
+    corpus_root = Path("corpus/benign")
+    return any(corpus_root.rglob(f"*{iter_id}*"))
+
+
+def _rules_fired_on_new_corpus(iter_id: str) -> list[str]:
+    """
+    Placeholder — returns rule IDs that fired on corpus files from this iteration.
+    Wire to detection engine results when detection-on-new-corpus is implemented.
+    """
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +254,7 @@ class Orchestrator:
         self._stix = get_loader()
         self._attacker = AttackerAgent()
         self._defender = DefenderAgent(corpus_root=corpus_root)
+        self._planner = DetectionPlanner()
         self._metrics = MetricsTracker()
 
         # EmbeddingScorer — load once, reuse across iterations
@@ -194,6 +266,7 @@ class Orchestrator:
 
         # PR creator — optional, only init if opening PRs
         self._pr_creator = None
+        self._anthropic_client = anthropic.Anthropic()
         if open_prs:
             try:
                 self._pr_creator = PRCreator()
@@ -391,6 +464,8 @@ class Orchestrator:
 
         _dbg(f"Stage 5: defender agent ({len(gaps)} gap(s))")
 
+        validated_rule_yamls: list[str] = []
+
         for technique_id in gaps:
             dr = detection_results[technique_id]
             _dbg(f"Processing gap: {technique_id}")
@@ -403,6 +478,24 @@ class Orchestrator:
             )
             if not gap_context:
                 continue
+
+            # ── Stage 4.5: Detection planner ──────────────────────
+            _dbg(f"Stage 4.5: detection planner ({technique_id})")
+            strategy = self._planner.run(
+                technique_id=technique_id,
+                missed_events=gap_context.missed_events,
+                stix_metadata=self._stix.lookup(technique_id),
+            )
+            gap_context.detection_strategy = strategy
+            if strategy:
+                _dbg(
+                    f"{technique_id}: planner produced strategy — "
+                    f"{len(strategy.key_behaviors)} behavior(s), "
+                    f"{len(strategy.detection_invariants)} invariant(s)"
+                )
+            else:
+                _dbg(
+                    f"{technique_id}: planner returned None — defender runs unassisted")
 
             rule_yaml, validation_result = self._defender.run(gap_context)
             summary.rules_generated += 1
@@ -427,6 +520,7 @@ class Orchestrator:
                 continue
 
             summary.rules_validated += 1
+            validated_rule_yamls.append(rule_yaml)
             print(f"[orchestrator] {technique_id}: rule validated ✓")
 
             # ── Stage 7: PR creator ───────────────────────────────
@@ -449,6 +543,31 @@ class Orchestrator:
                 except Exception as e:
                     print(
                         f"[orchestrator] PR creation failed for {technique_id}: {e}")
+
+        # ── Corpus stress-test learner ────────────────────────────
+        if validated_rule_yamls:
+            _dbg(
+                f"Corpus learner: {len(validated_rule_yamls)} validated rule(s)")
+            corpus_result = run_corpus_learner(
+                rule_yamls=validated_rule_yamls,
+                iteration_id=f"iter_{iteration:03d}",
+                anthropic_client=self._anthropic_client,
+            )
+            _dbg(
+                f"Corpus learner: {corpus_result.n_clusters} cluster(s), "
+                f"{corpus_result.n_variants_generated} variant(s), "
+                f"push={'ok' if corpus_result.push_succeeded else 'failed'}"
+            )
+
+        # Update previous iteration's outcome now that detection has run
+        if iteration > 1:
+            prev_iter_id = f"iter_{(iteration - 1):03d}"
+            update_outcome(
+                iteration_id=prev_iter_id,
+                workflow_ran=True,
+                logs_produced=_new_corpus_files_exist(prev_iter_id),
+                rules_hit=_rules_fired_on_new_corpus(prev_iter_id),
+            )
 
         return summary, detection_results
 

@@ -13,10 +13,15 @@ import anthropic
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 from pathlib import Path
+from typing import Optional, TYPE_CHECKING
 
 from pipeline.defender.prompts import build_defender_prompt
 from pipeline.validation.validation_pipeline import validate, ValidationResult
 from pipeline.emulator.log_builder import LogEvent
+from pipeline.validation.rule_normalizer import normalize_rule_yaml
+
+if TYPE_CHECKING:
+    from pipeline.detection_planner.planner import DetectionStrategy
 
 load_dotenv()
 
@@ -46,6 +51,10 @@ class GapContext:
     existing_rule_paths: Paths to existing Sigma rules for this technique.
                          Agent reads + passes to prompt for context.
     corpus_root:         Root of benign corpus — passed to noise_gate.
+    detection_strategy:  Optional pre-analysis from DetectionPlanner. When present,
+                         drives generalised rule generation anchored to invariants
+                         rather than the specific emulated procedure. None triggers
+                         standard (unenriched) prompt path.
     """
     technique_id: str
     technique_name: str
@@ -54,6 +63,7 @@ class GapContext:
     existing_rule_paths: list[Path]
     attack_sample: list[LogEvent]       # for validation — typed
     corpus_root: Path
+    detection_strategy: Optional["DetectionStrategy"] = None
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +111,7 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> str | None:
     try:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
             temperature=0,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -213,6 +223,7 @@ class DefenderAgent:
                 missed_events=gap_context.missed_events,
                 existing_rules=existing_rules,
                 retry_feedback=retry_feedback,
+                detection_strategy=gap_context.detection_strategy,
             )
 
             rule_yaml = _call_llm(prompt, self._client)
@@ -224,7 +235,8 @@ class DefenderAgent:
                         f"LLM returned nothing on attempt {attempt}"
                     )
                 break
-
+            
+            rule_yaml = normalize_rule_yaml(rule_yaml)    
             last_rule = rule_yaml
 
             if DEBUG:

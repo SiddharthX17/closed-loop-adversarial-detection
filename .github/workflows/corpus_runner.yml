@@ -1,0 +1,88 @@
+name: corpus-runner
+# Static workflow -- never regenerated.
+# Fires when learner commits PS1 scripts to corpus/dynamically-generated.
+# Runs scripts, commits logs back to the same branch.
+# Manual PR merge to main is the only human step.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - corpus/dynamically-generated
+    paths:
+      - 'corpus/scripts/**.ps1'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run-corpus-scripts:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout corpus branch
+        uses: actions/checkout@v4
+        with:
+          ref: corpus/dynamically-generated
+          fetch-depth: 0
+
+      - name: Install Sysmon
+        shell: powershell
+        run: |
+          Invoke-WebRequest 'https://download.sysinternals.com/files/Sysmon.zip' -OutFile Sysmon.zip
+          Expand-Archive Sysmon.zip -DestinationPath Sysmon
+          Invoke-WebRequest 'https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml' -OutFile sysmonconfig.xml
+          .\Sysmon\Sysmon64.exe -accepteula -i sysmonconfig.xml
+          Start-Sleep -Seconds 5
+          Write-Host 'Sysmon installed'
+          $ts = (Get-Date).ToString('o')
+          echo "CORPUS_START_TIME=$ts" >> $env:GITHUB_ENV
+
+      - name: Run corpus scripts
+        shell: powershell
+        run: |
+          $scripts = Get-ChildItem 'corpus\scripts\*.ps1' -ErrorAction SilentlyContinue
+          if (-not $scripts) {
+            Write-Host 'No PS scripts found in corpus/scripts/'
+            exit 0
+          }
+          foreach ($s in $scripts) {
+            Write-Host "Running: $($s.Name)"
+            try {
+              & $s.FullName
+            } catch {
+              Write-Host "Script error in $($s.Name): $_"
+            }
+          }
+
+      - name: Commit corpus logs
+        shell: powershell
+        run: |
+          git config user.name 'corpus-bot'
+          git config user.email 'corpus-bot@pipeline'
+          git add corpus/benign/
+          $count = (git diff --cached --name-only | Measure-Object -Line).Lines
+          if ($count -gt 0) {
+            $dateStr = Get-Date -Format 'yyyy-MM-dd'
+            git commit -m "corpus: targeted logs $dateStr [skip ci]"
+            try {
+              git push origin corpus/dynamically-generated
+              Write-Host "Committed $count corpus files"
+            } catch {
+              Write-Host "Push failed: $_"
+            }
+          } else {
+            Write-Host 'No new corpus files to commit'
+          }
+
+      - name: Uninstall Sysmon
+        shell: powershell
+        if: always()
+        run: |
+          try { .\Sysmon\Sysmon64.exe -u force 2>&1 | Out-Null } catch {}
+          Write-Host 'Sysmon uninstalled'
+          exit 0

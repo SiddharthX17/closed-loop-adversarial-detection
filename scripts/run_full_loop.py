@@ -22,11 +22,16 @@ from pipeline.detection.engine import DetectionEngine
 from pipeline.emulator.emulator import run_emulator
 from pipeline.attacker.agent import AttackerAgent, extract_emulator_inputs, CampaignPlan
 from pipeline.orchestrator import Orchestrator, OrchestrationResult
+from pipeline.corpus.learner import run as run_corpus_learner
+from pipeline.corpus.pusher import update_outcome
+from pipeline.detection_planner.planner import DetectionPlanner
+
 import sys
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+import anthropic
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
@@ -91,6 +96,7 @@ def run_instrumented_loop(
         orchestration_result=OrchestrationResult(iterations_run=0)
     )
     previous_results = None
+    anthropic_client = anthropic.Anthropic()
 
     for iteration in range(1, iterations + 1):
         print(
@@ -212,6 +218,10 @@ def run_instrumented_loop(
         rules_validated = 0
         prs_opened = []
 
+        validated_rule_yamls: list[str] = []
+
+        planner = DetectionPlanner()
+
         for technique_id in gaps:
             dr = detection_results[technique_id]
             gap_context = _build_gap_context(
@@ -222,6 +232,14 @@ def run_instrumented_loop(
             )
             if not gap_context:
                 continue
+
+            # Stage 4.5: Detection planner
+            strategy = planner.run(
+                technique_id=technique_id,
+                missed_events=gap_context.missed_events,
+                stix_metadata=stix.lookup(technique_id),
+            )
+            gap_context.detection_strategy = strategy
 
             rule_yaml, validation_result = defender.run(gap_context)
             rules_generated += 1
@@ -245,6 +263,7 @@ def run_instrumented_loop(
                 continue
 
             rules_validated += 1
+            validated_rule_yamls.append(rule_yaml)
             print(f"  {technique_id}: rule validated ✓ "
                   f"(FP={validation_result.fp_rate:.1%})")
 
@@ -265,6 +284,34 @@ def run_instrumented_loop(
                     print(f"  PR: {pr_result.pr_url}")
                 except Exception as e:
                     print(f"  PR failed for {technique_id}: {e}")
+
+        # ── Corpus stress-test learner ────────────────────────────
+        if validated_rule_yamls:
+            print(f"[{iteration}] Corpus learner: "
+                  f"{len(validated_rule_yamls)} validated rule(s)")
+            corpus_result = run_corpus_learner(
+                rule_yamls=validated_rule_yamls,
+                iteration_id=f"iter_{iteration:03d}",
+                anthropic_client=anthropic_client,
+            )
+            print(f"  Clusters: {corpus_result.n_clusters}, "
+                  f"Variants: {corpus_result.n_variants_generated}, "
+                  f"Push: {'ok' if corpus_result.push_succeeded else 'failed'}")
+            if corpus_result.errors:
+                for err in corpus_result.errors:
+                    print(f"  [corpus error] {err}")
+
+        # Update previous iteration's outcome
+        if iteration > 1:
+            prev_iter_id = f"iter_{(iteration - 1):03d}"
+            corpus_root = Path("corpus/benign")
+            new_logs = any(corpus_root.rglob(f"*{prev_iter_id}*"))
+            update_outcome(
+                iteration_id=prev_iter_id,
+                workflow_ran=True,
+                logs_produced=new_logs,
+                rules_hit=[],
+            )
 
         summary = IterationSummary(
             iteration=iteration,

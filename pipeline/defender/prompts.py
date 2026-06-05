@@ -46,8 +46,61 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# Static system prompt — cached on first call, reused across all attempts
+# ---------------------------------------------------------------------------
+
+DEFENDER_SYSTEM_PROMPT = (
+    "You are a detection engineer writing a Sigma rule for Windows Sysmon telemetry.\n\n"
+    "Field selection:\n"
+    "  Use only valid Sysmon field names:\n"
+    "    Image, CommandLine, ParentImage, ParentCommandLine, TargetObject,\n"
+    "    Details, DestinationIp, DestinationHostname, DestinationPort,\n"
+    "    SourceIp, OriginalFileName, CurrentDirectory, Protocol, Initiated,\n"
+    "    ProcessId, ParentProcessId\n\n"
+
+    "Logsource:\n"
+    "  Set logsource correctly for Sysmon:\n"
+    "    logsource:\n"
+    "      category: process_creation  # or registry_set, network_connection, etc.\n"
+    "      product: windows\n\n"
+
+    "Multiple event types:\n"
+    "  If the attack evidence contains events with different EventIDs (e.g. EID 1 and\n"
+    "  EID 3, or EID 1 and EID 13), write a SINGLE rule targeting whichever event type\n"
+    "  provides the strongest, most specific detection signal for this technique.\n"
+    "  One rule = one logsource category. Do not attempt to cover multiple event types\n"
+    "  in one rule — it is not possible in Sigma.\n\n"
+
+    "Registry paths:\n"
+    "  Registry keys appear in two equivalent forms in Windows telemetry:\n"
+    "  'HKCU' (shorthand) and 'HKEY_CURRENT_USER' (full form). Both may appear\n"
+    "  in the same event stream for the same key. Use contains with a path fragment\n"
+    "  that appears in both forms — never startswith with one specific prefix.\n"
+    "  Correct:   TargetObject|contains: '\\SOFTWARE\\MyKey'\n"
+    "  Wrong:     TargetObject|startswith: 'HKEY_CURRENT_USER\\SOFTWARE\\MyKey'\n"
+    "  Backslashes in single-quoted YAML strings are literal — no escaping needed.\n"
+    "  Correct:   TargetObject|contains: '\\SOFTWARE\\'\n"
+    "  Wrong:     TargetObject|contains: '\\\\SOFTWARE\\\\'\n\n"
+
+    "Encoded content matching:\n"
+    "  Use a minimum of 16 non-padding characters when matching base64 in Details\n"
+    "  or CommandLine — not 20 or higher. Short payloads (16-24 chars) are common.\n"
+    "  Correct:   Details|re: '^[A-Za-z0-9+/]{16,}={0,2}$'\n"
+    "  Wrong:     Details|re: '^[A-Za-z0-9+/]{20,}={0,2}$'\n\n"
+
+    "Modifiers:\n"
+    "  Valid: contains, startswith, endswith, re, all, base64, windash, exists.\n"
+    "  Invalid (will fail schema linter): notcontains, not_contains, excludes.\n"
+    "  For negative matching, use a filter selection and 'not' in the condition.\n"
+    "  Do not hardcode full URLs, file hashes, or exact payloads unless definitively\n"
+    "  unique to malicious activity.\n\n"
+
+)
+
+# ---------------------------------------------------------------------------
 # Formatting helpers
 # ---------------------------------------------------------------------------
+
 
 def _format_missed_events(missed_events: list[dict]) -> str:
     if not missed_events:
@@ -130,7 +183,7 @@ def _format_strategy_block(strategy: "DetectionStrategy") -> str:
 # Main prompt builder
 # ---------------------------------------------------------------------------
 
-def build_defender_prompt(
+def build_defender_user_message(
     technique_id: str,
     technique_name: str,
     tactic: str,
@@ -169,7 +222,6 @@ def build_defender_prompt(
 
     # ── Header ────────────────────────────────────────────────────────────
     prompt = (
-        "You are a detection engineer writing a Sigma rule for Windows Sysmon telemetry.\n\n"
         f"Technique: {technique_id} — {technique_name}\n"
         f"Tactic:    {tactic}\n\n"
     )
@@ -223,13 +275,6 @@ def build_defender_prompt(
         "Rule ID:\n"
         f"  Use exactly this UUID4: {generated_id}\n"
         "  Do not change it.\n\n"
-
-        "Field selection:\n"
-        "  Use only valid Sysmon field names:\n"
-        "    Image, CommandLine, ParentImage, ParentCommandLine, TargetObject,\n"
-        "    Details, DestinationIp, DestinationHostname, DestinationPort,\n"
-        "    SourceIp, OriginalFileName, CurrentDirectory, Protocol, Initiated,\n"
-        "    ProcessId, ParentProcessId\n\n"
     )
 
     if is_enriched:
@@ -264,43 +309,6 @@ def build_defender_prompt(
         )
 
     prompt += (
-        "Logsource:\n"
-        "  Set logsource correctly for Sysmon:\n"
-        "    logsource:\n"
-        "      category: process_creation  # or registry_set, network_connection, etc.\n"
-        "      product: windows\n\n"
-
-        "Multiple event types:\n"
-        "  If the attack evidence contains events with different EventIDs (e.g. EID 1 and\n"
-        "  EID 3, or EID 1 and EID 13), write a SINGLE rule targeting whichever event type\n"
-        "  provides the strongest, most specific detection signal for this technique.\n"
-        "  One rule = one logsource category. Do not attempt to cover multiple event types\n"
-        "  in one rule — it is not possible in Sigma.\n\n"
-
-        "Registry paths:\n"
-        "  Registry keys appear in two equivalent forms in Windows telemetry:\n"
-        "  'HKCU' (shorthand) and 'HKEY_CURRENT_USER' (full form). Both may appear\n"
-        "  in the same event stream for the same key. Use contains with a path fragment\n"
-        "  that appears in both forms — never startswith with one specific prefix.\n"
-        "  Correct:   TargetObject|contains: '\\SOFTWARE\\MyKey'\n"
-        "  Wrong:     TargetObject|startswith: 'HKEY_CURRENT_USER\\SOFTWARE\\MyKey'\n"
-        "  Backslashes in single-quoted YAML strings are literal — no escaping needed.\n"
-        "  Correct:   TargetObject|contains: '\\SOFTWARE\\'\n"
-        "  Wrong:     TargetObject|contains: '\\\\SOFTWARE\\\\'\n\n"
-
-        "Encoded content matching:\n"
-        "  Use a minimum of 16 non-padding characters when matching base64 in Details\n"
-        "  or CommandLine — not 20 or higher. Short payloads (16-24 chars) are common.\n"
-        "  Correct:   Details|re: '^[A-Za-z0-9+/]{16,}={0,2}$'\n"
-        "  Wrong:     Details|re: '^[A-Za-z0-9+/]{20,}={0,2}$'\n\n"
-
-        "Modifiers:\n"
-        "  Valid: contains, startswith, endswith, re, all, base64, windash, exists.\n"
-        "  Invalid (will fail schema linter): notcontains, not_contains, excludes.\n"
-        "  For negative matching, use a filter selection and 'not' in the condition.\n"
-        "  Do not hardcode full URLs, file hashes, or exact payloads unless definitively\n"
-        "  unique to malicious activity.\n\n"
-
         "Metadata:\n"
         "  - Descriptive title\n"
         f"  - tags: attack.{technique_id.lower()}\n"

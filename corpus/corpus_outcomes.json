@@ -1,40 +1,15 @@
 [
   {
     "iteration_id": "iter_001",
-    "workflow_path": ".github/workflows/corpus_targeted_iter_001.yml",
+    "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_1c5c4107-56e0-409f-80cd-28d475b91567",
-      "singleton_ebb3a0a5-6892-4987-8f63-8f93c4fe278e"
+      "singleton_c52786d7-f8c4-4967-87b3-d7f370760c03",
+      "singleton_2b1333da-e2d4-4e53-a234-77b05ad0c3f2",
+      "singleton_0c94683a-a6d8-46e8-b547-a55e044e1097"
     ],
     "archetype_tags": [
-      "cmd",
-      "commandline",
-      "explorer",
-      "installer",
-      "mshta",
-      "parent_process",
-      "powershell",
-      "rundll32",
-      "script_host"
-    ],
-    "behavioral_intents": [
-      "Detect credential theft via LSASS memory dumps using specialized dump utilities like procdump, rdrleakdiag, or direct tasklist/wmic enumeration combined with memory dump operations.",
-      "Detect execution of legitimate Windows system binaries from non-standard locations or with mismatched OriginalFileName metadata, a technique used to evade binary whitelisting and masquerade as system tools."
-    ],
-    "committed_at": 1779649013.612679,
-    "workflow_ran": true,
-    "logs_produced": false,
-    "rules_hit": [],
-    "useful_corpus": false
-  },
-  {
-    "iteration_id": "iter_002",
-    "workflow_path": ".github/workflows/corpus_targeted_iter_002.yml",
-    "cluster_ids": [
-      "cluster_e4ed175c18",
-      "singleton_7aa329c4-c43c-435e-b731-126a0a9fdfc2"
-    ],
-    "archetype_tags": [
+      "bypass",
+      "certutil",
       "cmd",
       "commandline",
       "download",
@@ -43,16 +18,60 @@
       "installer",
       "invocation",
       "mshta",
+      "network",
       "parent_process",
       "powershell",
+      "regsvr32",
       "rundll32",
+      "scheduled_task",
       "script_host"
     ],
     "behavioral_intents": [
-      "Detect credential dumping via diagnostic tools (LSASS memory extraction) and script-based remote code retrieval/dynamic code construction.",
-      "Detect execution of system binaries (cmd.exe, powershell.exe, etc.) from user-writable directories or non-standard locations, which indicates masquerading or evasion attempts."
+      "Detect scheduled tasks that spawn script interpreters or LOLBins with command patterns indicative of code execution, encoding/obfuscation, registry manipulation, or remote content retrieval.",
+      "Detect system binaries being executed from non-standard filesystem locations, a common indicator of binary masquerading or DLL-hijacking attacks",
+      "Detect exfiltration of sensitive data via paste/text sharing services using command-line tools or scripting engines rather than browsers."
     ],
-    "committed_at": 1779649208.6293185,
+    "committed_at": 1780734836.7604046,
+    "workflow_ran": true,
+    "logs_produced": false,
+    "rules_hit": [],
+    "useful_corpus": false
+  },
+  {
+    "iteration_id": "iter_002",
+    "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
+    "cluster_ids": [
+      "singleton_b75cd66d-27e8-4ddd-b4ee-73de87a273c9",
+      "cluster_9c32b190a3",
+      "singleton_9b198abe-8ae0-44ee-b877-d45653539928"
+    ],
+    "archetype_tags": [
+      "bypass",
+      "certutil",
+      "cmd",
+      "commandline",
+      "download",
+      "encoding",
+      "explorer",
+      "installer",
+      "invocation",
+      "mshta",
+      "network",
+      "office",
+      "parent_process",
+      "powershell",
+      "registry",
+      "regsvr32",
+      "rundll32",
+      "scheduled_task",
+      "script_host"
+    ],
+    "behavioral_intents": [
+      "Detect shell interpreters (cmd.exe, powershell.exe) spawned from interactive applications (browsers, email clients, file explorer) making network connections to code hosting and paste-bin services, indicating potential command-and-control or payload download activity.",
+      "Detect system binary masquerading from non-standard locations and script interpreters spawned by scheduled task system processes with suspicious command patterns.",
+      "Detect exfiltration of sensitive data via text storage/pastebin services by non-browser processes (e.g., PowerShell, curl, wget uploading to code dump sites)."
+    ],
+    "committed_at": 1780735031.9805725,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

@@ -1,7 +1,7 @@
 """
 3.16 + 3.17 — wire and test the full adversarial loop.
 
-Runs Orchestrator for 2 iterations and verifies:
+Runs the full pipeline for 2 iterations and verifies:
   - All stages executed without contract mismatches
   - Events generated per technique
   - Detection layer produced results
@@ -25,6 +25,7 @@ from pipeline.orchestrator import Orchestrator, OrchestrationResult
 from pipeline.corpus.learner import run as run_corpus_learner
 from pipeline.corpus.pusher import update_outcome
 from pipeline.detection_planner.planner import DetectionPlanner
+from pipeline.emulator.test_history import mark_rule_generated
 
 import sys
 import os
@@ -44,7 +45,7 @@ OUTPUT_DIR = None  # suppress file writes during loop test
 
 
 # ---------------------------------------------------------------------------
-# Extended orchestrator that captures plans per iteration for 3.18
+# Extended result type that captures plans per iteration for 3.18
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -100,7 +101,7 @@ def run_instrumented_loop(
 
     for iteration in range(1, iterations + 1):
         print(
-            f"\n── Iteration {iteration}/{iterations} ────────────────────────────")
+            f"\n-- Iteration {iteration}/{iterations} --------------------------------")
 
         # Stage 1: Attacker
         print(f"[{iteration}] Stage 1: attacker agent")
@@ -109,12 +110,12 @@ def run_instrumented_loop(
             previous_results=previous_results,
         )
         loop_result.plans_per_iteration[iteration] = plan
-        print(f"  Plan: {len(plan)} technique(s) — "
+        print(f"  Plan: {len(plan)} technique(s) -- "
               f"{[tid for tid in plan]}")
 
-        # Stage 2: Emulator
+        # Stage 2: Emulator -- test selection handled internally by emulator
         print(f"[{iteration}] Stage 2: emulator")
-        emulator_tids, evasion_hints, selected_guids, evasion_hints_v2 = extract_emulator_inputs(
+        emulator_tids, evasion_hints, evasion_hints_v2 = extract_emulator_inputs(
             plan)
 
         all_tids = list(dict.fromkeys(
@@ -122,17 +123,16 @@ def run_instrumented_loop(
             [t for t in technique_ids if t not in emulator_tids]
         ))
 
-        log_stream, stats = run_emulator(
+        log_stream, stats, emulation_history = run_emulator(
             technique_ids=all_tids,
             evasion_hints=evasion_hints,
             evasion_hints_v2=evasion_hints_v2,
-            selected_test_guids=selected_guids,
             output_dir=OUTPUT_DIR,
         )
         loop_result.events_per_iteration[iteration] = {
             tid: len(events) for tid, events in log_stream.items()
         }
-        print(f"  Events: {stats.events_generated} total — "
+        print(f"  Events: {stats.events_generated} total -- "
               f"{loop_result.events_per_iteration[iteration]}")
 
         all_events = _flatten_log_stream(log_stream)
@@ -169,14 +169,15 @@ def run_instrumented_loop(
             ratio = f"{matched}/{total_attack}" if total_attack > 0 else "0/0"
             if matched == total_attack and total_attack > 0:
                 label = "Fully Covered"
-                marker = "✓"
+                marker = "+"
             elif matched > 0:
                 label = "Partially Covered"
                 marker = "~"
             else:
                 label = "Missed" if dr.total_rules > 0 else "No Rules"
-                marker = "✗"
-            print(f"    {marker} {tid}: {ratio} events matched — {label}")
+                marker = "x"
+            print(f"    {marker} {tid}: {ratio} events matched -- {label}")
+
         # Record metrics
         for tid, dr in detection_results.items():
             metrics.record_detection(
@@ -200,7 +201,7 @@ def run_instrumented_loop(
 
         # Stage 5+6: Defender + Validation
         if not gaps:
-            print(f"[{iteration}] No gaps — skipping defender")
+            print(f"[{iteration}] No gaps -- skipping defender")
             summary = IterationSummary(
                 iteration=iteration,
                 techniques_attempted=len(technique_ids),
@@ -217,9 +218,7 @@ def run_instrumented_loop(
         rules_generated = 0
         rules_validated = 0
         prs_opened = []
-
         validated_rule_yamls: list[str] = []
-
         planner = DetectionPlanner()
 
         for technique_id in gaps:
@@ -264,7 +263,7 @@ def run_instrumented_loop(
 
             rules_validated += 1
             validated_rule_yamls.append(rule_yaml)
-            print(f"  {technique_id}: rule validated ✓ "
+            print(f"  {technique_id}: rule validated + "
                   f"(FP={validation_result.fp_rate:.1%})")
 
             # Stage 7: PR
@@ -282,10 +281,17 @@ def run_instrumented_loop(
                     )
                     prs_opened.append(pr_result.pr_url)
                     print(f"  PR: {pr_result.pr_url}")
+
+                    # Mark tests used for this technique so cross-run selector
+                    # deprioritises them going forward.
+                    for guid in emulation_history.get(technique_id, {}):
+                        mark_rule_generated(
+                            emulation_history, technique_id, guid)
+
                 except Exception as e:
                     print(f"  PR failed for {technique_id}: {e}")
 
-        # ── Corpus stress-test learner ────────────────────────────
+        # Corpus stress-test learner
         if validated_rule_yamls:
             print(f"[{iteration}] Corpus learner: "
                   f"{len(validated_rule_yamls)} validated rule(s)")
@@ -336,20 +342,18 @@ def run_instrumented_loop(
 def verify_contracts(loop_result: LoopTestResult, technique_ids: list[str]) -> list[str]:
     """
     Verify stage contracts between iterations.
-    Returns list of failure messages — empty = all passed.
+    Returns list of failure messages -- empty = all passed.
     """
     failures = []
 
     for iteration, plan in loop_result.plans_per_iteration.items():
-        # Attacker output contract
-        for tid, task in plan.items():
-            if not task.selected_test_guid:
+        # Attacker output contract -- plan must cover all techniques
+        if not plan:
+            failures.append(f"Iter {iteration}: attacker returned empty plan")
+        for tid in technique_ids:
+            if tid not in plan:
                 failures.append(
-                    f"Iter {iteration} / {tid}: TechniqueTask missing selected_test_guid"
-                )
-            if not task.formatted_input:
-                failures.append(
-                    f"Iter {iteration} / {tid}: TechniqueTask missing formatted_input"
+                    f"Iter {iteration} / {tid}: technique missing from attacker plan"
                 )
 
         # Events generated contract
@@ -358,7 +362,7 @@ def verify_contracts(loop_result: LoopTestResult, technique_ids: list[str]) -> l
             count = events.get(tid, 0)
             if count == 0:
                 failures.append(
-                    f"Iter {iteration} / {tid}: no events generated — "
+                    f"Iter {iteration} / {tid}: no events generated -- "
                     f"emulator produced nothing for this technique"
                 )
 
@@ -367,7 +371,7 @@ def verify_contracts(loop_result: LoopTestResult, technique_ids: list[str]) -> l
         for tid in technique_ids:
             if tid not in det:
                 failures.append(
-                    f"Iter {iteration} / {tid}: no DetectionResult — "
+                    f"Iter {iteration} / {tid}: no DetectionResult -- "
                     f"technique may have no curated rules"
                 )
 
@@ -379,36 +383,32 @@ def verify_contracts(loop_result: LoopTestResult, technique_ids: list[str]) -> l
 # ---------------------------------------------------------------------------
 
 def main():
-    print("\n── 3.16/3.17 Full Loop Wire + Test ─────────────────────")
+    print("\n-- 3.16/3.17 Full Loop Wire + Test -----------------------")
     print(f"  Iterations: {ITERATIONS}")
     print(f"  Open PRs:   {OPEN_PRS}")
     print(f"  Rules dir:  {RULES_DIR}")
     print(f"  Corpus:     {CORPUS_ROOT}")
 
-    # Load technique list
     from pipeline.orchestrator import _load_technique_ids
     technique_ids = _load_technique_ids()
     print(f"  Techniques: {technique_ids}")
 
-    # Run instrumented loop
-    print("\n── Running loop ─────────────────────────────────────────")
+    print("\n-- Running loop ------------------------------------------")
     loop_result = run_instrumented_loop(
         technique_ids=technique_ids,
         iterations=ITERATIONS,
     )
 
-    # Contract verification
-    print("\n── Contract verification ────────────────────────────────")
+    print("\n-- Contract verification ---------------------------------")
     failures = verify_contracts(loop_result, technique_ids)
     if failures:
         print(f"  FAILURES ({len(failures)}):")
         for f in failures:
-            print(f"    ✗ {f}")
+            print(f"    x {f}")
     else:
-        print(f"  ✓ All stage contracts verified")
+        print(f"  + All stage contracts verified")
 
-    # Per-iteration summary
-    print("\n── Loop summary ─────────────────────────────────────────")
+    print("\n-- Loop summary ------------------------------------------")
     for s in loop_result.orchestration_result.summaries:
         print(f"\n  Iteration {s.iteration}:")
         print(f"    Techniques attempted : {s.techniques_attempted}")
@@ -424,11 +424,8 @@ def main():
     for iteration, plan in loop_result.plans_per_iteration.items():
         plans_summary[iteration] = {
             tid: {
-                "selected_test_guid": task.selected_test_guid,
-                "selected_test_name": task.selected_test_name,
                 "evasion_hints": task.evasion_hints,
-                "evasion_hints_v2": task.evasion_hints_v2,  # TODO: Check if
-                "mutation_applied": task.mutation_applied,
+                "evasion_hints_v2": task.evasion_hints_v2,
             }
             for tid, task in plan.items()
         }
@@ -439,8 +436,8 @@ def main():
         json.dump(plans_summary, f, indent=2)
     print(f"\n  Plans saved to {plans_path} (for 3.18 mutation check)")
 
-    overall = "✓ PASSED" if not failures else f"✗ FAILED ({len(failures)} contract failures)"
-    print(f"\n── 3.16/3.17 result: {overall} ──────────────────────────")
+    overall = "+ PASSED" if not failures else f"x FAILED ({len(failures)} contract failures)"
+    print(f"\n-- 3.16/3.17 result: {overall} ---------------------------")
 
 
 if __name__ == "__main__":

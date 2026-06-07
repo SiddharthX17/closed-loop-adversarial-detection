@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   3  |  Feasible: 3  |  Variants: 8
+# Clusters:   3  |  Feasible: 3  |  Variants: 9
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,373 +10,430 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_c52786d7-f8c4-4967-87b3-d7f370760c03  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled tasks that spawn script interpreters or LOLBins with command pa
-# Rules:     c52786d7-f8c4-4967-87b3-d7f370760c03
+# -- Cluster: singleton_b85f895b-3460-4e0c-bbab-407794e449c6  (1 rule(s)) ---------------------
+# Intent:    Detect execution of Windows system binaries (lsass.exe, svchost.exe, cmd.exe, po
+# Rules:     b85f895b-3460-4e0c-bbab-407794e449c6
 # Archetype: IT admin workflow
 
-$TaskName = 'ComplianceAudit_' + [guid]::NewGuid().ToString().Substring(0, 8)
-$TaskPath = '\Microsoft\Windows\ComplianceTools\'
-$Action = New-ScheduledTaskAction `
-  -Execute 'powershell.exe' `
-  -Argument '-NoProfile -ExecutionPolicy Bypass -Command "Get-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\Defender | Select-Object -ExpandProperty DisableRealtimeMonitoring; Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System | Select-Object -ExpandProperty DisableTaskMgr"'
-$Trigger = New-ScheduledTaskTrigger -AtStartup
-$Principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-Register-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -Action $Action -Trigger $Trigger -Principal $Principal -Force | Out-Null
-Start-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath
+$diagFolder = Join-Path $env:TEMP 'SysAdmin_Diag_20250108'
+if (-not (Test-Path $diagFolder)) { New-Item -ItemType Directory -Path $diagFolder -Force | Out-Null }
+
+# Stage system diagnostic tools in temporary working area for batch execution
+$sourceTools = @(
+    @{ Source = 'C:\Windows\System32\cmd.exe'; Dest = 'cmd_local.exe' },
+    @{ Source = 'C:\Windows\System32\net.exe'; Dest = 'net_local.exe' },
+    @{ Source = 'C:\Windows\System32\reg.exe'; Dest = 'reg_local.exe' },
+    @{ Source = 'C:\Windows\System32\sc.exe'; Dest = 'sc_local.exe' }
+)
+
+foreach ($tool in $sourceTools) {
+    $destPath = Join-Path $diagFolder $tool.Dest
+    if (Test-Path $tool.Source) {
+        Copy-Item -Path $tool.Source -Destination $destPath -Force
+    }
+}
+
+# Execute diagnostic commands using locally staged copies
+# Real use case: offline compliance checking, diagnostic collection in isolated environment
+$diagResult = Join-Path $diagFolder 'diag_output.txt'
+
+$cmdPath = Join-Path $diagFolder 'cmd_local.exe'
+if (Test-Path $cmdPath) {
+    Start-Process -FilePath $cmdPath -ArgumentList @('/c', 'systeminfo') -RedirectStandardOutput $diagResult -Wait -NoNewWindow
+}
+
+$netPath = Join-Path $diagFolder 'net_local.exe'
+if (Test-Path $netPath) {
+    Start-Process -FilePath $netPath -ArgumentList @('user') -Wait -NoNewWindow
+}
+
+$regPath = Join-Path $diagFolder 'reg_local.exe'
+if (Test-Path $regPath) {
+    Start-Process -FilePath $regPath -ArgumentList @('query', 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\svchost') -Wait -NoNewWindow
+}
+
+$scPath = Join-Path $diagFolder 'sc_local.exe'
+if (Test-Path $scPath) {
+    Start-Process -FilePath $scPath -ArgumentList @('query', 'state=running') -Wait -NoNewWindow
+}
+
+# Cleanup staging directory and all copied tools
 Start-Sleep -Seconds 2
-Unregister-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -Confirm:$false
+if (Test-Path $diagFolder) {
+    Remove-Item -Path $diagFolder -Recurse -Force -ErrorAction SilentlyContinue
+}
 
-# -- Cluster: singleton_c52786d7-f8c4-4967-87b3-d7f370760c03  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled tasks that spawn script interpreters or LOLBins with command pa
-# Rules:     c52786d7-f8c4-4967-87b3-d7f370760c03
+# -- Cluster: singleton_b85f895b-3460-4e0c-bbab-407794e449c6  (1 rule(s)) ---------------------
+# Intent:    Detect execution of Windows system binaries (lsass.exe, svchost.exe, cmd.exe, po
+# Rules:     b85f895b-3460-4e0c-bbab-407794e449c6
 # Archetype: Software installer/updater workflow
 
-$TaskName = 'SoftwareMaintenanceTask_' + [guid]::NewGuid().ToString().Substring(0, 8)
-$TaskPath = '\Microsoft\Windows\SoftwareUpdates\'
-$ScriptPath = Join-Path $env:TEMP 'update_manifest.ps1'
-$DownloadScript = @'
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-$Uri = 'https://www.microsoft.com/en-us/download'
-$null = @'
-Simulating legitimate manifest retrieval
-'@
-$ManifestContent = @'
-<?xml version="1.0"?>
-<configuration><version>1.0</version></configuration>
-'@
-$ManifestContent | Out-File -FilePath (Join-Path $env:TEMP 'manifest.xml') -Force
-'@
-Set-Content -Path $ScriptPath -Value $DownloadScript -Force
-$Action = New-ScheduledTaskAction `
-  -Execute 'cmd.exe' `
-  -Argument ('/c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $ScriptPath + '"')
-$Trigger = New-ScheduledTaskTrigger -AtStartup
-$Principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-Register-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -Action $Action -Trigger $Trigger -Principal $Principal -Force | Out-Null
-Start-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath
-Start-Sleep -Seconds 3
-Unregister-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -Confirm:$false
-Remove-Item -Path $ScriptPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path (Join-Path $env:TEMP 'manifest.xml') -Force -ErrorAction SilentlyContinue
+$appInstallDir = Join-Path $env:TEMP 'MyApp_Installer_Phase2'
+if (-not (Test-Path $appInstallDir)) { New-Item -ItemType Directory -Path $appInstallDir -Force | Out-Null }
 
-# -- Cluster: singleton_2b1333da-e2d4-4e53-a234-77b05ad0c3f2  (1 rule(s)) ---------------------
-# Intent:    Detect system binaries being executed from non-standard filesystem locations, a 
-# Rules:     2b1333da-e2d4-4e53-a234-77b05ad0c3f2
-# Archetype: Software installer/updater workflow
+# Simulate application installer that bundles system configuration tools
+$bundledTools = @(
+    @{ Source = 'C:\Windows\System32\powershell.exe'; Dest = 'config_engine.exe' },
+    @{ Source = 'C:\Windows\System32\msiexec.exe'; Dest = 'pkg_installer.exe' },
+    @{ Source = 'C:\Windows\System32\wevtutil.exe'; Dest = 'log_collector.exe' },
+    @{ Source = 'C:\Windows\System32\schtasks.exe'; Dest = 'schedule_mgr.exe' }
+)
 
-$stagingDir = Join-Path $env:TEMP "AppDeploy_$(Get-Random)"
-New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
-
-try {
-  # Copy system binaries to staging area (simulating bundled runtime libs in installer)
-  Copy-Item -Path "C:\Windows\System32\rundll32.exe" -Destination (Join-Path $stagingDir "rundll32.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\regsvr32.exe" -Destination (Join-Path $stagingDir "regsvr32.exe") -Force
-
-  # Execute from non-standard location with legitimate parameters
-  # rundll32 with shell.dll is a common legitimate operation
-  & (Join-Path $stagingDir "rundll32.exe") shell.dll,Control_RunDLL sysdm.cpl @0 /wait
-
-  # Small delay to ensure Sysmon captures the event
-  Start-Sleep -Milliseconds 500
-
-  # regsvr32 with /u /s is legitimate unregistration (common in uninstallers)
-  & (Join-Path $stagingDir "regsvr32.exe") /u /s scrrun.dll 2>$null
-
-  Start-Sleep -Milliseconds 500
-}
-finally {
-  # Cleanup staging directory
-  Remove-Item -Path $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+# Extract bundled tools to installation staging area
+foreach ($tool in $bundledTools) {
+    $destPath = Join-Path $appInstallDir $tool.Dest
+    if (Test-Path $tool.Source) {
+        Copy-Item -Path $tool.Source -Destination $destPath -Force
+    }
 }
 
-# -- Cluster: singleton_2b1333da-e2d4-4e53-a234-77b05ad0c3f2  (1 rule(s)) ---------------------
-# Intent:    Detect system binaries being executed from non-standard filesystem locations, a 
-# Rules:     2b1333da-e2d4-4e53-a234-77b05ad0c3f2
-# Archetype: IT admin workflow
+# Application initialization: configure system logging
+$configScript = Join-Path $appInstallDir 'init_config.ps1'
+"Write-Host 'Initializing system configuration...'" | Set-Content -Path $configScript
 
-$recoveryStaging = Join-Path $env:TEMP "SystemRecovery_$(Get-Random)"
-New-Item -ItemType Directory -Path $recoveryStaging -Force | Out-Null
-
-try {
-  # Copy critical system binaries to recovery location (admin maintenance scenario)
-  Copy-Item -Path "C:\Windows\System32\svchost.exe" -Destination (Join-Path $recoveryStaging "svchost.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\csrss.exe" -Destination (Join-Path $recoveryStaging "csrss.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\msiexec.exe" -Destination (Join-Path $recoveryStaging "msiexec.exe") -Force
-
-  # Verify binary integrity via execution (legitimate diagnostic check)
-  # svchost -? displays help
-  & (Join-Path $recoveryStaging "svchost.exe") -? 2>$null | Out-Null
-
-  Start-Sleep -Milliseconds 500
-
-  # msiexec /? is a standard system information query
-  & (Join-Path $recoveryStaging "msiexec.exe") /? 2>$null | Out-Null
-
-  Start-Sleep -Milliseconds 500
-}
-finally {
-  # Cleanup recovery staging area
-  Remove-Item -Path $recoveryStaging -Recurse -Force -ErrorAction SilentlyContinue
+$pwshPath = Join-Path $appInstallDir 'config_engine.exe'
+if (Test-Path $pwshPath) {
+    Start-Process -FilePath $pwshPath -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $configScript) -Wait -NoNewWindow
 }
 
-# -- Cluster: singleton_2b1333da-e2d4-4e53-a234-77b05ad0c3f2  (1 rule(s)) ---------------------
-# Intent:    Detect system binaries being executed from non-standard filesystem locations, a 
-# Rules:     2b1333da-e2d4-4e53-a234-77b05ad0c3f2
+# Installer stage 2: query event logs (using bundled tool)
+$logPath = Join-Path $appInstallDir 'setup_events.evtx'
+$wevtPath = Join-Path $appInstallDir 'log_collector.exe'
+if (Test-Path $wevtPath) {
+    Start-Process -FilePath $wevtPath -ArgumentList @('query-events', 'System', '/c:5') -Wait -NoNewWindow
+}
+
+# Installer stage 3: register scheduled maintenance task
+$schPath = Join-Path $appInstallDir 'schedule_mgr.exe'
+if (Test-Path $schPath) {
+    Start-Process -FilePath $schPath -ArgumentList @('/query', '/tn', 'Microsoft\\Windows\\Defrag\\ScheduledDefrag') -Wait -NoNewWindow
+}
+
+# Installer cleanup: remove staging directory
+Start-Sleep -Seconds 2
+if (Test-Path $appInstallDir) {
+    Remove-Item -Path $appInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_b85f895b-3460-4e0c-bbab-407794e449c6  (1 rule(s)) ---------------------
+# Intent:    Detect execution of Windows system binaries (lsass.exe, svchost.exe, cmd.exe, po
+# Rules:     b85f895b-3460-4e0c-bbab-407794e449c6
 # Archetype: User-driven workflow
 
-$toolkitDir = Join-Path $env:TEMP "PortableToolkit_$(Get-Random)"
-New-Item -ItemType Directory -Path $toolkitDir -Force | Out-Null
+$portableToolDir = Join-Path $env:USERPROFILE 'Downloads' 'SecurityKit_Portable'
+if (-not (Test-Path $portableToolDir)) { New-Item -ItemType Directory -Path $portableToolDir -Force | Out-Null }
 
-try {
-  # Copy system tools to portable toolkit location (USB/removable media scenario)
-  Copy-Item -Path "C:\Windows\System32\explorer.exe" -Destination (Join-Path $toolkitDir "explorer.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\rundll32.exe" -Destination (Join-Path $toolkitDir "rundll32.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\conhost.exe" -Destination (Join-Path $toolkitDir "conhost.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\dllhost.exe" -Destination (Join-Path $toolkitDir "dllhost.exe") -Force
+# User downloads and extracts portable tool kit containing system inspection utilities
+$toolSet = @(
+    @{ Source = 'C:\Windows\System32\tasklist.exe'; Dest = 'tasklist.exe' },
+    @{ Source = 'C:\Windows\System32\taskkill.exe'; Dest = 'taskkill.exe' },
+    @{ Source = 'C:\Windows\System32\wmic.exe'; Dest = 'wmic.exe' },
+    @{ Source = 'C:\Windows\System32\netsh.exe'; Dest = 'netsh.exe' },
+    @{ Source = 'C:\Windows\System32\ipconfig.exe'; Dest = 'ipconfig.exe' }
+)
 
-  # Execute explorer with a specific path (legitimate folder browsing)
-  & (Join-Path $toolkitDir "explorer.exe") $env:WINDIR 2>$null &
-  $explorerPid = $?
-  Start-Sleep -Milliseconds 800
-  Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt (Get-Date).AddSeconds(-2) } | Stop-Process -Force -ErrorAction SilentlyContinue
-
-  # Execute rundll32 with legitimate diagnostic DLL
-  & (Join-Path $toolkitDir "rundll32.exe") kernel32.dll 2>$null
-
-  Start-Sleep -Milliseconds 500
-
-  # Execute conhost to verify console host functionality
-  & (Join-Path $toolkitDir "conhost.exe") 2>$null &
-  Start-Sleep -Milliseconds 600
-  Get-Process conhost -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt (Get-Date).AddSeconds(-3) } | Stop-Process -Force -ErrorAction SilentlyContinue
-
-  Start-Sleep -Milliseconds 300
-}
-finally {
-  # Cleanup toolkit directory
-  Remove-Item -Path $toolkitDir -Recurse -Force -ErrorAction SilentlyContinue
-  # Ensure any lingering processes are terminated
-  Get-Process explorer, conhost -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt (Get-Date).AddSeconds(-5) } | Stop-Process -Force -ErrorAction SilentlyContinue
+foreach ($tool in $toolSet) {
+    $destPath = Join-Path $portableToolDir $tool.Dest
+    if (Test-Path $tool.Source) {
+        Copy-Item -Path $tool.Source -Destination $destPath -Force
+    }
 }
 
-# -- Cluster: singleton_0c94683a-a6d8-46e8-b547-a55e044e1097  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of sensitive data via paste/text sharing services using comm
-# Rules:     0c94683a-a6d8-46e8-b547-a55e044e1097
-# Archetype: IT admin workflow
+# User runs portable toolkit operations
+$reportDir = Join-Path $portableToolDir 'reports'
+if (-not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir -Force | Out-Null }
 
-$ErrorActionPreference = 'Stop'
-$scriptBlockId = [System.Guid]::NewGuid().ToString().Substring(0, 8)
-$logPath = Join-Path $env:TEMP "cert_validation_$scriptBlockId.log"
-
-try {
-  Write-Host "[*] Certificate validation audit - checking external service endpoints"
-
-  # Simulate legitimate SSL chain validation using certutil
-  # This is a real administrative task: verifying certificate chains for compliance
-  Write-Host "[*] Validating certificate chain for paste service endpoint"
-
-  # certutil naturally connects to the domain to fetch intermediate certificates
-  # when processing certificate chains. This is legitimate infrastructure validation.
-  $targetDomain = 'pastebin.com'
-
-  # Create a temporary certificate file for testing (self-signed, harmless)
-  $certPath = Join-Path $env:TEMP "test_cert_$scriptBlockId.cer"
-  $certContent = @"
-MIIDXTCCAkWgAwIBAgIJAKlHnLoTzx3+MA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
-BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
-aWRnaXRzIFB0eSBMdGQwHhcNMjEwMTAxMDAwMDAwWhcNMjIwMTAxMDAwMDAwWjBF
-MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50
-ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
-CgKCAQEA0Z3VS5JJcds3s7L7FJpZKqM9XN8xyK5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ
-5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ
-5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ5K5L5YZ
-QIDAQABo1AwTjBMBgNVHQ4EFQQTbGRhcDovL2V4YW1wbGUuY29tMCsGA1UdHwQk
-MCIwIKAeoByGGmh0dHA6Ly9leGFtcGxlLmNvbS9jYS5jcmwwDQYJKoZIhvcNAQEL
-BQADggEBAJC1L5BxRVD7l9pNKJTxPi9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9p
-qJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9p
-qJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ9pqJ8=
-"@
-
-  Set-Content -Path $certPath -Value $certContent -ErrorAction Continue
-
-  # The certutil command will attempt to build and verify the certificate chain
-  # When it does, it may initiate connections to validate CRL/OCSP endpoints
-  # This is the legitimate source of the network event
-  Write-Host "[*] Running certificate chain validation"
-  & cmd /c "certutil.exe -verify -urlfetch $certPath" 2>&1 | Out-Null
-
-  Write-Host "[+] Certificate validation completed (expected Sysmon event on network connection)"
-
-  # Additional validation: use certutil to check a specific domain certificate
-  Write-Host "[*] Checking domain certificate availability"
-  & cmd /c "certutil.exe -URL https://$targetDomain" 2>&1 | Out-Null
-
-  Write-Host "[+] Domain certificate check completed"
-
-} catch {
-  Write-Host "[-] Error during validation: $_"
-} finally {
-  # Cleanup
-  if (Test-Path $certPath) { Remove-Item $certPath -Force -ErrorAction SilentlyContinue }
-  if (Test-Path $logPath) { Remove-Item $logPath -Force -ErrorAction SilentlyContinue }
-  Write-Host "[*] Cleanup completed"
+# Inspect running processes
+$processReport = Join-Path $reportDir 'processes.txt'
+$taskListPath = Join-Path $portableToolDir 'tasklist.exe'
+if (Test-Path $taskListPath) {
+    Start-Process -FilePath $taskListPath -RedirectStandardOutput $processReport -Wait -NoNewWindow
 }
 
-# -- Cluster: singleton_0c94683a-a6d8-46e8-b547-a55e044e1097  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of sensitive data via paste/text sharing services using comm
-# Rules:     0c94683a-a6d8-46e8-b547-a55e044e1097
+# Check network configuration
+$netshPath = Join-Path $portableToolDir 'netsh.exe'
+if (Test-Path $netshPath) {
+    Start-Process -FilePath $netshPath -ArgumentList @('interface', 'ip', 'show', 'config') -Wait -NoNewWindow
+}
+
+# Query network interfaces via WMI
+$wmicPath = Join-Path $portableToolDir 'wmic.exe'
+if (Test-Path $wmicPath) {
+    Start-Process -FilePath $wmicPath -ArgumentList @('nic', 'get', 'Description') -Wait -NoNewWindow
+}
+
+# Cleanup: user deletes portable toolkit after use
+Start-Sleep -Seconds 2
+if (Test-Path $portableToolDir) {
+    Remove-Item -Path $portableToolDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_1ed71a2a-79ac-482a-baef-7ef4cb647b81  (1 rule(s)) ---------------------
+# Intent:    Detect attackers staging encoded payloads in registry as part of scheduled task 
+# Rules:     1ed71a2a-79ac-482a-baef-7ef4cb647b81
 # Archetype: Software installer/updater workflow
 
-$ErrorActionPreference = 'Stop'
-$scriptBlockId = [System.Guid]::NewGuid().ToString().Substring(0, 8)
-$workDir = Join-Path $env:TEMP "deployment_$scriptBlockId"
+$regPath = 'HKCU:\Software\TestInstaller'
+$regValue = 'ConfigData'
 
-try {
-  New-Item -ItemType Directory -Path $workDir -Force | Out-Null
-
-  Write-Host "[*] Configuration deployment utility - fetching remote configuration"
-
-  # Simulate a deployment tool that fetches config from a paste service
-  # This is a real pattern in CI/CD environments where configs are shared via paste services
-
-  $pythonScript = Join-Path $workDir "deploy_config.py"
-  $configPath = Join-Path $workDir "app_config.ini"
-
-  # Create a Python script that uses curl to fetch a configuration
-  # (common in deployment automation)
-  $pythonCode = @"
-import subprocess
-import sys
-import os
-
-def fetch_config(url):
-    """Fetch application configuration from remote service."""
-    try:
-        cmd = ['curl', '-s', '-f', '--max-time', '5', url]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            return result.stdout
-        else:
-            print(f'Failed to fetch config: {result.returncode}', file=sys.stderr)
-            return None
-    except Exception as e:
-        print(f'Error fetching config: {e}', file=sys.stderr)
-        return None
-
-def main():
-    # Simulate configuration retrieval from a paste service
-    # This would be a real config URL in production
-    config_url = 'https://paste.mozilla.org/api/v2/snippet/'
-
-    config = fetch_config(config_url)
-    if config:
-        print('[+] Configuration retrieved successfully')
-        with open(sys.argv[1], 'w') as f:
-            f.write(config)
-    else:
-        print('[-] Configuration fetch failed')
-        sys.exit(1)
-
-if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        main()
-    else:
-        print('Usage: deploy_config.py <output_file>')
-"@
-
-  Set-Content -Path $pythonScript -Value $pythonCode -Encoding UTF8
-
-  Write-Host "[*] Executing configuration deployment with remote fetch"
-
-  # Run the Python deployment script
-  # This naturally generates network connections via curl to the paste domain
-  & python.exe $pythonScript $configPath 2>&1 | ForEach-Object { Write-Host "[py] $_" }
-
-  Write-Host "[*] Configuration deployment initiated (expected curl network event)"
-
-  # Also demonstrate direct curl usage for config validation
-  Write-Host "[*] Validating configuration endpoint accessibility"
-
-  # Use curl to check paste service connectivity (real deployment validation)
-  & cmd /c "curl.exe -s -I https://paste.ee --max-time 3 2>&1" | Out-Null
-
-  Write-Host "[+] Configuration deployment completed"
-
-} catch {
-  Write-Host "[-] Deployment error: $_"
-} finally {
-  # Cleanup
-  if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue }
-  Write-Host "[*] Deployment artifacts cleaned up"
+# Create test registry path
+if (-not (Test-Path $regPath)) {
+  New-Item -Path $regPath -Force | Out-Null
 }
 
-# -- Cluster: singleton_0c94683a-a6d8-46e8-b547-a55e044e1097  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of sensitive data via paste/text sharing services using comm
-# Rules:     0c94683a-a6d8-46e8-b547-a55e044e1097
+# Simulate realistic base64-encoded configuration data (16+ chars, realistic length)
+# This represents serialized installer settings: product ID, version, install paths, etc.
+$configPayload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('InstallDir=C:\\Program Files\\TestApp|ProductID=12345|Version=1.0.0|Features=Full'))
+
+# Write as would occur during msiexec installation
+Set-ItemProperty -Path $regPath -Name $regValue -Value $configPayload -Type String -Force
+
+# Verify write occurred
+$written = Get-ItemProperty -Path $regPath -Name $regValue -ErrorAction SilentlyContinue
+if ($written.$regValue -match '^[a-zA-Z0-9+/]{16,}={0,2}$') {
+  Write-Host 'Configuration staged in registry during installation'
+}
+
+# Simulate additional hex-encoded metadata (product key validation, licensing info)
+$hexPayload = '5469616C5678352E31202D206C6973656E7365206D6574616461746120636F6E74656E74'
+Set-ItemProperty -Path $regPath -Name 'LicenseData' -Value $hexPayload -Type String -Force
+
+Start-Sleep -Seconds 1
+
+# Cleanup - legitimate installers remove temporary staging data
+if (Test-Path $regPath) {
+  Remove-Item -Path $regPath -Force -Recurse -ErrorAction SilentlyContinue
+}
+
+Write-Host 'Installation configuration workflow completed'
+
+# -- Cluster: singleton_1ed71a2a-79ac-482a-baef-7ef4cb647b81  (1 rule(s)) ---------------------
+# Intent:    Detect attackers staging encoded payloads in registry as part of scheduled task 
+# Rules:     1ed71a2a-79ac-482a-baef-7ef4cb647b81
+# Archetype: IT admin workflow
+
+$regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+$regValue = 'TempDiagnosticData'
+
+# Simulate administrative task configuration data
+# This represents encoded diagnostic settings or WMI event subscription parameters
+$diagnosticData = @{
+  'DiagnosticFlags' = 'ENABLE_DEEP_SCAN|INCLUDE_NETWORK_ADAPTERS|VERBOSE_LOGGING'
+  'ServiceConfig' = 'STARTUP_TYPE=DELAYED|TIMEOUT=30000|RETRY_COUNT=3'
+  'Timestamp' = (Get-Date -Format 'o')
+}
+
+# Convert to base64 representation (realistic for configuration serialization)
+$jsonConfig = $diagnosticData | ConvertTo-Json -Compress
+$encodedConfig = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($jsonConfig))
+
+# Write encoded configuration to registry (would be written by svchost or wmiprvse)
+Set-ItemProperty -Path $regPath -Name $regValue -Value $encodedConfig -Type String -Force
+
+# Store complementary hex-encoded metadata (binary flags or checksums)
+$checksum = [BitConverter]::ToString([System.Text.Encoding]::UTF8.GetBytes('ChecksumValue')).Replace('-', '')
+Set-ItemProperty -Path $regPath -Name 'ConfigChecksum' -Value $checksum -Type String -Force
+
+Start-Sleep -Seconds 1
+
+# Administrative cleanup - remove diagnostic staging after processing
+Remove-ItemProperty -Path $regPath -Name $regValue -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path $regPath -Name 'ConfigChecksum' -ErrorAction SilentlyContinue
+
+Write-Host 'Administrative configuration workflow completed'
+
+# -- Cluster: singleton_1ed71a2a-79ac-482a-baef-7ef4cb647b81  (1 rule(s)) ---------------------
+# Intent:    Detect attackers staging encoded payloads in registry as part of scheduled task 
+# Rules:     1ed71a2a-79ac-482a-baef-7ef4cb647b81
 # Archetype: User-driven workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
-$scriptBlockId = [System.Guid]::NewGuid().ToString().Substring(0, 8)
-$reportPath = Join-Path $env:TEMP "connectivity_report_$scriptBlockId.txt"
+$regPath = 'HKCU:\Software\Microsoft\Accessibility'
+$regValue = 'ToolPreferences'
 
-try {
-  Write-Host "[*] Network connectivity diagnostic - testing service endpoints"
+# Simulate user preference data encoded for storage
+# This represents realistic preference serialization: magnifier settings, font scales, color themes
+$preferences = @{
+  'MagnificationLevel' = '2.5'
+  'ContrastMode' = 'HIGH'
+  'FontScale' = '120'
+  'LastUsed' = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+}
 
-  # List of public services to test connectivity (including paste services)
-  # This is a real troubleshooting scenario where admins check multiple endpoints
-  $testEndpoints = @(
-    'https://pastebin.com',
-    'https://paste.mozilla.org',
-    'https://dpaste.com',
-    'https://rentry.co',
-    'https://hastebin.com',
-    'https://paste.ee'
-  )
+# Convert to base64 for storage (realistic preference serialization)
+$prefJson = $preferences | ConvertTo-Json -Compress
+$encodedPrefs = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($prefJson))
 
-  $results = @()
+# Write user preferences (simulates utility writing from system32 context)
+Set-ItemProperty -Path $regPath -Name $regValue -Value $encodedPrefs -Type String -Force
 
-  Write-Host "[*] Testing connectivity to service endpoints"
+# Store complementary metadata as hex (font IDs, palette codes)
+$fontMetadata = '464F4E545F49443D433A255C5769646F77735C466F6E7473'
+Set-ItemProperty -Path $regPath -Name 'FontMetadata' -Value $fontMetadata -Type String -Force
 
-  foreach ($endpoint in $testEndpoints) {
-    Write-Host "[*] Testing $endpoint"
+Start-Sleep -Seconds 1
 
-    # Use Invoke-WebRequest for PowerShell-native connectivity check
-    # This generates real network events
+# User preference cleanup
+Remove-ItemProperty -Path $regPath -Name $regValue -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path $regPath -Name 'FontMetadata' -ErrorAction SilentlyContinue
+
+Write-Host 'User preference workflow completed'
+
+# -- Cluster: singleton_96c4cfbc-baad-4170-9a71-df706ce57e0b  (1 rule(s)) ---------------------
+# Intent:    Detect data exfiltration via text sharing and paste sites by monitoring outbound
+# Rules:     96c4cfbc-baad-4170-9a71-df706ce57e0b
+# Archetype: User-driven workflow
+
+# Developer workflow: accessing shared code snippet via GitHub Gist
+$vscodeInstalled = Test-Path "C:\Users\$env:USERNAME\AppData\Local\Programs\Microsoft VS Code\Code.exe"
+
+if ($vscodeInstalled) {
+    # Simulate opening VS Code and accessing a Gist URL
+    # This generates network connections to gist.github.com and gist.githubusercontent.com
+    $gistUrl = "https://gist.github.com/some-user/some-gist-id"
+
+    # Use curl (available on windows-latest) to fetch the Gist HTML page
+    # This mimics what VS Code would do when a user pastes a Gist link or the IDE resolves remote content
+    Write-Host "Fetching shared code snippet from GitHub Gist..."
     try {
-      $response = Invoke-WebRequest -Uri $endpoint -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-      $status = 'Reachable'
+        $response = Invoke-WebRequest -Uri $gistUrl -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
+        if ($response.StatusCode -eq 200) {
+            Write-Host "Successfully accessed Gist resource"
+        }
     } catch {
-      $status = 'Unreachable (expected in restricted environment)'
+        # Network may not be available or URL may not resolve; that's ok for this test
+        Write-Host "Gist access attempt completed (network unavailable in test environment)"
     }
 
-    $results += [PSCustomObject]@{
-      Endpoint = $endpoint
-      Status = $status
-      Timestamp = Get-Date
+    # Also fetch the raw content from gist.githubusercontent.com
+    try {
+        $rawUrl = "https://gist.githubusercontent.com/some-user/some-gist-id/raw"
+        $rawResponse = Invoke-WebRequest -Uri $rawUrl -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host "Raw Gist access attempt completed"
     }
-  }
-
-  Write-Host "[+] Connectivity tests completed"
-
-  # Also test using curl for redundancy
-  Write-Host "[*] Validating with curl-based endpoint check"
-  & cmd /c "curl.exe -s -I https://paste.mozilla.org --max-time 3 2>&1" | Out-Null
-  & cmd /c "curl.exe -s -I https://pastecode.io --max-time 3 2>&1" | Out-Null
-
-  Write-Host "[+] Endpoint validation completed"
-
-  # Export results (diagnostic report)
-  $results | Export-Csv -Path $reportPath -NoTypeInformation -ErrorAction Continue
-  Write-Host "[*] Report generated: $reportPath"
-
-} catch {
-  Write-Host "[-] Diagnostic error: $_"
-} finally {
-  # Cleanup
-  if (Test-Path $reportPath) { Remove-Item $reportPath -Force -ErrorAction SilentlyContinue }
-  Write-Host "[*] Diagnostic cleanup completed"
+} else {
+    Write-Host "VS Code not installed; simulating network connection pattern with curl"
+    # Use curl directly to simulate the network behavior that would be observed
+    & cmd /c "curl -s -m 5 https://gist.github.com/some-user/some-gist-id 1>nul 2>&1"
+    & cmd /c "curl -s -m 5 https://gist.githubusercontent.com/some-user/some-gist-id/raw 1>nul 2>&1"
 }
+
+Write-Host "Developer Gist access workflow completed"
+
+# -- Cluster: singleton_96c4cfbc-baad-4170-9a71-df706ce57e0b  (1 rule(s)) ---------------------
+# Intent:    Detect data exfiltration via text sharing and paste sites by monitoring outbound
+# Rules:     96c4cfbc-baad-4170-9a71-df706ce57e0b
+# Archetype: Software installer/updater workflow
+
+# JetBrains IDE workflow: checking for updates and fetching documentation snippets
+$jetbrainsPath = Get-ChildItem -Path "C:\Users\$env:USERNAME\AppData\Local\Programs" -Filter "*JetBrains*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+
+if ($jetbrainsPath) {
+    Write-Host "Found JetBrains installation at $($jetbrainsPath.FullName)"
+} else {
+    Write-Host "JetBrains IDE not found; simulating plugin update check network activity"
+}
+
+# Simulate IDE checking for code examples and documentation from CDN-hosted paste services
+# These are legitimate requests that real IDEs make for code completion, snippets, and diagnostics
+$pasteServices = @(
+    "https://gist.github.com/api/v1/gists",
+    "https://raw.githubusercontent.com/jetbrains-plugins/snippets/main/index.json",
+    "https://pastebin.com/raw_api.php",
+    "https://paste.debian.net/"
+)
+
+foreach ($service in $pasteServices) {
+    Write-Host "Checking documentation service: $service"
+    try {
+        # Simulate IDE making HTTP request to fetch code snippets or diagnostics
+        $response = Invoke-WebRequest -Uri $service -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
+        Write-Host "Service check completed"
+    } catch {
+        # Expected in offline CI environments; request was still generated
+        Write-Host "Request attempt made to $service"
+    }
+}
+
+# Also test direct network connection patterns that Sysmon monitors
+try {
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+    $tcpClient = New-Object System.Net.Sockets.TcpClient
+
+    # Attempt connection to paste.debian.net on port 443 (HTTPS)
+    Write-Host "Initiating TCP connection to paste.debian.net:443"
+    $tcpClient.Connect("paste.debian.net", 443)
+    if ($tcpClient.Connected) {
+        Write-Host "Connected successfully"
+        $tcpClient.Close()
+    }
+} catch {
+    Write-Host "Connection attempt initiated (network may be restricted in CI environment)"
+}
+
+Write-Host "JetBrains IDE update check workflow completed"
+
+# -- Cluster: singleton_96c4cfbc-baad-4170-9a71-df706ce57e0b  (1 rule(s)) ---------------------
+# Intent:    Detect data exfiltration via text sharing and paste sites by monitoring outbound
+# Rules:     96c4cfbc-baad-4170-9a71-df706ce57e0b
+# Archetype: IT admin workflow
+
+# IT admin workflow: using GitHub Desktop for repository operations and fetching documentation
+$githubDesktopPath = Get-ChildItem -Path "C:\Users\$env:USERNAME\AppData\Local\Programs\GitHub Desktop\*" -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+if ($githubDesktopPath) {
+    Write-Host "GitHub Desktop found at: $($githubDesktopPath.FullName)"
+} else {
+    Write-Host "GitHub Desktop not installed; simulating admin network activity"
+}
+
+# Admin accessing code repositories and documentation
+$adminTargets = @(
+    "https://gist.github.com/search?q=powershell",
+    "https://api.github.com/gists",
+    "https://gist.githubusercontent.com/admin-user/deployment-scripts/main/deploy.ps1",
+    "https://bin.bpaste.net/"
+)
+
+Write-Host "Admin initiating documentation and repository access..."
+foreach ($target in $adminTargets) {
+    try {
+        Write-Host "Accessing: $target"
+        $webRequest = Invoke-WebRequest -Uri $target -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
+    } catch {
+        # Request was initiated even if not completed
+        Write-Host "Request to $target initiated"
+    }
+}
+
+# Simulate direct TCP connection monitoring from admin tools
+try {
+    $hostnames = @("gist.github.com", "paste.debian.net", "bin.bpaste.net")
+    foreach ($hostname in $hostnames) {
+        Write-Host "Testing connection to $hostname on port 443"
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+
+        try {
+            $client = New-Object System.Net.Sockets.TcpClient
+            $connectionTask = $client.ConnectAsync($hostname, 443)
+            $completed = $connectionTask.Wait(2000)  # 2 second timeout
+
+            if ($completed -and $client.Connected) {
+                Write-Host "Connected to $hostname"
+                $client.Close()
+            } else {
+                Write-Host "Connection attempt to $hostname initiated"
+                $client.Close()
+            }
+        } catch {
+            Write-Host "Connection attempt to $hostname generated network event"
+        }
+    }
+} catch {
+    Write-Host "Network access simulation completed"
+}
+
+Write-Host "Admin documentation and repository access workflow completed"
 
 
 # ===========================================================================

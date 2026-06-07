@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   3  |  Feasible: 3  |  Variants: 9
+# Clusters:   3  |  Feasible: 2  |  Variants: 6
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,317 +10,169 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# SKIPPED variant 'User-driven workflow': blocked pattern: hidden window ('-windowstyle hidden')
+# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
 # SKIPPED variant 'Software installer/updater workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
+# SKIPPED variant 'User-driven workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
-# -- Cluster: cluster_9c32b190a3  (2 rule(s)) ---------------------
-# Intent:    Detect system binary masquerading from non-standard locations and script interpr
-# Rules:     fd31f00d-be50-438a-b0bb-370680f0fb92, f508e658-cdd4-487f-a60d-98b852fae798
+# -- Cluster: singleton_e66d7887-58d4-4941-955e-0f9501b53347  (1 rule(s)) ---------------------
+# Intent:    Detect base64-encoded payloads staged in HKCU registry hives for later execution
+# Rules:     e66d7887-58d4-4941-955e-0f9501b53347
 # Archetype: IT admin workflow
 
-$reportDir = Join-Path $env:ProgramData 'SystemReports'
-if (-not (Test-Path $reportDir)) {
-    New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+# Legitimate administrative configuration staging for scheduled task
+# Scenario: IT admin creating an automated backup verification routine
+
+$registryPath = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
+$valueName = 'BackupVerifyConfig'
+
+# Base64-encoded configuration string representing legitimate task metadata
+# This would normally come from a management tool or configuration system
+$legitimateConfig = 'VmVyaWZ5QmFja3VwSW50ZWdyaXR5QXV0b21hdGVk'
+
+# Create registry path if it doesn't exist
+if (-not (Test-Path $registryPath)) {
+    New-Item -Path $registryPath -Force | Out-Null
 }
 
-$taskName = 'DiagnosticComplianceCheck'
-$taskPath = '\\Microsoft\\Windows\\Performance'
-$psScript = Join-Path $env:ProgramData 'SystemReports\\compliance_check.ps1'
+# Stage the base64 configuration in registry
+New-ItemProperty -Path $registryPath -Name $valueName -Value $legitimateConfig -PropertyType String -Force | Out-Null
 
-$scriptContent = @'
-[System.Diagnostics.Process]::GetProcesses() | Select-Object -Property Name, Id, WorkingSet | ConvertTo-Csv -NoTypeInformation | Out-File -FilePath (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramData)) 'SystemReports\\process_inventory.csv')
-Get-WmiObject Win32_Service | Where-Object {$_.State -eq 'Running'} | Select-Object -Property Name, ProcessId, State | ConvertTo-Csv -NoTypeInformation | Out-File -FilePath (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramData)) 'SystemReports\\service_status.csv')
-'@
+# Verify the registry value was written (admin would validate their work)
+Get-ItemProperty -Path $registryPath -Name $valueName | Select-Object -ExpandProperty $valueName
 
-Set-Content -Path $psScript -Value $scriptContent -Force
+# Create a scheduled task that references this registry configuration
+# This is realistic: tasks often read their parameters from registry
+$taskName = 'SystemMaintenanceVerification'
+$taskPath = '\\Microsoft\\Windows\\System32'
 
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $psScript)
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date)
-$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+# Simulate the task reading the registry value and using it
+$taskAction = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument '-Command "Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\ NT\CurrentVersion\Winlogon -Name BackupVerifyConfig"'
 
-Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+# Register the task (this would trigger additional registry operations)
+Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger (New-ScheduledTaskTrigger -AtLogon) -Force -ErrorAction SilentlyContinue | Out-Null
 
-Start-ScheduledTask -TaskName $taskName -TaskPath $taskPath
+# Clean up
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path $registryPath -Name $valueName -Force -ErrorAction SilentlyContinue
 
-Start-Sleep -Seconds 3
-
-Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
-
-Remove-Item -Path $psScript -Force -ErrorAction SilentlyContinue
-Remove-Item -Path (Join-Path $reportDir 'process_inventory.csv') -Force -ErrorAction SilentlyContinue
-Remove-Item -Path (Join-Path $reportDir 'service_status.csv') -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $reportDir -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: cluster_9c32b190a3  (2 rule(s)) ---------------------
-# Intent:    Detect system binary masquerading from non-standard locations and script interpr
-# Rules:     fd31f00d-be50-438a-b0bb-370680f0fb92, f508e658-cdd4-487f-a60d-98b852fae798
+# -- Cluster: singleton_e66d7887-58d4-4941-955e-0f9501b53347  (1 rule(s)) ---------------------
+# Intent:    Detect base64-encoded payloads staged in HKCU registry hives for later execution
+# Rules:     e66d7887-58d4-4941-955e-0f9501b53347
 # Archetype: Software installer/updater workflow
 
-$stagingDir = Join-Path $env:ProgramData 'SoftwareStaging\\ComponentUpdate'
-if (-not (Test-Path $stagingDir)) {
-    New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+# Realistic browser or plugin installer storing encoded configuration
+# Scenario: Mozilla Firefox portable configuration setup
+
+$registryPath = 'HKCU:\Software\Mozilla\Firefox\Profiles\Default'
+$valueName = 'ExtensionMetadata'
+
+# Base64-encoded extension configuration (realistic for browser plugins)
+$extensionConfig = 'RXh0ZW5zaW9uQ29uZmlndXJhdGlvbkRhdGFWMTA='
+
+# Create Firefox registry path
+if (-not (Test-Path $registryPath)) {
+    New-Item -Path $registryPath -Force | Out-Null
 }
 
-$regsvr32Path = Join-Path $stagingDir 'regsvr32.exe'
-$rundll32Path = Join-Path $stagingDir 'rundll32.exe'
-$certutilPath = Join-Path $stagingDir 'certutil.exe'
+# Write the encoded configuration (installers do this during setup)
+New-ItemProperty -Path $registryPath -Name $valueName -Value $extensionConfig -PropertyType String -Force | Out-Null
 
-$regsvr32Src = Join-Path $env:windir 'System32\\regsvr32.exe'
-$rundll32Src = Join-Path $env:windir 'System32\\rundll32.exe'
-$certutilSrc = Join-Path $env:windir 'System32\\certutil.exe'
-
-Copy-Item -Path $regsvr32Src -Destination $regsvr32Path -Force -ErrorAction SilentlyContinue
-Copy-Item -Path $rundll32Src -Destination $rundll32Path -Force -ErrorAction SilentlyContinue
-Copy-Item -Path $certutilSrc -Destination $certutilPath -Force -ErrorAction SilentlyContinue
-
-$dllPath = Join-Path $stagingDir 'samplecomponent.dll'
-@'
-# Minimal PE header for testing
-'@ | Set-Content -Path $dllPath
-
-if (Test-Path $regsvr32Path) {
-    & cmd /c "$regsvr32Path /s /c $dllPath 2>nul" -ErrorAction SilentlyContinue
+# Installer would verify the write
+$verifyValue = Get-ItemProperty -Path $registryPath -Name $valueName -ErrorAction SilentlyContinue
+if ($verifyValue.$valueName) {
+    Write-Host 'Configuration staged successfully'
 }
 
-Start-Sleep -Milliseconds 500
-
-if (Test-Path $rundll32Path) {
-    & cmd /c "$rundll32Path oleaut32.dll,GetRecordInfoFromGuids 2>nul" -ErrorAction SilentlyContinue
+# Also simulate Adobe Reader doing the same under its registry branch
+$adobePath = 'HKCU:\Software\Adobe\Reader\DC\Trust\PluginWhitelist'
+if (-not (Test-Path $adobePath)) {
+    New-Item -Path $adobePath -Force | Out-Null
 }
 
-Start-Sleep -Milliseconds 500
+$adobePluginConfig = 'QWRvYmVQbHVnaW5Db25maWd1cmF0aW9u'
+New-ItemProperty -Path $adobePath -Name 'PluginSettings' -Value $adobePluginConfig -PropertyType String -Force | Out-Null
 
-if (Test-Path $certutilPath) {
-    & cmd /c "$certutilPath -hashfile $dllPath SHA256 2>nul" -ErrorAction SilentlyContinue
+# Verify Adobe configuration
+Get-ItemProperty -Path $adobePath -Name 'PluginSettings' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'PluginSettings'
+
+# Also test Google registry path (realistic for Chrome/Google Drive)
+$googlePath = 'HKCU:\Software\Google\Chrome\Preferences'
+if (-not (Test-Path $googlePath)) {
+    New-Item -Path $googlePath -Force | Out-Null
 }
 
-Start-Sleep -Milliseconds 500
+$chromeConfig = 'Q2hyb21lUHJlZmVyZW5jZXNDb25maWd1cmF0aW9u'
+New-ItemProperty -Path $googlePath -Name 'Extensions' -Value $chromeConfig -PropertyType String -Force | Out-Null
 
-Remove-Item -Path $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+# Clean up all test registrations
+Remove-ItemProperty -Path $registryPath -Name $valueName -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path $adobePath -Name 'PluginSettings' -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $adobePath -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path $googlePath -Name 'Extensions' -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $googlePath -Force -ErrorAction SilentlyContinue
 
-# -- Cluster: cluster_9c32b190a3  (2 rule(s)) ---------------------
-# Intent:    Detect system binary masquerading from non-standard locations and script interpr
-# Rules:     fd31f00d-be50-438a-b0bb-370680f0fb92, f508e658-cdd4-487f-a60d-98b852fae798
+# -- Cluster: singleton_e66d7887-58d4-4941-955e-0f9501b53347  (1 rule(s)) ---------------------
+# Intent:    Detect base64-encoded payloads staged in HKCU registry hives for later execution
+# Rules:     e66d7887-58d4-4941-955e-0f9501b53347
 # Archetype: User-driven workflow
 
-$appStagingDir = Join-Path $env:TEMP 'PortableAppBundle'
-if (-not (Test-Path $appStagingDir)) {
-    New-Item -ItemType Directory -Path $appStagingDir -Force | Out-Null
+# User installing and configuring a portable utility that uses registry for settings
+# Scenario: Developer tool (like Git Bash or Node.js integration) storing encoded config
+
+$registryPath = 'HKCU:\Software\Classes\CLSID\{9999AAAA-BBBB-CCCC-DDDD-000000000000}'
+if (-not (Test-Path $registryPath)) {
+    New-Item -Path $registryPath -Force | Out-Null
 }
 
-$cmdExePath = Join-Path $appStagingDir 'cmd.exe'
-$psExePath = Join-Path $appStagingDir 'powershell.exe'
-$psScriptPath = Join-Path $appStagingDir 'config_setup.ps1'
-$batchScriptPath = Join-Path $appStagingDir 'environment_check.bat'
+# Base64-encoded development tool configuration (realistic for dev utilities)
+$devToolConfig = 'RGV2ZWxvcG1lbnRUb29sQ29uZmlndXJhdGlvblN0cmluZw=='
+New-ItemProperty -Path $registryPath -Name 'Config' -Value $devToolConfig -PropertyType String -Force | Out-Null
 
-Copy-Item -Path (Join-Path $env:windir 'System32\\cmd.exe') -Destination $cmdExePath -Force
-Copy-Item -Path (Join-Path $env:windir 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -Destination $psExePath -Force
-
-$psScriptContent = @'
-$configPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)) 'LocalAppBundle\\config.ini'
-if (-not (Test-Path (Split-Path $configPath))) {
-    New-Item -ItemType Directory -Path (Split-Path $configPath) -Force | Out-Null
-}
-@'
-APP_VERSION=1.2.3
-LOG_LEVEL=INFO
-CACHE_DIR=.\\cache
-'@ | Set-Content -Path $configPath
-'@
-
-Set-Content -Path $psScriptPath -Value $psScriptContent
-
-$batchScriptContent = @'
-echo Validating environment
-directory="%APPDATA%\\LocalAppBundle"
-if not exist "%directory%" mkdir "%directory%"
-echo Configuration directory verified
-'@
-
-Set-Content -Path $batchScriptPath -Value $batchScriptContent
-
-if (Test-Path $cmdExePath) {
-    & $cmdExePath /c "echo Testing portable app environment && set" 2>$null | Select-Object -First 5
+# Verify configuration was written
+$storedConfig = Get-ItemProperty -Path $registryPath -Name 'Config' -ErrorAction SilentlyContinue
+if ($storedConfig) {
+    Write-Host 'Development tool configuration loaded'
 }
 
-Start-Sleep -Milliseconds 300
+# Simulate the utility reading the configuration later
+$retrievedConfig = Get-ItemProperty -Path $registryPath -Name 'Config' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'Config'
 
-if (Test-Path $psExePath) {
-    & $psExePath -NoProfile -Command "Write-Output 'Application health check' ; Get-Item -Path (Join-Path $appStagingDir '*.exe') -ErrorAction SilentlyContinue | Measure-Object"
+# Test WOW6432Node path for 32-bit application on 64-bit system
+$wow6432Path = 'HKCU:\Software\WOW6432Node\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+if (-not (Test-Path $wow6432Path)) {
+    New-Item -Path $wow6432Path -Force | Out-Null
 }
 
-Start-Sleep -Milliseconds 300
+$appCompatConfig = 'QXBwQ29tcGF0aWJpbGl0eUZsYWdzQ29uZmlndXJhdGlvbg=='
+New-ItemProperty -Path $wow6432Path -Name 'PortableAppSettings' -Value $appCompatConfig -PropertyType String -Force | Out-Null
 
-if (Test-Path $batchScriptPath) {
-    & $cmdExePath /c $batchScriptPath 2>$null
+# Retrieve and verify the AppCompat configuration
+Get-ItemProperty -Path $wow6432Path -Name 'PortableAppSettings' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'PortableAppSettings'
+
+# Simulate Policies path for enterprise tools that use GPO-like registry areas
+$policiesPath = 'HKCU:\Software\Policies\EnterpriseApp\Settings'
+if (-not (Test-Path $policiesPath)) {
+    New-Item -Path $policiesPath -Force | Out-Null
 }
 
-Start-Sleep -Milliseconds 300
+$policyConfig = 'RW50ZXJwcmlzZVBvbGljeUNvbmZpZ3VyYXRpb24='
+New-ItemProperty -Path $policiesPath -Name 'StoredConfig' -Value $policyConfig -PropertyType String -Force | Out-Null
 
-Remove-Item -Path $appStagingDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path (Join-Path $env:APPDATA 'LocalAppBundle') -Recurse -Force -ErrorAction SilentlyContinue
+# Verify the policy configuration
+Get-ItemProperty -Path $policiesPath -Name 'StoredConfig' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'StoredConfig'
 
-# -- Cluster: singleton_9b198abe-8ae0-44ee-b877-d45653539928  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of sensitive data via text storage/pastebin services by non-
-# Rules:     9b198abe-8ae0-44ee-b877-d45653539928
-# Archetype: IT admin workflow
+# Clean up all test registry entries
+Remove-ItemProperty -Path $registryPath -Name 'Config' -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path $wow6432Path -Name 'PortableAppSettings' -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $wow6432Path -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path $policiesPath -Name 'StoredConfig' -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $policiesPath -Force -ErrorAction SilentlyContinue
 
-$DiagnosticData = @"
-Event Type: System Diagnostic
-Timestamp: $(Get-Date)
-ComputerName: $env:COMPUTERNAME
-OSVersion: $([System.Environment]::OSVersion.VersionString)
-MemoryUsage: $(Get-Process | Measure-Object WorkingSet -Sum | ForEach-Object {$_.Sum / 1MB})
-DiskSpace: $(Get-Volume | Select-Object DriveLetter, SizeRemaining | Out-String)
-"@
-
-$TempFile = Join-Path -Path $env:TEMP -ChildPath "diag_$(Get-Random).txt"
-Set-Content -Path $TempFile -Value $DiagnosticData -Force
-
-try {
-    # Simulate posting diagnostic snippet to a code-sharing service
-    # This is realistic admin behavior for cross-team troubleshooting
-    $Uri = "https://pastebin.com/api/api_post.php"
-    $Headers = @{"Content-Type" = "application/x-www-form-urlencoded"}
-    $Body = "api_dev_key=test&api_option=paste&api_paste_code=$([System.Uri]::EscapeDataString($DiagnosticData))"
-
-    $ConnectTest = Test-Connection -ComputerName pastebin.com -Count 1 -Quiet -ErrorAction SilentlyContinue
-    if ($ConnectTest) {
-        Invoke-WebRequest -Uri $Uri -Method POST -Headers $Headers -Body $Body -TimeoutSec 10 -ErrorAction SilentlyContinue | Out-Null
-    }
-}
-catch {
-    # Silently continue if pastebin is unreachable (expected in isolated environments)
-}
-finally {
-    Remove-Item -Path $TempFile -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_9b198abe-8ae0-44ee-b877-d45653539928  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of sensitive data via text storage/pastebin services by non-
-# Rules:     9b198abe-8ae0-44ee-b877-d45653539928
-# Archetype: Software installer/updater workflow
-
-$BuildScriptDir = Join-Path -Path $env:TEMP -ChildPath "build_artifacts_$(Get-Random)"
-New-Item -ItemType Directory -Path $BuildScriptDir -Force | Out-Null
-
-try {
-    # Simulate retrieving a shared build utility or config snippet from a code-sharing service
-    # Realistic for DevOps teams sharing deployment templates
-    $ConfigUri = "https://paste.ee/r/SampleBuildConfig"
-    $ScriptUri = "https://rentry.co/SampleDeploymentScript"
-
-    $ConfigFile = Join-Path -Path $BuildScriptDir -ChildPath "build_config.txt"
-    $ScriptFile = Join-Path -Path $BuildScriptDir -ChildPath "deploy.ps1"
-
-    Write-Host "[BuildSystem] Retrieving shared configuration from collaborative platform..."
-
-    try {
-        Invoke-WebRequest -Uri $ConfigUri -OutFile $ConfigFile -TimeoutSec 10 -ErrorAction SilentlyContinue
-    }
-    catch {
-        # Expected if service is unreachable; create placeholder
-        Set-Content -Path $ConfigFile -Value "# Configuration placeholder" -Force
-    }
-
-    try {
-        Invoke-WebRequest -Uri $ScriptUri -OutFile $ScriptFile -TimeoutSec 10 -ErrorAction SilentlyContinue
-    }
-    catch {
-        # Expected if service is unreachable; create placeholder
-        Set-Content -Path $ScriptFile -Value "Write-Host 'Deployment template placeholder'" -Force
-    }
-
-    # Simulate build system validating retrieved artifacts
-    if (Test-Path -Path $ConfigFile) {
-        $ConfigContent = Get-Content -Path $ConfigFile -ErrorAction SilentlyContinue
-        Write-Host "[BuildSystem] Configuration retrieved: $(($ConfigContent | Measure-Object -Line).Lines) lines"
-    }
-
-    if (Test-Path -Path $ScriptFile) {
-        $ScriptContent = Get-Content -Path $ScriptFile -ErrorAction SilentlyContinue
-        Write-Host "[BuildSystem] Deployment script retrieved: $(($ScriptContent | Measure-Object -Line).Lines) lines"
-    }
-}
-finally {
-    Remove-Item -Path $BuildScriptDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_9b198abe-8ae0-44ee-b877-d45653539928  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of sensitive data via text storage/pastebin services by non-
-# Rules:     9b198abe-8ae0-44ee-b877-d45653539928
-# Archetype: User-driven workflow
-
-$WorkDir = Join-Path -Path $env:TEMP -ChildPath "dev_collab_$(Get-Random)"
-New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
-
-try {
-    # Simulate a developer retrieving a shared code snippet for a code review or debugging session
-    # Realistic for software development teams using pastebin for collaborative debugging
-
-    $SnippetUri = "https://dpaste.com/raw/ABC123DEF456"
-    $LogUri = "https://paste.sh/raw/12345"
-
-    $SnippetFile = Join-Path -Path $WorkDir -ChildPath "code_snippet.cs"
-    $LogFile = Join-Path -Path $WorkDir -ChildPath "debug_log.txt"
-
-    Write-Host "[Developer] Retrieving shared code snippet for review..."
-
-    try {
-        Invoke-WebRequest -Uri $SnippetUri -OutFile $SnippetFile -TimeoutSec 10 -ErrorAction SilentlyContinue
-    }
-    catch {
-        Set-Content -Path $SnippetFile -Value "// Shared code snippet placeholder" -Force
-    }
-
-    # Also retrieve a shared debug log for collaborative analysis
-    try {
-        Invoke-WebRequest -Uri $LogUri -OutFile $LogFile -TimeoutSec 10 -ErrorAction SilentlyContinue
-    }
-    catch {
-        Set-Content -Path $LogFile -Value "[Debug Log Placeholder]" -Force
-    }
-
-    # Simulate developer reviewing the retrieved artifacts
-    if (Test-Path -Path $SnippetFile) {
-        $SnippetContent = Get-Content -Path $SnippetFile
-        Write-Host "[Developer] Code snippet received: $(($SnippetContent | Measure-Object -Line).Lines) lines"
-    }
-
-    if (Test-Path -Path $LogFile) {
-        $LogContent = Get-Content -Path $LogFile
-        Write-Host "[Developer] Debug log received: $(($LogContent | Measure-Object -Line).Lines) lines"
-    }
-
-    # Now simulate sharing a local error or log snippet
-    $LocalError = @"
-Exception: System.ArgumentNullException
-Message: Value cannot be null. Parameter name: source
-StackTrace: at System.Diagnostics.EventLog..ctor(String source)
-Timestamp: $(Get-Date)
-"@
-
-    $ErrorFile = Join-Path -Path $WorkDir -ChildPath "error_to_share.txt"
-    Set-Content -Path $ErrorFile -Value $LocalError -Force
-
-    Write-Host "[Developer] Preparing to share error details via code-sharing platform..."
-
-    # Simulate posting the error log for team review
-    $PostUri = "https://ix.io"
-    try {
-        Invoke-WebRequest -Uri $PostUri -Method POST -Body $LocalError -TimeoutSec 10 -ErrorAction SilentlyContinue | Out-Null
-    }
-    catch {
-        # Expected if service is unreachable
-    }
-}
-finally {
-    Remove-Item -Path $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
+# SKIPPED cluster singleton_17c277a0-618f-4fca-aa29-e679bcfc4d97: JSON parse error: Unterminated string starting at: line 39 column 17 (char 8194)
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

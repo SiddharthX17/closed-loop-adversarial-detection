@@ -1,0 +1,71 @@
+title: System Binary Masquerading From User-Writable Directory
+id: 046d2755-8bdb-471d-9390-370030946580
+status: experimental
+description: |
+  Detects processes with filenames matching known Windows system binaries executing from
+  user-writable directories such as Users, AppData, Temp, or Downloads. Adversaries use
+  this technique (T1036.005) to evade detection by naming malicious executables after
+  legitimate system processes and placing them in non-standard, user-accessible locations.
+  Also detects OriginalFileName mismatches where a binary claims to be a system process
+  but executes from a non-standard path.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://mgreen27.github.io/posts/2019/05/12/BinaryRename.html
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-06-07
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_system_binary_names:
+    Image|endswith:
+      - '\lsass.exe'
+      - '\svchost.exe'
+      - '\wmiprvse.exe'
+      - '\csrss.exe'
+      - '\services.exe'
+      - '\winlogon.exe'
+      - '\smss.exe'
+      - '\wininit.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\spoolsv.exe'
+      - '\explorer.exe'
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\dllhost.exe'
+      - '\conhost.exe'
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\msiexec.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+      - '\notepad.exe'
+      - '\calc.exe'
+  selection_user_writable_path:
+    Image|contains:
+      - '\Users\'
+      - '\AppData\'
+      - '\Temp\'
+      - '\Downloads\'
+      - '\Public\'
+      - '\ProgramData\'
+      - '\Desktop\'
+  filter_legitimate_locations:
+    Image|contains:
+      - '\Windows\System32\'
+      - '\Windows\SysWOW64\'
+      - '\Windows\WinSxS\'
+      - '\Windows\explorer.exe'
+  condition: selection_system_binary_names and selection_user_writable_path and not filter_legitimate_locations
+falsepositives:
+  - Legitimate software installers that temporarily stage binaries with system-like names
+  - Development and testing environments where developers compile or copy system binaries
+  - System backup or migration utilities that preserve original filenames during staging
+  - Antivirus or endpoint protection tools that quarantine suspicious files by copying them
+level: high

@@ -3,35 +3,29 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_c52786d7-f8c4-4967-87b3-d7f370760c03",
-      "singleton_2b1333da-e2d4-4e53-a234-77b05ad0c3f2",
-      "singleton_0c94683a-a6d8-46e8-b547-a55e044e1097"
+      "singleton_b85f895b-3460-4e0c-bbab-407794e449c6",
+      "singleton_1ed71a2a-79ac-482a-baef-7ef4cb647b81",
+      "singleton_96c4cfbc-baad-4170-9a71-df706ce57e0b"
     ],
     "archetype_tags": [
-      "bypass",
-      "certutil",
       "cmd",
-      "commandline",
-      "download",
-      "encoding",
       "explorer",
       "installer",
-      "invocation",
       "mshta",
       "network",
-      "parent_process",
       "powershell",
+      "registry",
       "regsvr32",
       "rundll32",
       "scheduled_task",
       "script_host"
     ],
     "behavioral_intents": [
-      "Detect scheduled tasks that spawn script interpreters or LOLBins with command patterns indicative of code execution, encoding/obfuscation, registry manipulation, or remote content retrieval.",
-      "Detect system binaries being executed from non-standard filesystem locations, a common indicator of binary masquerading or DLL-hijacking attacks",
-      "Detect exfiltration of sensitive data via paste/text sharing services using command-line tools or scripting engines rather than browsers."
+      "Detect execution of Windows system binaries (lsass.exe, svchost.exe, cmd.exe, powershell.exe, etc.) from non-standard paths such as user directories, temp folders, or AppData, which indicates binary masquerading or suspicious relocation of legitimate system tools.",
+      "Detect attackers staging encoded payloads in registry as part of scheduled task persistence mechanisms, typically invoked by system binaries during installation or WMI operations.",
+      "Detect data exfiltration via text sharing and paste sites by monitoring outbound TCP connections from development tools (VS Code, JetBrains IDEs, GitHub Desktop) to known paste/bin services"
     ],
-    "committed_at": 1780734836.7604046,
+    "committed_at": 1780835910.646805,
     "workflow_ran": true,
     "logs_produced": false,
     "rules_hit": [],
@@ -41,37 +35,29 @@
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_b75cd66d-27e8-4ddd-b4ee-73de87a273c9",
-      "cluster_9c32b190a3",
-      "singleton_9b198abe-8ae0-44ee-b877-d45653539928"
+      "singleton_046d2755-8bdb-471d-9390-370030946580",
+      "singleton_e66d7887-58d4-4941-955e-0f9501b53347",
+      "singleton_17c277a0-618f-4fca-aa29-e679bcfc4d97"
     ],
     "archetype_tags": [
-      "bypass",
       "certutil",
       "cmd",
-      "commandline",
-      "download",
-      "encoding",
       "explorer",
       "installer",
-      "invocation",
       "mshta",
       "network",
-      "office",
-      "parent_process",
       "powershell",
       "registry",
       "regsvr32",
       "rundll32",
-      "scheduled_task",
       "script_host"
     ],
     "behavioral_intents": [
-      "Detect shell interpreters (cmd.exe, powershell.exe) spawned from interactive applications (browsers, email clients, file explorer) making network connections to code hosting and paste-bin services, indicating potential command-and-control or payload download activity.",
-      "Detect system binary masquerading from non-standard locations and script interpreters spawned by scheduled task system processes with suspicious command patterns.",
-      "Detect exfiltration of sensitive data via text storage/pastebin services by non-browser processes (e.g., PowerShell, curl, wget uploading to code dump sites)."
+      "Detect system binaries being executed from user-writable directories rather than their legitimate system locations, a common masquerading technique where attackers copy legitimate binaries to user-accessible paths.",
+      "Detect base64-encoded payloads staged in HKCU registry hives for later execution by scheduled tasks, a persistence and execution technique.",
+      ""
     ],
-    "committed_at": 1780735031.9805725,
+    "committed_at": 1780836118.9681344,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

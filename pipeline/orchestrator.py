@@ -38,6 +38,7 @@ from pipeline.emulator.procedure_interpreter import get_drop_stats
 from pipeline.corpus.learner import run as run_corpus_learner
 from pipeline.corpus.pusher import update_outcome
 from pipeline.emulator.test_history import mark_rule_generated
+from pipeline.emulator.emulator import get_run_selections
 
 import yaml
 import anthropic
@@ -541,9 +542,11 @@ class Orchestrator:
                     summary.prs_opened.append(pr_result.pr_url)
                     print(f"[orchestrator] PR opened: {pr_result.pr_url}")
 
-                    # Mark tests used for this technique as rule_generated so the
-                    # cross-run selector heavily deprioritises them going forward.
-                    for guid in emulation_history.get(technique_id, {}):
+                    # Mark only the test emulated THIS iteration as rule_generated.
+                    # get_run_selections() returns _prior_attempts — exactly the
+                    # guid(s) selected in the most recent run_emulator() call,
+                    # not every historical guid for the technique.
+                    for guid in get_run_selections().get(technique_id, []):
                         mark_rule_generated(
                             emulation_history, technique_id, guid)
 

@@ -9,7 +9,7 @@ Selection logic:
   - Unresolved vars: NOT skipped — LLM substitutes realistic values
   - Primary ranking: complexity score (command count + interesting binary refs)
   - Tiebreaker: executor diversity (prefer powershell + cmd over 3x powershell)
-  - Cap: MAX_CANDIDATES (3) passed to LLM
+  - Cap: MAX_CANDIDATES (1) passed to LLM
 
 Mutation context (iteration 2+):
   - caught_fields: Sysmon field values that fired rules last run
@@ -46,7 +46,7 @@ DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 TECHNIQUES_PATH = Path("config/techniques.yaml")
 MODEL = "claude-haiku-4-5-20251001"
 TEMPERATURE = 0.2
-MAX_CANDIDATES = 3
+MAX_CANDIDATES = 1
 
 # ---------------------------------------------------------------------------
 # Executor list — used as diversity tiebreaker only, not primary filter.

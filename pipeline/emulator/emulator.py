@@ -53,7 +53,19 @@ def reset_seen_tests() -> None:
     _prior_attempts.clear()
 
 
-_MAX_CANDIDATES = 3       # tests selected per technique per iteration
+def get_run_selections() -> dict[str, list[str]]:
+    """
+    Return guids selected in the most recent run_emulator() call.
+    Keyed by technique_id. Used by the orchestrator to identify which
+    specific test to mark as rule_generated after a successful PR —
+    avoids marking every historical guid for a technique.
+    Valid to call any time after run_emulator() returns and before the
+    next run_emulator() call (which resets _prior_attempts).
+    """
+    return {tid: list(guids) for tid, guids in _prior_attempts.items()}
+
+
+_MAX_CANDIDATES = 1     # tests selected per technique per iteration
 _SEEN_PENALTY = 0.4     # weight multiplier for previously selected tests
 
 

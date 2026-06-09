@@ -1,27 +1,31 @@
 [
   {
     "iteration_id": "iter_001",
-    "workflow_path": ".github/workflows/corpus_targeted_iter_001.yml",
+    "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_1c5c4107-56e0-409f-80cd-28d475b91567",
-      "singleton_ebb3a0a5-6892-4987-8f63-8f93c4fe278e"
+      "singleton_b85f895b-3460-4e0c-bbab-407794e449c6",
+      "singleton_1ed71a2a-79ac-482a-baef-7ef4cb647b81",
+      "singleton_96c4cfbc-baad-4170-9a71-df706ce57e0b"
     ],
     "archetype_tags": [
       "cmd",
-      "commandline",
       "explorer",
       "installer",
       "mshta",
-      "parent_process",
+      "network",
       "powershell",
+      "registry",
+      "regsvr32",
       "rundll32",
+      "scheduled_task",
       "script_host"
     ],
     "behavioral_intents": [
-      "Detect credential theft via LSASS memory dumps using specialized dump utilities like procdump, rdrleakdiag, or direct tasklist/wmic enumeration combined with memory dump operations.",
-      "Detect execution of legitimate Windows system binaries from non-standard locations or with mismatched OriginalFileName metadata, a technique used to evade binary whitelisting and masquerade as system tools."
+      "Detect execution of Windows system binaries (lsass.exe, svchost.exe, cmd.exe, powershell.exe, etc.) from non-standard paths such as user directories, temp folders, or AppData, which indicates binary masquerading or suspicious relocation of legitimate system tools.",
+      "Detect attackers staging encoded payloads in registry as part of scheduled task persistence mechanisms, typically invoked by system binaries during installation or WMI operations.",
+      "Detect data exfiltration via text sharing and paste sites by monitoring outbound TCP connections from development tools (VS Code, JetBrains IDEs, GitHub Desktop) to known paste/bin services"
     ],
-    "committed_at": 1779649013.612679,
+    "committed_at": 1780835910.646805,
     "workflow_ran": true,
     "logs_produced": false,
     "rules_hit": [],
@@ -29,30 +33,31 @@
   },
   {
     "iteration_id": "iter_002",
-    "workflow_path": ".github/workflows/corpus_targeted_iter_002.yml",
+    "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "cluster_e4ed175c18",
-      "singleton_7aa329c4-c43c-435e-b731-126a0a9fdfc2"
+      "singleton_046d2755-8bdb-471d-9390-370030946580",
+      "singleton_e66d7887-58d4-4941-955e-0f9501b53347",
+      "singleton_17c277a0-618f-4fca-aa29-e679bcfc4d97"
     ],
     "archetype_tags": [
+      "certutil",
       "cmd",
-      "commandline",
-      "download",
-      "encoding",
       "explorer",
       "installer",
-      "invocation",
       "mshta",
-      "parent_process",
+      "network",
       "powershell",
+      "registry",
+      "regsvr32",
       "rundll32",
       "script_host"
     ],
     "behavioral_intents": [
-      "Detect credential dumping via diagnostic tools (LSASS memory extraction) and script-based remote code retrieval/dynamic code construction.",
-      "Detect execution of system binaries (cmd.exe, powershell.exe, etc.) from user-writable directories or non-standard locations, which indicates masquerading or evasion attempts."
+      "Detect system binaries being executed from user-writable directories rather than their legitimate system locations, a common masquerading technique where attackers copy legitimate binaries to user-accessible paths.",
+      "Detect base64-encoded payloads staged in HKCU registry hives for later execution by scheduled tasks, a persistence and execution technique.",
+      ""
     ],
-    "committed_at": 1779649208.6293185,
+    "committed_at": 1780836118.9681344,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

@@ -9,7 +9,7 @@ Selection logic:
   - Unresolved vars: NOT skipped — LLM substitutes realistic values
   - Primary ranking: complexity score (command count + interesting binary refs)
   - Tiebreaker: executor diversity (prefer powershell + cmd over 3x powershell)
-  - Cap: MAX_CANDIDATES (3) passed to LLM
+  - Cap: MAX_CANDIDATES (1) passed to LLM
 
 Mutation context (iteration 2+):
   - caught_fields: Sysmon field values that fired rules last run
@@ -46,7 +46,7 @@ DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 TECHNIQUES_PATH = Path("config/techniques.yaml")
 MODEL = "claude-haiku-4-5-20251001"
 TEMPERATURE = 0.2
-MAX_CANDIDATES = 3
+MAX_CANDIDATES = 1
 
 # ---------------------------------------------------------------------------
 # Executor list — used as diversity tiebreaker only, not primary filter.
@@ -105,14 +105,11 @@ SYSMON_FIELDS = [
 class TechniqueTask:
     """
     One technique's worth of attacker output.
-    formatted_input: CleanedAtomicTest.formatted_input for selected test.
     evasion_hints: plugs directly into run_emulator() as evasion_hints param.
     mutation_applied: False if mutation context was present but hints came back empty.
+    Test selection is handled by the emulator
     """
     technique_id: str
-    selected_test_name: str
-    selected_test_guid: str
-    formatted_input: str
     evasion_hints: dict = field(default_factory=dict)
     evasion_hints_v2: dict | None = None
     mutation_applied: bool = True
@@ -131,7 +128,7 @@ def extract_emulator_inputs(
     Returns:
         technique_ids:       ordered list of technique IDs
         evasion_hints:       dict[technique_id, dict] of Sysmon field overrides
-        selected_test_guids: dict[technique_id, guid] of attacker-selected tests
+        evasion_hints_v2:    dict[technique_id, dict] of second variant overrides
     """
     technique_ids = list(plan.keys())
     evasion_hints = {
@@ -143,11 +140,7 @@ def extract_emulator_inputs(
         for tid, task in plan.items()
         if task.evasion_hints_v2
     }
-    selected_test_guids = {
-        tid: task.selected_test_guid
-        for tid, task in plan.items()
-    }
-    return technique_ids, evasion_hints, selected_test_guids, evasion_hints_v2
+    return technique_ids, evasion_hints, evasion_hints_v2
 
 
 # ---------------------------------------------------------------------------
@@ -377,11 +370,11 @@ def _build_full_prompt(
             for line in rule['detection_yaml'].splitlines():
                 prompt += f"    {line}\n"
 
-    # Inject prior attempts — prevent repeating the same test+hints combination
+    # Inject prior attempts — prevent repeating the same hints combination
     if prior_attempts:
-        prompt += "\n\nPrior attempts this run (do not repeat the same test + hints combination):\n"
+        prompt += "\n\nPrior hint combinations attempted this run (do not repeat):\n"
         for attempt in prior_attempts:
-            prompt += f"  - test_guid: {attempt['test_guid']}, hints_hash: {attempt['hints_hash']}\n"
+            prompt += f"  - hints_hash: {attempt['hints_hash']}\n"
 
     # Unresolved vars note — instruct LLM to substitute realistic values
     if has_unresolved_vars:
@@ -426,15 +419,11 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> dict | None:
 
 def _parse_llm_output(
     raw: dict,
-    candidates: list[AtomicCandidate],
-    lookup: dict,
     technique_id: str,
 ) -> TechniqueTask | None:
     if not raw:
         return None
 
-    selected_guid = raw.get("selected_test_guid")
-    selected_name = raw.get("selected_test_name")
     evasion_hints = raw.get(
         "evasion_hints") or raw.get("evasion_hints", {})
     evasion_hints_v2 = raw.get("evasion_hints_v2")
@@ -453,32 +442,8 @@ def _parse_llm_output(
             if isinstance(k, str) and isinstance(v, str)
         }
 
-    # Resolve selected test — guid first, name fallback
-    selected_cleaned = lookup.get(selected_guid)
-    if not selected_cleaned:
-        for g, c in lookup.items():
-            if c.test_name == selected_name:
-                selected_cleaned = c
-                selected_guid = g
-                break
-
-    if not selected_cleaned:
-        if DEBUG:
-            print(
-                f"[attacker] {technique_id}: LLM returned unknown test "
-                f"(guid={selected_guid}, name={selected_name}) — using first candidate"
-            )
-        if not candidates:
-            return None
-        first = candidates[0]
-        selected_cleaned = lookup.get(first.guid)
-        selected_guid = first.guid
-
     return TechniqueTask(
         technique_id=technique_id,
-        selected_test_name=selected_cleaned.test_name,
-        selected_test_guid=selected_guid,
-        formatted_input=selected_cleaned.formatted_input,
         evasion_hints=evasion_hints,
         evasion_hints_v2=evasion_hints_v2,
         mutation_applied=True,
@@ -548,64 +513,27 @@ class AttackerAgent:
                     f"[attacker] {technique_id}: no usable candidates after filtering")
             return [], {}
 
-        attempts = self._prior_attempts.get(technique_id, [])
-        prev_guid = attempts[-1]["test_guid"] if attempts else None
-        used_guids = {a["test_guid"] for a in attempts}
-
-        prev_dr = (previous_results or {}).get(technique_id)
-        if prev_dr is None:
-            status = "unknown"
-        elif getattr(prev_dr, "gap", False):
-            status = "gap"
-        elif getattr(prev_dr, "covered", False):
-            status = "covered"
-        else:
-            status = "gap"
-
-        if status in ("covered", "partial"):
-            # Prefer latest test for true mutation — same execution path, different hints
-            if prev_guid:
-                preferred = [(raw, c)
-                             for raw, c in pairs if raw.test_guid == prev_guid]
-                others = [(raw, c)
-                          for raw, c in pairs if raw.test_guid != prev_guid]
-                # shuffle non-preferred to avoid alphabetical lock
-                random.shuffle(others)
-                pairs = preferred + others
-        else:
-            # Gap or unknown — explore unseen paths first
-            unseen = [(raw, c)
-                      for raw, c in pairs if raw.test_guid not in used_guids]
-            seen = [(raw, c)
-                    for raw, c in pairs if raw.test_guid in used_guids]
-            random.shuffle(unseen)
-            random.shuffle(seen)
-            pairs = (unseen + seen) if unseen else seen
-
+        # Shuffle so the LLM sees varied execution contexts across runs.
+        # Test selection is owned by the emulator — no guidance needed here.
+        random.shuffle(pairs)
         selected_pairs = _select_candidates(pairs)
         return _build_candidates(selected_pairs)
 
     def _is_duplicate_attempt(
         self,
         technique_id: str,
-        test_guid: str,
         evasion_hints: dict,
     ) -> bool:
         prior = self._prior_attempts.get(technique_id, [])
         h = _hints_hash(evasion_hints)
-        return any(
-            p["test_guid"] == test_guid and p["hints_hash"] == h
-            for p in prior
-        )
+        return any(p["hints_hash"] == h for p in prior)
 
     def _record_attempt(
         self,
         technique_id: str,
-        test_guid: str,
         evasion_hints: dict,
     ) -> None:
         self._prior_attempts.setdefault(technique_id, []).append({
-            "test_guid": test_guid,
             "hints_hash": _hints_hash(evasion_hints),
         })
 
@@ -684,7 +612,7 @@ class AttackerAgent:
                 )
 
             raw = _call_llm(prompt, self._client)
-            task = _parse_llm_output(raw, candidates, lookup, tid)
+            task = _parse_llm_output(raw, tid)
 
             if not task:
                 if DEBUG:
@@ -702,22 +630,18 @@ class AttackerAgent:
                 task.mutation_applied = False
 
             # Duplicate attempt check
-            if self._is_duplicate_attempt(tid, task.selected_test_guid, task.evasion_hints):
+            if self._is_duplicate_attempt(tid, task.evasion_hints):
                 if DEBUG:
                     print(
-                        f"[attacker] {tid}: duplicate attempt detected "
-                        f"(guid={task.selected_test_guid}) — using as-is, "
-                        f"consider adding more Atomic tests for this technique"
-                    )
+                        f"[attacker] {tid}: duplicate hints detected — using as-is")
 
-            self._record_attempt(
-                tid, task.selected_test_guid, task.evasion_hints)
+            self._record_attempt(tid, task.evasion_hints)
 
             plan[tid] = task
 
             if DEBUG:
                 print(
-                    f"[attacker] {tid}: selected '{task.selected_test_name}', "
+                    f"[attacker] {tid}: hints generated, "
                     f"evasion_hints={list(task.evasion_hints.keys())}, "
                     f"evasion_hints_v2={list(task.evasion_hints_v2.keys()) if task.evasion_hints_v2 else None}, "
                     f"mutation_applied={task.mutation_applied}")

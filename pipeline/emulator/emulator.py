@@ -31,6 +31,7 @@ from pipeline.data.atomic_cleaner import clean_test
 from pipeline.emulator.procedure_interpreter import interpret_procedure, build_log_event
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.emulator.output_writer import write_log_stream, write_stats
+from pipeline.emulator import test_history
 
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 _CONFIG_PATH = Path("config/techniques.yaml")
@@ -52,7 +53,19 @@ def reset_seen_tests() -> None:
     _prior_attempts.clear()
 
 
-_MAX_CANDIDATES = 3       # tests selected per technique per iteration
+def get_run_selections() -> dict[str, list[str]]:
+    """
+    Return guids selected in the most recent run_emulator() call.
+    Keyed by technique_id. Used by the orchestrator to identify which
+    specific test to mark as rule_generated after a successful PR —
+    avoids marking every historical guid for a technique.
+    Valid to call any time after run_emulator() returns and before the
+    next run_emulator() call (which resets _prior_attempts).
+    """
+    return {tid: list(guids) for tid, guids in _prior_attempts.items()}
+
+
+_MAX_CANDIDATES = 1     # tests selected per technique per iteration
 _SEEN_PENALTY = 0.4     # weight multiplier for previously selected tests
 
 
@@ -251,27 +264,29 @@ def _select_candidates(
     cleaned_all: list[tuple[str, object]],
     technique_id: str,
     selected_guid: str | None = None,
+    history: dict | None = None,
 ) -> list:
     """
     Weighted random sampling without replacement.
 
-    Priority = base_score × seen_penalty × uniform(0.35, 1.0)
+    Priority = base_score × effective_penalty × uniform(0.35, 1.0)
+
+    Penalty tiers (min of cross-run and within-run — most aggressive wins,
+    penalties do not stack):
+      within-run seen   : _SEEN_PENALTY (0.4)
+      cross-run seen    : test_history.PENALTY_CROSS_RUN (0.35)
+      rule generated    : test_history.PENALTY_RULE_GENERATED (0.15)
 
     If selected_guid is provided (attacker's choice), that test is guaranteed
     to appear first in the result regardless of its sampled priority. The
     remaining slots are filled by the weighted draw as normal.
 
-    Floor of 0.35 prevents a high-value test from being completely wiped out
-    by an unlucky draw while still allowing a seen high-scorer to lose to a
-    fresh lower-scorer. All tests scoring >= 1.0 are eligible.
-
-    Seen-test penalty (_SEEN_PENALTY) is multiplicative: depresses weight of
-    previously selected tests without permanently excluding them.
-
     Updates _prior_attempts[technique_id] with the selected GUIDs.
+    Note: cross-run history is updated by run_emulator() after all techniques
+    complete — not here — so record_selections() sees the full run's choices.
     """
     seen = _prior_attempts.get(technique_id, set())
-    pinned: tuple | None = None          # (guid, cleaned) for selected_guid
+    pinned: tuple | None = None
     candidates: list[tuple[float, str, list[str], object]] = []
 
     for guid, cleaned in cleaned_all:
@@ -283,15 +298,19 @@ def _select_candidates(
         if selected_guid and guid == selected_guid:
             pinned = (guid, cleaned)
             _dbg(f"  {cleaned.test_name}: pinned (attacker selection)")
-            continue                     # exclude from random draw
+            continue
 
-        weight = score * (_SEEN_PENALTY if guid in seen else 1.0)
+        cross_penalty = test_history.get_penalty(
+            history or {}, technique_id, guid)
+        within_penalty = _SEEN_PENALTY if guid in seen else 1.0
+        effective_penalty = min(cross_penalty, within_penalty)
+        weight = score * effective_penalty
         priority = weight * random.uniform(0.35, 1.0)
         candidates.append((priority, guid, fired, cleaned))
         _dbg(
             f"  {cleaned.test_name}: base={score:.2f} "
-            f"{'(seen) ' if guid in seen else ''}"
-            f"buckets={fired} weight={weight:.2f} priority={priority:.3f}"
+            f"cross={cross_penalty:.2f} within={within_penalty:.2f} "
+            f"eff={effective_penalty:.2f} weight={weight:.2f} priority={priority:.3f}"
         )
 
     candidates.sort(reverse=True)
@@ -316,13 +335,11 @@ def _select_tests(
     technique_id: str,
     metadata,
     stats: EmulatorStats,
-    selected_guid: str | None = None,   # kept for API compatibility
+    selected_guid: str | None = None,
+    history: dict | None = None,
 ) -> list:
     """
     Load, clean, and select tests via weighted random sampling.
-
-    selected_guid is accepted for API compatibility but no longer forces
-    priority — rotation is handled by _select_candidates.
 
     Skips tests where clean_test returns None or has_unresolved_vars.
     All remaining tests scoring >= 1.0 enter the weighted draw.
@@ -356,7 +373,10 @@ def _select_tests(
         return []
 
     selected = _select_candidates(
-        cleaned_all, technique_id, selected_guid=selected_guid)
+        cleaned_all, technique_id,
+        selected_guid=selected_guid,
+        history=history,
+    )
 
     for i, cleaned in enumerate(selected):
         _dbg(
@@ -373,6 +393,7 @@ def _emulate_technique(
     stats: EmulatorStats,
     selected_test_guids: dict[str, str] | None = None,
     evasion_hints_v2: dict | None = None,
+    history: dict | None = None,
 ) -> list[LogEvent]:
     """
     Run the full emulation chain for a single technique.
@@ -387,7 +408,10 @@ def _emulate_technique(
     selected_guid = selected_test_guids.get(
         technique_id) if selected_test_guids else None
     cleaned_tests = _select_tests(
-        technique_id, metadata, stats, selected_guid=selected_guid)
+        technique_id, metadata, stats,
+        selected_guid=selected_guid,
+        history=history,
+    )
     if not cleaned_tests:
         _dbg(f"{technique_id}: no valid tests after selection — 0 events")
         return []
@@ -416,7 +440,7 @@ def _emulate_technique(
                 interpretation=interpretation,
                 procedure_text=cleaned.formatted_input,
                 evasion_hints=variant_hints,
-                executor_name=cleaned.executor_name,
+                executor_name=cleaned.executor_image,
             )
 
             if log_event is not None:
@@ -443,42 +467,54 @@ def run_emulator(
     selected_test_guids: dict[str, str] | None = None,
     # pass None to suppress file output
     output_dir: Path | None = Path("corpus/attack"),
-) -> tuple[dict[str, list[LogEvent]], EmulatorStats]:
+) -> tuple[dict[str, list[LogEvent]], EmulatorStats, dict]:
     """
     Run emulation across all target techniques.
 
     Args:
-        technique_ids:      Explicit list of ATT&CK technique IDs.
-                            If None, reads from config/techniques.yaml.
-        evasion_hints:      Per-technique evasion context from AttackerAgent.
-                            Keyed by technique_id — Sysmon field name → mutated value.
-                            Pass None to run base procedures without mutation.
+        technique_ids:       Explicit list of ATT&CK technique IDs.
+                             If None, reads from config/techniques.yaml.
+        evasion_hints:       Per-technique evasion context from AttackerAgent.
+                             Keyed by technique_id — Sysmon field name → mutated value.
+                             Pass None to run base procedures without mutation.
         selected_test_guids: dict[technique_id, test_guid] from extract_emulator_inputs().
-                             Attacker-selected test sorted first, cap reduced to 2 per technique.
-                             Pass None to run all tests up to _MAX_TESTS_PER_TECHNIQUE.
-        output_dir:         Root directory for JSONL output and stats.
-                            Writes to:
-                                {output_dir}/{technique_id}.jsonl
-                                {output_dir}/stats/run_{ts}_stats.json
-                            Pass None to skip all file output (useful in tests).
+                             Attacker-selected test pinned first in selection.
+                             Pass None to run all tests up to _MAX_CANDIDATES.
+        output_dir:          Root directory for JSONL output and stats.
+                             Writes to:
+                                 {output_dir}/{technique_id}.jsonl
+                                 {output_dir}/stats/run_{ts}_stats.json
+                             Pass None to skip all file output (useful in tests).
 
     Returns:
         log_stream:  dict[technique_id, list[LogEvent]]
                      Every technique has an entry, even if its list is empty.
         stats:       EmulatorStats with full run summary.
+        history:     Persistent test selection history dict. Pass to
+                     test_history.mark_rule_generated() from the orchestrator
+                     after a successful PR, then call test_history.save().
     """
     if technique_ids is None:
         technique_ids = _load_technique_ids()
 
+    history = test_history.load()
+    reset_seen_tests()
+
     stats = EmulatorStats()
     log_stream: dict[str, list[LogEvent]] = {}
+    # technique_id → list of guids selected this run (for history recording)
+    _run_selections: dict[str, list[str]] = {}
 
     for technique_id in technique_ids:
         stats.techniques_attempted += 1
         print(f"[emulator] Processing {technique_id}...")
 
         events = _emulate_technique(
-            technique_id, evasion_hints, stats, selected_test_guids=selected_test_guids, evasion_hints_v2=evasion_hints_v2)
+            technique_id, evasion_hints, stats,
+            selected_test_guids=selected_test_guids,
+            evasion_hints_v2=evasion_hints_v2,
+            history=history,
+        )
 
         log_stream[technique_id] = events
         stats.per_technique[technique_id] = len(events)
@@ -487,9 +523,20 @@ def run_emulator(
         if events:
             stats.techniques_with_events += 1
 
+        # Capture guids selected this run for history recording
+        selected_guids_this_run = list(
+            _prior_attempts.get(technique_id, set()))
+        if selected_guids_this_run:
+            _run_selections[technique_id] = selected_guids_this_run
+
         print(f"[emulator] {technique_id}: {len(events)} event(s)")
 
     print(stats.summary())
+
+    # ─── update and persist cross-run history ──────────────────────
+    for technique_id, guids in _run_selections.items():
+        test_history.record_selections(history, technique_id, guids)
+    test_history.save(history)
 
     # ─── write output if output_dir provided ───────────────────────
     if output_dir is not None:
@@ -497,4 +544,4 @@ def run_emulator(
         write_log_stream(log_stream, output_dir)
         write_stats(stats, output_dir / "stats")
 
-    return log_stream, stats
+    return log_stream, stats, history

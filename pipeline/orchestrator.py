@@ -37,6 +37,8 @@ from pipeline.data.stix_loader import get_loader
 from pipeline.emulator.procedure_interpreter import get_drop_stats
 from pipeline.corpus.learner import run as run_corpus_learner
 from pipeline.corpus.pusher import update_outcome
+from pipeline.emulator.test_history import mark_rule_generated
+from pipeline.emulator.emulator import get_run_selections
 
 import yaml
 import anthropic
@@ -373,7 +375,7 @@ class Orchestrator:
 
         # ── Stage 2: Emulator ─────────────────────────────────────
         _dbg("Stage 2: emulator")
-        emulator_technique_ids, evasion_hints, selected_test_guids, evasion_hints_v2 = (
+        emulator_technique_ids, evasion_hints, evasion_hints_v2 = (
             extract_emulator_inputs(plan)
         )
 
@@ -383,11 +385,10 @@ class Orchestrator:
             [t for t in technique_ids if t not in emulator_technique_ids]
         ))
 
-        log_stream, emulator_stats = run_emulator(
+        log_stream, emulator_stats, emulation_history = run_emulator(
             technique_ids=all_technique_ids,
             evasion_hints=evasion_hints,
             evasion_hints_v2=evasion_hints_v2,
-            selected_test_guids=selected_test_guids,
             output_dir=self._output_dir,
         )
         _dbg(f"Emulator: {emulator_stats.events_generated} events across "
@@ -540,6 +541,15 @@ class Orchestrator:
                     )
                     summary.prs_opened.append(pr_result.pr_url)
                     print(f"[orchestrator] PR opened: {pr_result.pr_url}")
+
+                    # Mark only the test emulated THIS iteration as rule_generated.
+                    # get_run_selections() returns _prior_attempts — exactly the
+                    # guid(s) selected in the most recent run_emulator() call,
+                    # not every historical guid for the technique.
+                    for guid in get_run_selections().get(technique_id, []):
+                        mark_rule_generated(
+                            emulation_history, technique_id, guid)
+
                 except Exception as e:
                     print(
                         f"[orchestrator] PR creation failed for {technique_id}: {e}")

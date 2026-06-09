@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from pipeline.defender.prompts import build_defender_prompt
+from pipeline.defender.prompts import build_defender_user_message, DEFENDER_SYSTEM_PROMPT
 from pipeline.validation.validation_pipeline import validate, ValidationResult
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.validation.rule_normalizer import normalize_rule_yaml
@@ -27,7 +27,7 @@ load_dotenv()
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-sonnet-4-6"
 MAX_RETRIES = 2
 MAX_RETRIES_GATE_FAILURE = 3
 RULES_DIR = Path("rules")
@@ -103,9 +103,9 @@ def find_existing_rule_paths(
     return sorted(set(found))
 
 
-def _call_llm(prompt: str, client: anthropic.Anthropic) -> str | None:
+def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic) -> str | None:
     """
-    Call Haiku, return raw text response (Sigma YAML).
+    Call Sonnet with cached system prompt, return raw text response (Sigma YAML).
     Returns None on API failure.
     """
     try:
@@ -113,8 +113,25 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> str | None:
             model=MODEL,
             max_tokens=4096,
             temperature=0,
-            messages=[{"role": "user", "content": prompt}],
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[{"role": "user", "content": user_message}],
         )
+
+        if DEBUG:
+            usage = response.usage
+            if getattr(usage, "cache_creation_input_tokens", 0):
+                print(
+                    f"[defender] Cache WRITE: {usage.cache_creation_input_tokens} tokens")
+            if getattr(usage, "cache_read_input_tokens", 0):
+                print(
+                    f"[defender] Cache HIT: {usage.cache_read_input_tokens} tokens")
+
         raw = response.content[0].text.strip()
 
         # Strip markdown fences — LLM sometimes wraps YAML in ```yaml
@@ -216,7 +233,7 @@ class DefenderAgent:
                     f"[defender] {technique_id}: attempt {attempt}/{max_attempts}"
                 )
 
-            prompt = build_defender_prompt(
+            user_message = build_defender_user_message(
                 technique_id=technique_id,
                 technique_name=gap_context.technique_name,
                 tactic=gap_context.tactic,
@@ -226,7 +243,8 @@ class DefenderAgent:
                 detection_strategy=gap_context.detection_strategy,
             )
 
-            rule_yaml = _call_llm(prompt, self._client)
+            rule_yaml = _call_llm(DEFENDER_SYSTEM_PROMPT,
+                                  user_message, self._client)
 
             if not rule_yaml:
                 if DEBUG:
@@ -235,8 +253,8 @@ class DefenderAgent:
                         f"LLM returned nothing on attempt {attempt}"
                     )
                 break
-            
-            rule_yaml = normalize_rule_yaml(rule_yaml)    
+
+            rule_yaml = normalize_rule_yaml(rule_yaml)
             last_rule = rule_yaml
 
             if DEBUG:

@@ -78,7 +78,7 @@ _EXECUTOR_PARENT: dict[str, str] = {
     "command_prompt":   r"C:\Windows\explorer.exe",
 }
 
-_EID3_FALLBACK_IMAGE  = r"C:\Windows\System32\cmd.exe"
+_EID3_FALLBACK_IMAGE = r"C:\Windows\System32\cmd.exe"
 _EID3_FALLBACK_PARENT = r"C:\Windows\explorer.exe"
 
 
@@ -100,14 +100,13 @@ def _enrich_network_event(fields: dict, executor_name: str | None) -> dict:
     if not enriched.get("Image"):
         enriched["Image"] = _EXECUTOR_IMAGE.get(key, _EID3_FALLBACK_IMAGE)
     if not enriched.get("ParentImage"):
-        enriched["ParentImage"] = _EXECUTOR_PARENT.get(key, _EID3_FALLBACK_PARENT)
+        enriched["ParentImage"] = _EXECUTOR_PARENT.get(
+            key, _EID3_FALLBACK_PARENT)
 
     return enriched
 
 
-
 # ─── Prompts ──────────────────────────────────────────────────────────────────
-
 SYSTEM_PROMPT = """You are a threat intelligence analyst generating synthetic Windows Sysmon log artifacts from ATT&CK procedure implementations.
  
 You will receive a structured description of an adversary technique execution including:
@@ -292,8 +291,6 @@ def _ground_fields(
         # still get dropped.
         if evasion_hints and k in evasion_hints:
             hint_val = evasion_hints[k]
-        if evasion_hints and k in evasion_hints:
-            hint_val = evasion_hints[k]
 
             if isinstance(hint_val, str):
                 hint_lower = hint_val.lower()
@@ -314,6 +311,14 @@ def _ground_fields(
         # command that runs it. Pass through unconditionally and let the
         # attack_gate backstop hallucinated values.
         if k == "OriginalFileName":
+            grounded[k] = v
+            continue
+
+        # EID 3 implicit metadata — DestinationPort, Protocol, Initiated are
+        # structural facts about a TCP connection, not extractable from prose.
+        # Grounding would always drop them. Pass LLM output through and let
+        # the attack_gate backstop any hallucinated values.
+        if k in {"DestinationPort", "Protocol", "Initiated"}:
             grounded[k] = v
             continue
 
@@ -474,7 +479,7 @@ def build_log_event(
     if not grounded_fields:
         print("[build_log_event] Dropped: no fields survived grounding")
         return None
-    
+
     # 1b. EID 3 structural enrichment — populate Image/ParentImage from executor
     if interpretation.get("EventID") == 3:
         grounded_fields = _enrich_network_event(grounded_fields, executor_name)
@@ -486,6 +491,22 @@ def build_log_event(
             f"for event_type={event_type!r}, fields={set(grounded_fields)}"
         )
         return None
+
+    # Coerce network metadata fields to their expected Pydantic types.
+    # LLM occasionally returns bool/int for these (e.g. Initiated=True,
+    # DestinationPort="443") — normalise before construction to avoid
+    # validation errors that would silently drop the event.
+    _BOOL_TO_STR = {"Initiated"}
+    _STR_TO_INT = {"DestinationPort"}
+    for _f in _BOOL_TO_STR:
+        if _f in grounded_fields and not isinstance(grounded_fields[_f], str):
+            grounded_fields[_f] = str(grounded_fields[_f]).lower()
+    for _f in _STR_TO_INT:
+        if _f in grounded_fields and not isinstance(grounded_fields[_f], int):
+            try:
+                grounded_fields[_f] = int(grounded_fields[_f])
+            except (ValueError, TypeError):
+                grounded_fields.pop(_f)
 
     try:
         return LogEvent(

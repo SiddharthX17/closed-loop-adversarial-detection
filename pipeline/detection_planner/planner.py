@@ -34,7 +34,7 @@ from typing import Optional
 import anthropic
 from dotenv import load_dotenv
 
-from pipeline.detection_planner.prompts import build_planner_prompt
+from pipeline.detection_planner.prompts import build_planner_user_message, PLANNER_SYSTEM_PROMPT
 from pipeline.data.stix_loader import MITREMetadata
 
 load_dotenv()
@@ -128,7 +128,7 @@ class DetectionPlanner:
             data_sources = stix_metadata.data_sources
             detection_hint = getattr(stix_metadata, "detection_hint", "")
 
-        prompt = build_planner_prompt(
+        user_message = build_planner_user_message(
             technique_id=technique_id,
             technique_name=technique_name,
             tactic=tactic,
@@ -137,7 +137,8 @@ class DetectionPlanner:
             detection_hint=detection_hint,
         )
 
-        raw = self._call_llm(prompt)
+        raw = self._call_llm(PLANNER_SYSTEM_PROMPT, user_message)
+
         if raw is None:
             return None
 
@@ -156,14 +157,31 @@ class DetectionPlanner:
     # Private
     # -----------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str) -> Optional[str]:
+    def _call_llm(self, system_prompt: str, user_message: str) -> Optional[str]:
         try:
             response = self._client.messages.create(
                 model=MODEL,
                 max_tokens=1536,
                 temperature=0,
-                messages=[{"role": "user", "content": prompt}],
+                system=[
+                    {
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[{"role": "user", "content": user_message}],
             )
+
+            if DEBUG:
+                usage = response.usage
+                if getattr(usage, "cache_creation_input_tokens", 0):
+                    print(
+                        f"[detection_planner] Cache WRITE: {usage.cache_creation_input_tokens} tokens")
+                if getattr(usage, "cache_read_input_tokens", 0):
+                    print(
+                        f"[detection_planner] Cache HIT: {usage.cache_read_input_tokens} tokens")
+
             raw = response.content[0].text.strip()
 
             # Extract JSON payload defensively

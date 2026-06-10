@@ -1,0 +1,101 @@
+title: Renamed Windows System Binary Detected via OriginalFileName Mismatch
+id: 400acaef-ef37-498c-8d79-9757d1366c27
+status: experimental
+description: |
+  Detects execution of renamed Windows system binaries by identifying a mismatch between the
+  OriginalFileName PE header field and the actual Image filename on disk. When a signed Windows
+  binary is renamed, the OriginalFileName embedded in the PE header retains the original name,
+  exposing the masquerade. This covers any renamed Windows system binary regardless of path,
+  parent process, or command-line variation.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://mgreen27.github.io/posts/2019/05/12/BinaryRename.html
+  - https://mgreen27.github.io/posts/2019/05/29/BinaryRename2.html
+author: Detection Engineer
+date: 2026-06-10
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    OriginalFileName:
+      - 'certutil.exe'
+      - 'svchost.exe'
+      - 'lsass.exe'
+      - 'csrss.exe'
+      - 'winlogon.exe'
+      - 'services.exe'
+      - 'smss.exe'
+      - 'wininit.exe'
+      - 'taskhost.exe'
+      - 'taskhostw.exe'
+      - 'spoolsv.exe'
+      - 'explorer.exe'
+      - 'rundll32.exe'
+      - 'regsvr32.exe'
+      - 'mshta.exe'
+      - 'wscript.exe'
+      - 'cscript.exe'
+      - 'msiexec.exe'
+      - 'powershell.exe'
+      - 'cmd.exe'
+      - 'sc.exe'
+      - 'reg.exe'
+      - 'regsvc.exe'
+      - 'dllhost.exe'
+      - 'conhost.exe'
+      - 'notepad.exe'
+      - 'msbuild.exe'
+      - 'cmstp.exe'
+      - 'wmic.exe'
+      - 'bitsadmin.exe'
+  filter_matching_name:
+    Image|endswith:
+      - '\certutil.exe'
+      - '\svchost.exe'
+      - '\lsass.exe'
+      - '\csrss.exe'
+      - '\winlogon.exe'
+      - '\services.exe'
+      - '\smss.exe'
+      - '\wininit.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\spoolsv.exe'
+      - '\explorer.exe'
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\mshta.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\msiexec.exe'
+      - '\powershell.exe'
+      - '\cmd.exe'
+      - '\sc.exe'
+      - '\reg.exe'
+      - '\regsvc.exe'
+      - '\dllhost.exe'
+      - '\conhost.exe'
+      - '\notepad.exe'
+      - '\msbuild.exe'
+      - '\cmstp.exe'
+      - '\wmic.exe'
+      - '\bitsadmin.exe'
+  filter_windows_path:
+    Image|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+      - 'C:\Windows\WinSxS\'
+      - 'C:\Windows\explorer.exe'
+  filter_program_files:
+    Image|startswith:
+      - 'C:\Program Files\'
+      - 'C:\Program Files (x86)\'
+  condition: selection and not filter_matching_name and not filter_windows_path and not filter_program_files
+falsepositives:
+  - Enterprise software packaging tools that bundle renamed Windows utilities in vendor installation directories
+  - Security and endpoint management tools that ship renamed system binaries as helper processes
+level: high

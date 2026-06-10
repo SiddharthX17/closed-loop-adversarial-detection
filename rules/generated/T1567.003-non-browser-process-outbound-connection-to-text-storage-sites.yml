@@ -1,0 +1,92 @@
+title: Non-Browser Process Outbound Connection to Text Storage Sites
+id: 54e22e3e-d331-4bf5-8c34-25632c267241
+status: experimental
+description: >
+  Detects non-browser, non-update processes initiating outbound network connections
+  to known public text and paste storage site hostnames. Scripting interpreters,
+  command shells, and similar tools have no legitimate operational reason to connect
+  to paste sites in enterprise environments and may indicate data exfiltration via
+  T1567.003.
+references:
+  - https://attack.mitre.org/techniques/T1567/003/
+  - https://web.archive.org/web/20201107203304/https://www.echosec.net/blog/what-is-pastebin-and-why-do-hackers-love-it
+author: custom
+date: 2026-06-10
+tags:
+  - attack.exfiltration
+  - attack.t1567.003
+logsource:
+  category: network_connection
+  product: windows
+detection:
+  selection_initiated:
+    Initiated: 'true'
+  selection_hostname:
+    DestinationHostname|contains:
+      - 'pastebin.com'
+      - 'paste.ee'
+      - 'hastebin.com'
+      - 'ghostbin.com'
+      - 'dpaste.org'
+      - 'privatebin.net'
+      - 'rentry.co'
+      - 'paste.ofcode.org'
+      - 'controlc.com'
+      - 'pastecode.io'
+      - 'paste.fo'
+      - 'justpaste.it'
+      - 'pasteio.com'
+  selection_interpreter:
+    Image|endswith:
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\pwsh.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+      - '\curl.exe'
+      - '\wget.exe'
+      - '\python.exe'
+      - '\python3.exe'
+      - '\perl.exe'
+      - '\ruby.exe'
+      - '\php.exe'
+  filter_browsers:
+    Image|endswith:
+      - '\chrome.exe'
+      - '\firefox.exe'
+      - '\msedge.exe'
+      - '\iexplore.exe'
+      - '\opera.exe'
+      - '\brave.exe'
+      - '\vivaldi.exe'
+      - '\waterfox.exe'
+  filter_update_agents:
+    Image|endswith:
+      - '\MicrosoftEdgeUpdate.exe'
+      - '\GoogleUpdate.exe'
+      - '\GoogleCrashHandler.exe'
+      - '\MicrosoftEdge.exe'
+  filter_electron_apps:
+    Image|endswith:
+      - '\Code.exe'
+      - '\Slack.exe'
+      - '\Teams.exe'
+      - '\Discord.exe'
+      - '\Notion.exe'
+      - '\Obsidian.exe'
+  filter_security_tools:
+    Image|contains:
+      - '\Program Files\Splunk\'
+      - '\Program Files (x86)\Splunk\'
+      - '\Program Files\CrowdStrike\'
+      - '\Program Files\Carbon Black\'
+      - '\Program Files\Tanium\'
+      - '\Program Files\Rapid7\'
+  condition: selection_initiated and selection_hostname and selection_interpreter and not filter_browsers and not filter_update_agents and not filter_electron_apps and not filter_security_tools
+falsepositives:
+  - Developer or automation tooling posting artifacts to paste APIs via scripting engines
+  - CI/CD pipeline scripts using curl or PowerShell to publish build artifacts
+  - Security operations or threat intelligence tooling querying paste sites for IOC lookups
+  - Legitimate administrative scripts interacting with paste APIs
+level: high

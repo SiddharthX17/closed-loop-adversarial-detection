@@ -1,0 +1,63 @@
+title: Exfiltration to Text Storage Sites via Non-Browser Process
+id: abec472c-9603-482e-875d-36b27fbc6a33
+status: experimental
+description: >
+  Detects non-browser processes initiating outbound HTTPS connections to known text
+  storage and paste sites, indicative of data exfiltration via T1567.003. Covers
+  command-line interpreters, scripting runtimes, and other tools used to POST
+  collected data to publicly accessible text storage services.
+references:
+  - https://attack.mitre.org/techniques/T1567/003/
+  - https://web.archive.org/web/20201107203304/https://www.echosec.net/blog/what-is-pastebin-and-why-do-hackers-love-it
+author: custom
+date: 2026-06-10
+tags:
+  - attack.exfiltration
+  - attack.t1567.003
+logsource:
+  category: network_connection
+  product: windows
+detection:
+  selection_paste_sites:
+    Initiated: 'true'
+    DestinationHostname|contains:
+      - 'pastebin.com'
+      - 'paste.ee'
+      - 'hastebin.com'
+      - 'ghostbin.com'
+      - 'dpaste.org'
+      - 'dpaste.com'
+      - 'controlc.com'
+      - 'privatebin.net'
+      - 'rentry.co'
+      - 'paste.ofcode.org'
+      - 'justpaste.it'
+      - 'pasteio.com'
+      - 'paste.mozilla.org'
+      - 'paste.debian.net'
+      - 'termbin.com'
+  filter_browsers:
+    Image|endswith:
+      - '\chrome.exe'
+      - '\firefox.exe'
+      - '\msedge.exe'
+      - '\iexplore.exe'
+      - '\opera.exe'
+      - '\brave.exe'
+      - '\safari.exe'
+      - '\vivaldi.exe'
+      - '\waterfox.exe'
+      - '\seamonkey.exe'
+  filter_update_agents:
+    Image|endswith:
+      - '\MicrosoftEdgeUpdate.exe'
+      - '\wuauclt.exe'
+      - '\MusNotification.exe'
+      - '\OneDriveSetup.exe'
+  condition: selection_paste_sites and not filter_browsers and not filter_update_agents
+falsepositives:
+  - Developers or security researchers using CLI tools (curl, wget, python) to access
+    paste sites for legitimate purposes from developer workstations
+  - Security tooling or threat intelligence platforms retrieving IOCs from paste sites
+  - Automated build or CI/CD pipelines that publish artifacts to paste services
+level: medium

@@ -3,29 +3,22 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_b85f895b-3460-4e0c-bbab-407794e449c6",
-      "singleton_1ed71a2a-79ac-482a-baef-7ef4cb647b81",
-      "singleton_96c4cfbc-baad-4170-9a71-df706ce57e0b"
+      "singleton_7983fb82-b62d-4bf8-a004-6aba8686e0f9",
+      "singleton_cfdc1116-6584-471e-a0ff-c6b9db445068",
+      "singleton_abec472c-9603-482e-875d-36b27fbc6a33"
     ],
     "archetype_tags": [
-      "cmd",
       "explorer",
-      "installer",
-      "mshta",
       "network",
-      "powershell",
-      "registry",
-      "regsvr32",
-      "rundll32",
-      "scheduled_task",
-      "script_host"
+      "parent_process",
+      "registry"
     ],
     "behavioral_intents": [
-      "Detect execution of Windows system binaries (lsass.exe, svchost.exe, cmd.exe, powershell.exe, etc.) from non-standard paths such as user directories, temp folders, or AppData, which indicates binary masquerading or suspicious relocation of legitimate system tools.",
-      "Detect attackers staging encoded payloads in registry as part of scheduled task persistence mechanisms, typically invoked by system binaries during installation or WMI operations.",
-      "Detect data exfiltration via text sharing and paste sites by monitoring outbound TCP connections from development tools (VS Code, JetBrains IDEs, GitHub Desktop) to known paste/bin services"
+      "Detect masquerading of legitimate Windows system processes by running copies with system process names from user-writable directories instead of protected system paths.",
+      "Detect adversaries writing base64-encoded payloads into registry keys under HKCU\\Software paths commonly modified by legitimate applications (Microsoft, Google, Mozilla, Adobe, Intel, Oracle) to persist code execution or configuration",
+      "Detect exfiltration of data to public paste/text storage services initiated by non-browser processes, which may indicate automated data stealing or C2 communication bypass."
     ],
-    "committed_at": 1780835910.646805,
+    "committed_at": 1781110552.9039907,
     "workflow_ran": true,
     "logs_produced": false,
     "rules_hit": [],
@@ -35,17 +28,19 @@
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_046d2755-8bdb-471d-9390-370030946580",
-      "singleton_e66d7887-58d4-4941-955e-0f9501b53347",
-      "singleton_17c277a0-618f-4fca-aa29-e679bcfc4d97"
+      "singleton_400acaef-ef37-498c-8d79-9757d1366c27",
+      "singleton_54e22e3e-d331-4bf5-8c34-25632c267241",
+      "singleton_ff2e2fd1-3f99-4bb7-b3bf-4601fe6cd3fc"
     ],
     "archetype_tags": [
       "certutil",
       "cmd",
+      "commandline",
       "explorer",
       "installer",
       "mshta",
       "network",
+      "parent_process",
       "powershell",
       "registry",
       "regsvr32",
@@ -53,11 +48,11 @@
       "script_host"
     ],
     "behavioral_intents": [
-      "Detect system binaries being executed from user-writable directories rather than their legitimate system locations, a common masquerading technique where attackers copy legitimate binaries to user-accessible paths.",
-      "Detect base64-encoded payloads staged in HKCU registry hives for later execution by scheduled tasks, a persistence and execution technique.",
-      ""
+      "Detect renamed system binaries or binaries with mismatched OriginalFileName metadata that indicate process masquerading attacks (T1036.005).",
+      "Detect exfiltration of sensitive data by scripting engines and utilities making outbound connections to public paste/text storage sites.",
+      "Detect adversaries using PowerShell to register and immediately modify scheduled tasks with elevated privileges, often originating from management/EDR parent processes to establish persistence or privilege escalation."
     ],
-    "committed_at": 1780836118.9681344,
+    "committed_at": 1781110920.1278377,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

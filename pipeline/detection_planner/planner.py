@@ -41,7 +41,7 @@ load_dotenv()
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------
@@ -53,34 +53,50 @@ class DetectionStrategy:
     """
     Structured detection strategy produced by the planner.
 
-    key_behaviors:
-        What the attacker is accomplishing at the technique level.
-        Framed as objectives, not specific commands or binaries.
+    technique_objective:
+        Single sentence. What the attacker is mechanically accomplishing —
+        framed as a capability, not a specific tool or command.
 
-    relevant_fields:
-        Sysmon field names ranked by detection signal stability.
-        These are the fields a rule-writer should anchor conditions on.
+    evidence_quality:
+        Assessment of the evidence itself before any field analysis.
+        unique_event_count: distinct events after content deduplication.
+        diversity_note: whether the evidence is genuinely diverse or
+        degenerate (identical events dressed as multiple data points).
 
-    detection_invariants:
-        Conditions that remain true regardless of tooling variation —
-        the non-negotiable core of any rule targeting this technique.
-        A rule anchored to these survives binary renames, flag reordering,
-        and procedure substitution.
+    evidence_assessment:
+        Per-field classification of the attack evidence.
+        Each entry: field, value_summary, classification, rationale,
+        detection_use.
+        classification values: "artifact" | "instance" | "invariant"
+        detection_use: direct instruction for the rule writer — ignore,
+        detect a named class, or anchor a specific condition.
+
+    detection_opportunities:
+        1–3 entries ordered from specific to broad, each justified by
+        the evidence quality and assessment above.
+        Each entry: description, event_type, anchor_fields, coverage_type,
+        fp_risk.
+        coverage_type values: "specific" | "adjacent" | "family"
+        Only opportunities justified by the evidence are included —
+        never padded to three.
 
     false_positive_profile:
-        Broad categories of legitimate enterprise activity that produce
-        similar observables. Written as category labels so the defender
-        agent can construct explicit exclusion conditions.
+        Legitimate enterprise activity that produces similar observables,
+        mapped to specific fields with actionable filter approaches.
+        Each entry: category, manifests_via, filter_approach, applies_to.
+        applies_to values: "all" | "specific" | "adjacent" | "family"
 
-    generalization_notes:
-        How to broaden beyond the specific emulated procedure to the
-        underlying technique family. Written for a rule-writing engineer.
+    rule_design_guidance:
+        Concrete implementation recommendation for the included opportunities.
+        Names anchor fields, specifies Sigma modifiers, describes condition
+        structure. Engineering specification, not general advice.
     """
-    key_behaviors: list[str]
-    relevant_fields: list[str]
-    detection_invariants: list[str]
-    false_positive_profile: list[str]
-    generalization_notes: str
+    technique_objective: str
+    evidence_quality: dict
+    evidence_assessment: list[dict]
+    detection_opportunities: list[dict]
+    false_positive_profile: list[dict]
+    rule_design_guidance: str
 
 
 # ---------------------------------------------------------------------------
@@ -144,11 +160,13 @@ class DetectionPlanner:
 
         strategy = self._parse_response(technique_id, raw)
         if strategy and DEBUG:
+            unique = strategy.evidence_quality.get("unique_event_count", "?")
             print(
                 f"[detection_planner] {technique_id}: "
-                f"{len(strategy.key_behaviors)} behavior(s), "
-                f"{len(strategy.detection_invariants)} invariant(s), "
-                f"{len(strategy.false_positive_profile)} FP category(ies)"
+                f"{unique} unique event(s), "
+                f"{len(strategy.detection_opportunities)} opportunit(ies) "
+                f"[{', '.join(o.get('coverage_type', '?') for o in strategy.detection_opportunities)}], "
+                f"{len(strategy.false_positive_profile)} FP categor(ies)"
             )
 
         return strategy
@@ -161,7 +179,7 @@ class DetectionPlanner:
         try:
             response = self._client.messages.create(
                 model=MODEL,
-                max_tokens=1536,
+                max_tokens=4096,
                 temperature=0,
                 system=[
                     {
@@ -213,13 +231,14 @@ class DetectionPlanner:
                 )
             return None
 
-        # Validate required fields are present and typed correctly
+        # Validate top-level fields — presence and type
         required = {
-            "key_behaviors": list,
-            "relevant_fields": list,
-            "detection_invariants": list,
+            "technique_objective": str,
+            "evidence_quality": dict,
+            "evidence_assessment": list,
+            "detection_opportunities": list,
             "false_positive_profile": list,
-            "generalization_notes": str,
+            "rule_design_guidance": str,
         }
 
         for field_name, expected_type in required.items():
@@ -240,10 +259,81 @@ class DetectionPlanner:
                     )
                 return None
 
+        # Validate evidence_quality sub-fields
+        eq = data["evidence_quality"]
+        if "unique_event_count" not in eq or not isinstance(eq.get("unique_event_count"), int):
+            if DEBUG:
+                print(
+                    f"[detection_planner] {technique_id}: "
+                    f"evidence_quality missing 'unique_event_count' int — discarding strategy"
+                )
+            return None
+
+        # detection_opportunities must be non-empty — no opportunities = no strategy
+        if not data["detection_opportunities"]:
+            if DEBUG:
+                print(
+                    f"[detection_planner] {technique_id}: "
+                    f"detection_opportunities is empty — discarding strategy"
+                )
+            return None
+
+        # Validate each opportunity has required sub-fields (warn but don't discard on partial)
+        required_opp_keys = {
+            "description", "event_type", "anchor_fields", "coverage_type", "fp_risk",
+            "observable_invariant", "coverage_gain", "precision_estimate", "viability",
+            "selection_reason",
+        }
+        valid_coverage_types = {"specific", "adjacent", "family"}
+        valid_level_values = {"high", "medium", "low"}
+        clean_opportunities = []
+        for i, opp in enumerate(data["detection_opportunities"]):
+            if not isinstance(opp, dict):
+                if DEBUG:
+                    print(
+                        f"[detection_planner] {technique_id}: opportunity[{i}] not a dict — skipping")
+                continue
+            missing = required_opp_keys - opp.keys()
+            if missing:
+                if DEBUG:
+                    print(
+                        f"[detection_planner] {technique_id}: opportunity[{i}] missing keys {missing} — skipping")
+                continue
+            if opp.get("coverage_type") not in valid_coverage_types:
+                if DEBUG:
+                    print(
+                        f"[detection_planner] {technique_id}: "
+                        f"opportunity[{i}] invalid coverage_type '{opp.get('coverage_type')}' — skipping"
+                    )
+                continue
+            if not isinstance(opp.get("anchor_fields"), list):
+                if DEBUG:
+                    print(
+                        f"[detection_planner] {technique_id}: opportunity[{i}] anchor_fields not a list — skipping")
+                continue
+            for level_field in ("coverage_gain", "precision_estimate", "viability"):
+                if opp.get(level_field) not in valid_level_values:
+                    if DEBUG:
+                        print(
+                            f"[detection_planner] {technique_id}: "
+                            f"opportunity[{i}] invalid {level_field} '{opp.get(level_field)}' — skipping"
+                        )
+                    continue
+            clean_opportunities.append(opp)
+
+        if not clean_opportunities:
+            if DEBUG:
+                print(
+                    f"[detection_planner] {technique_id}: "
+                    f"no valid opportunities after validation — discarding strategy"
+                )
+            return None
+
         return DetectionStrategy(
-            key_behaviors=data["key_behaviors"],
-            relevant_fields=data["relevant_fields"],
-            detection_invariants=data["detection_invariants"],
-            false_positive_profile=data["false_positive_profile"],
-            generalization_notes=data["generalization_notes"],
+            technique_objective=data["technique_objective"],
+            evidence_quality=data["evidence_quality"],
+            evidence_assessment=data.get("evidence_assessment", []),
+            detection_opportunities=clean_opportunities,
+            false_positive_profile=data.get("false_positive_profile", []),
+            rule_design_guidance=data["rule_design_guidance"],
         )

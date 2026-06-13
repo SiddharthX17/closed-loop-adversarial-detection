@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   3  |  Feasible: 3  |  Variants: 9
+# Clusters:   2  |  Feasible: 2  |  Variants: 6
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,463 +10,152 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_7983fb82-b62d-4bf8-a004-6aba8686e0f9  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of legitimate Windows system processes by running copies wit
-# Rules:     7983fb82-b62d-4bf8-a004-6aba8686e0f9
-# Archetype: IT admin workflow
+# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
-$stagingDir = Join-Path $env:TEMP "SysAnalysis_$(Get-Random)"
-$null = New-Item -ItemType Directory -Path $stagingDir -Force
+# SKIPPED variant 'Software installer/updater workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
-try {
-  # Simulate IT admin collecting system process binaries for diagnostic reporting
-  # This is realistic: admins often stage binaries in temp for forensics or migration prep
-  $systemRoot = $env:SystemRoot
+# SKIPPED variant 'Document/file operation workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
-  # Copy legitimate system binaries to staging directory
-  $binariesToStage = @('lsass.exe', 'svchost.exe', 'csrss.exe', 'services.exe', 'spoolsv.exe')
-
-  foreach ($binary in $binariesToStage) {
-    $srcPath = Join-Path $systemRoot "System32" $binary
-    if (Test-Path $srcPath) {
-      Copy-Item -Path $srcPath -Destination $stagingDir -Force -ErrorAction SilentlyContinue
-    }
-  }
-
-  # Execute staged binaries from temp directory with timeout to avoid hanging
-  # Real admins might do this for process behavior analysis or compatibility testing
-  $stagedBinaries = Get-ChildItem -Path $stagingDir -Filter '*.exe' -ErrorAction SilentlyContinue
-
-  foreach ($stagedExe in $stagedBinaries) {
-    try {
-      $procParams = @{
-        FilePath = $stagedExe.FullName
-        NoNewWindow = $true
-        RedirectStandardOutput = $null
-        RedirectStandardError = $null
-        UseNewEnvironment = $true
-        ErrorAction = 'SilentlyContinue'
-        WarningAction = 'SilentlyContinue'
-      }
-
-      # Use timeout to prevent hanging; real admin scripts include safeguards
-      $process = Start-Process @procParams -PassThru
-      if ($process) {
-        Start-Sleep -Milliseconds 500
-        if (-not $process.HasExited) {
-          $process.Kill()
-        }
-      }
-    } catch {}
-  }
-
-  # Simulate parent process context: invoke via cmd.exe (common admin pattern)
-  $cmdPath = Join-Path $stagingDir 'svchost.exe'
-  if (Test-Path $cmdPath) {
-    try {
-      $cmdProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', $cmdPath) -NoNewWindow -PassThru -ErrorAction SilentlyContinue
-      if ($cmdProcess) {
-        Start-Sleep -Milliseconds 300
-        if (-not $cmdProcess.HasExited) {
-          $cmdProcess.Kill()
-        }
-      }
-    } catch {}
-  }
-
-} finally {
-  # Clean up staging directory
-  Remove-Item -Path $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_7983fb82-b62d-4bf8-a004-6aba8686e0f9  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of legitimate Windows system processes by running copies wit
-# Rules:     7983fb82-b62d-4bf8-a004-6aba8686e0f9
-# Archetype: Software installer/updater workflow
-
-$extractDir = Join-Path $env:TEMP "SecurityAnalysis_$(Get-Random)"
-$null = New-Item -ItemType Directory -Path $extractDir -Force
-
-try {
-  # Simulate endpoint protection tool extracting and analyzing system binaries
-  # Real scenario: EDR or antivirus performs runtime analysis of system processes
-  $systemRoot = $env:SystemRoot
-  $systemBinaries = @('explorer.exe', 'dwm.exe', 'winlogon.exe', 'userinit.exe', 'lsm.exe')
-
-  foreach ($binary in $systemBinaries) {
-    $srcPath = Join-Path $systemRoot "System32" $binary
-    if (Test-Path $srcPath) {
-      Copy-Item -Path $srcPath -Destination $extractDir -Force -ErrorAction SilentlyContinue
-    }
-  }
-
-  # Simulate security tool parent process (use powershell as proxy for security daemon)
-  # Real tools: MsMpEng.exe, NisSvc.exe, or third-party EDR processes
-  $securityToolScriptBlock = {
-    param($extractionPath)
-
-    $exes = Get-ChildItem -Path $extractionPath -Filter '*.exe' -ErrorAction SilentlyContinue
-    foreach ($exe in $exes) {
-      try {
-        # Spawn extracted system binary for behavioral analysis
-        $childProcess = Start-Process -FilePath $exe.FullName -NoNewWindow -PassThru -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-        if ($childProcess) {
-          Start-Sleep -Milliseconds 400
-          if (-not $childProcess.HasExited) {
-            $childProcess.Kill()
-          }
-        }
-      } catch {}
-    }
-  }
-
-  # Execute security tool behavior pattern
-  & $securityToolScriptBlock -extractionPath $extractDir
-
-  # Additional pattern: security tool using cmd.exe wrapper (common in EDR/AV)
-  $cmdExtrPath = Join-Path $extractDir 'explorer.exe'
-  if (Test-Path $cmdExtrPath) {
-    try {
-      $wrappedProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', $cmdExtrPath) -NoNewWindow -PassThru -ErrorAction SilentlyContinue
-      if ($wrappedProcess) {
-        Start-Sleep -Milliseconds 300
-        if (-not $wrappedProcess.HasExited) {
-          $wrappedProcess.Kill()
-        }
-      }
-    } catch {}
-  }
-
-} finally {
-  # Clean up extraction directory
-  Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_7983fb82-b62d-4bf8-a004-6aba8686e0f9  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of legitimate Windows system processes by running copies wit
-# Rules:     7983fb82-b62d-4bf8-a004-6aba8686e0f9
-# Archetype: Document/file operation workflow
-
-$appDataStaging = Join-Path $env:APPDATA "TempProcessFiles_$(Get-Random)"
-$null = New-Item -ItemType Directory -Path $appDataStaging -Force
-
-try {
-  # Simulate application extracting system binaries for legitimate operations
-  # Real scenario: backup tool, file sync app, or migration utility stages system tools
-  $systemRoot = $env:SystemRoot
-  $toolsToExtract = @('taskhostw.exe', 'taskhost.exe', 'smss.exe', 'wininit.exe')
-
-  foreach ($tool in $toolsToExtract) {
-    $srcPath = Join-Path $systemRoot "System32" $tool
-    if (Test-Path $srcPath) {
-      Copy-Item -Path $srcPath -Destination $appDataStaging -Force -ErrorAction SilentlyContinue
-    }
-  }
-
-  # Application processes staged binaries from AppData (realistic for portability)
-  $stagedTools = Get-ChildItem -Path $appDataStaging -Filter '*.exe' -ErrorAction SilentlyContinue
-
-  foreach ($tool in $stagedTools) {
-    try {
-      # Execute tool for application's operational needs
-      $appProcess = Start-Process -FilePath $tool.FullName -NoNewWindow -PassThru -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-      if ($appProcess) {
-        Start-Sleep -Milliseconds 350
-        if (-not $appProcess.HasExited) {
-          $appProcess.Kill()
-        }
-      }
-    } catch {}
-  }
-
-  # Simulate application launcher pattern (indirect execution)
-  # Real apps often use intermediate process or launcher
-  $taskhostwPath = Join-Path $appDataStaging 'taskhostw.exe'
-  if (Test-Path $taskhostwPath) {
-    try {
-      $launcherProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Command', "Start-Process -FilePath '$taskhostwPath' -NoNewWindow") -NoNewWindow -PassThru -ErrorAction SilentlyContinue
-      if ($launcherProcess) {
-        Start-Sleep -Milliseconds 400
-        if (-not $launcherProcess.HasExited) {
-          $launcherProcess.Kill()
-        }
-      }
-    } catch {}
-  }
-
-} finally {
-  # Clean up application staging directory
-  Remove-Item -Path $appDataStaging -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_cfdc1116-6584-471e-a0ff-c6b9db445068  (1 rule(s)) ---------------------
-# Intent:    Detect adversaries writing base64-encoded payloads into registry keys under HKCU
-# Rules:     cfdc1116-6584-471e-a0ff-c6b9db445068
-# Archetype: Software installer/updater workflow
-
-$registryPath = 'HKCU:\Software\Mozilla\Firefox\Launcher'
-$valueName = 'UpdateConfig'
-# Simulate legitimate application configuration: base64-encoded update manifest
-$configData = 'bW96aWxsYV9maXJlZm94X3VwZGF0ZV9tYW5pZmVzdF92ZXJzaW9uXzEyMy40NTY'
-
-# Create registry path if it does not exist
-if (-not (Test-Path $registryPath)) {
-    New-Item -Path $registryPath -Force | Out-Null
-}
-
-# Write base64-encoded configuration to registry
-Set-ItemProperty -Path $registryPath -Name $valueName -Value $configData -Type String
-
-Start-Sleep -Milliseconds 500
-
-# Verify write occurred
-$written = Get-ItemProperty -Path $registryPath -Name $valueName -ErrorAction SilentlyContinue
-if ($written) {
-    Write-Host "Configuration written successfully"
-}
-
-# Cleanup: remove test registry key
-Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_cfdc1116-6584-471e-a0ff-c6b9db445068  (1 rule(s)) ---------------------
-# Intent:    Detect adversaries writing base64-encoded payloads into registry keys under HKCU
-# Rules:     cfdc1116-6584-471e-a0ff-c6b9db445068
-# Archetype: IT admin workflow
-
-$registryPath = 'HKCU:\Software\Adobe\Reader'
-$valueName = 'LicenseData'
-# Simulate legitimate license configuration: base64-encoded license metadata
-$licenseBlob = 'YWRvYmVfcmVhZGVyX2xpY2Vuc2Vfa2V5XzIwMjRfZW50ZXJwcmlzZV9lZGl0aW9u'
-
-# Ensure registry path exists
-if (-not (Test-Path $registryPath)) {
-    New-Item -Path $registryPath -Force | Out-Null
-}
-
-# Write license configuration
-Set-ItemProperty -Path $registryPath -Name $valueName -Value $licenseBlob -Type String
-
-Start-Sleep -Milliseconds 300
-
-# Verify registry write
-$check = Get-ItemProperty -Path $registryPath -Name $valueName -ErrorAction SilentlyContinue
-if ($check) {
-    Write-Host "License configuration applied"
-}
-
-# Cleanup: remove registry entry
-Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_cfdc1116-6584-471e-a0ff-c6b9db445068  (1 rule(s)) ---------------------
-# Intent:    Detect adversaries writing base64-encoded payloads into registry keys under HKCU
-# Rules:     cfdc1116-6584-471e-a0ff-c6b9db445068
-# Archetype: User-driven workflow
-
-$registryPath = 'HKCU:\Software\Google\Chrome\UserData'
-$valueName = 'PreferenceState'
-# Simulate legitimate extension/preference state: base64-encoded extension config
-$preferenceData = 'Y2hyb21lX2V4dGVuc2lvbl9wcmVmZXJlbmNlc19zdGF0ZV92MV8yMDI0'
-
-# Create registry path for browser preferences
-if (-not (Test-Path $registryPath)) {
-    New-Item -Path $registryPath -Force | Out-Null
-}
-
-# Write preference state to registry
-Set-ItemProperty -Path $registryPath -Name $valueName -Value $preferenceData -Type String
-
-Start-Sleep -Milliseconds 400
-
-# Confirm write
-$result = Get-ItemProperty -Path $registryPath -Name $valueName -ErrorAction SilentlyContinue
-if ($result) {
-    Write-Host "Browser preferences synchronized"
-}
-
-# Cleanup: remove test registry entry
-Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_abec472c-9603-482e-875d-36b27fbc6a33  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of data to public paste/text storage services initiated by n
-# Rules:     abec472c-9603-482e-875d-36b27fbc6a33
+# -- Cluster: singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handle
+# Rules:     524a6953-b920-4eb1-b13f-8fc75e7219d3
 # Archetype: IT admin workflow
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-# Simulate legitimate IT admin network validation
-# Checking connectivity to documentation and advisory resources
-$testSites = @(
-    'paste.mozilla.org',
-    'paste.debian.net',
-    'termbin.com'
-)
+# Define the mscfile handler registry path for auditing
+$mscfilePath = 'HKCU:\Software\Classes\mscfile\shell\open\command'
+$classesRoot = 'HKCU:\Software\Classes\mscfile'
 
-$logPath = Join-Path $env:TEMP 'connectivity_check.log'
+# Backup current state for audit logging
+$backupFile = Join-Path $env:TEMP 'mscfile_audit_backup.txt'
 
-foreach ($site in $testSites) {
-    try {
-        # Use System.Net.Sockets for raw socket simulation that generates Sysmon connection events
-        $client = New-Object System.Net.Sockets.TcpClient
-        $asyncResult = $client.BeginConnect($site, 80, $null, $null)
-        $wait = $asyncResult.AsyncWaitHandle.WaitOne(3000)
-
-        if ($wait) {
-            try {
-                $client.EndConnect($asyncResult)
-                Add-Content -Path $logPath -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Connection check to $site - SUCCESS"
-            } catch {
-                Add-Content -Path $logPath -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Connection check to $site - FAILED"
-            }
-        } else {
-            Add-Content -Path $logPath -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Connection check to $site - TIMEOUT"
-        }
-        $client.Close()
-    } catch {
-        Add-Content -Path $logPath -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Connection check to $site - ERROR: $_"
-    }
-    Start-Sleep -Milliseconds 500
+# Create Classes hive structure if needed (standard Windows setup)
+if (-not (Test-Path $classesRoot)) {
+  New-Item -Path $classesRoot -Force | Out-Null
 }
 
-# Also use Invoke-WebRequest for some requests (legitimate HTTP diagnostics)
+# Read existing registry configuration for audit purposes
 try {
-    Invoke-WebRequest -Uri 'http://paste.debian.net/health' -UseBasicParsing -TimeoutSec 2 | Out-Null
-} catch {}
+  $currentHandler = (Get-Item $mscfilePath -ErrorAction Stop).GetValue('') 2>$null
+  "Current mscfile handler: $currentHandler" | Out-File -FilePath $backupFile -Append
+} catch {
+  "Registry path not yet configured" | Out-File -FilePath $backupFile
+}
 
-try {
-    Invoke-WebRequest -Uri 'http://termbin.com/api/info' -UseBasicParsing -TimeoutSec 2 | Out-Null
-} catch {}
+# Legitimate operation: Restore default Task Scheduler handler
+$defaultTaskSchedulerPath = 'C:\Windows\System32\mmc.exe'
+$legitimateHandler = "\"$defaultTaskSchedulerPath\" /s taskschd.msc"
 
-# Cleanup
-if (Test-Path $logPath) { Remove-Item -Path $logPath -Force }
-Write-Host 'Network connectivity validation completed'
+# Write legitimate registry value
+New-Item -Path $mscfilePath -Force | Out-Null
+Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $legitimateHandler -Type String
 
-# -- Cluster: singleton_abec472c-9603-482e-875d-36b27fbc6a33  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of data to public paste/text storage services initiated by n
-# Rules:     abec472c-9603-482e-875d-36b27fbc6a33
+# Verify the value was set correctly
+$verifyHandler = (Get-ItemProperty -Path $mscfilePath).'(Default)'
+"Verified handler set to: $verifyHandler" | Out-File -FilePath $backupFile -Append
+
+# Cleanup: Remove the test registry entries
+Remove-Item -Path $classesRoot -Recurse -Force
+Remove-Item -Path $backupFile -Force
+
+Write-Host 'Administrator audit completed successfully'
+
+# -- Cluster: singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handle
+# Rules:     524a6953-b920-4eb1-b13f-8fc75e7219d3
 # Archetype: Software installer/updater workflow
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-# Simulate Windows Update and system service validation checks
-# These processes regularly validate connectivity to update and documentation servers
+# Simulate enterprise task management tool installation setup
+$installPath = Join-Path $env:ProgramFiles 'EnterpriseTaskManager'
+$executableName = 'taskmanager_engine.exe'
+$mockToolPath = Join-Path $env:TEMP $executableName
 
-$metadataUrls = @(
-    'http://pastebin.com/raw/Q1A2B3C4',  # Simulating update manifest download
-    'http://paste.mozilla.org/about',     # Firefox security update documentation
-    'http://dpaste.org/latest',           # Public patch notes repository
-    'http://paste.debian.net/info'        # Debian package documentation
-)
-
-$tempDir = Join-Path $env:TEMP 'update_cache'
-if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir | Out-Null }
-
-$manifestLog = Join-Path $tempDir 'manifest_check.txt'
-Add-Content -Path $manifestLog -Value "Update metadata validation started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-
-foreach ($url in $metadataUrls) {
-    try {
-        # Simulate what wuauclt.exe or other system processes do
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadString($url) | Out-Null
-        Add-Content -Path $manifestLog -Value "Metadata retrieved from $(([System.Uri]$url).Host) - OK"
-    } catch [System.Net.WebException] {
-        Add-Content -Path $manifestLog -Value "Metadata fetch from $(([System.Uri]$url).Host) - Connection timeout or unavailable"
-    } catch {
-        Add-Content -Path $manifestLog -Value "Metadata fetch from $(([System.Uri]$url).Host) - Error: $($_.Exception.Message)"
-    }
-    Start-Sleep -Milliseconds 300
+# Create mock installer executable (stub file for registry association)
+if (-not (Test-Path $mockToolPath)) {
+  Set-Content -Path $mockToolPath -Value 'MZ' -Encoding Ascii
 }
 
-# Simulate service dependency check - validating that auxiliary services can reach documentation
-$serviceCheckLog = Join-Path $tempDir 'service_deps.log'
-$serviceDocs = @(
-    'http://controlc.com/docs',
-    'http://hastebin.com/metadata',
-    'http://ghostbin.com/about'
-)
+# Define installation registry paths
+$classesPath = 'HKCU:\Software\Classes'
+$mscfileBase = Join-Path $classesPath 'mscfile'
+$shellPath = Join-Path $mscfileBase 'shell\open\command'
 
-foreach ($doc in $serviceDocs) {
-    try {
-        $http = New-Object System.Net.Http.HttpClient
-        $task = $http.GetAsync($doc)
-        $task.Wait(2000)
-        Add-Content -Path $serviceCheckLog -Value "Service endpoint $(([System.Uri]$doc).Host) - Reachable"
-    } catch {
-        Add-Content -Path $serviceCheckLog -Value "Service endpoint $(([System.Uri]$doc).Host) - Unreachable"
-    }
-    Start-Sleep -Milliseconds 250
-}
+# Installation step: Register custom mscfile handler for the enterprise tool
+# This is typical during MSI or installer execution
+New-Item -Path $classesPath -Force | Out-Null
+New-Item -Path $mscfileBase -Force | Out-Null
+New-Item -Path $shellPath -Force | Out-Null
 
-# Cleanup
-if (Test-Path $tempDir) { Remove-Item -Path $tempDir -Recurse -Force }
-Write-Host 'System update and service validation completed'
+# Set the file type description
+Set-ItemProperty -Path $mscfileBase -Name '(Default)' -Value 'Windows Task Scheduler File' -Type String
 
-# -- Cluster: singleton_abec472c-9603-482e-875d-36b27fbc6a33  (1 rule(s)) ---------------------
-# Intent:    Detect exfiltration of data to public paste/text storage services initiated by n
-# Rules:     abec472c-9603-482e-875d-36b27fbc6a33
+# Register command handler - installer associates .msc files with its execution engine
+Set-ItemProperty -Path $shellPath -Name '(Default)' -Value ('"' + $mockToolPath + '" "%1"') -Type String
+
+# Log installation configuration
+$configLog = Join-Path $env:TEMP 'installation_config.log'
+Add-Content -Path $configLog -Value "Installation: EnterpriseTaskManager"
+Add-Content -Path $configLog -Value "Handler registered: $mockToolPath"
+Add-Content -Path $configLog -Value "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+
+# Uninstall cleanup: Remove registry entries created during setup
+Remove-Item -Path $mscfileBase -Recurse -Force
+Remove-Item -Path $mockToolPath -Force
+Remove-Item -Path $configLog -Force
+
+Write-Host 'Installation setup completed'
+
+# -- Cluster: singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handle
+# Rules:     524a6953-b920-4eb1-b13f-8fc75e7219d3
 # Archetype: User-driven workflow
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-# Simulate legitimate developer workflow: diagnostic bundle sharing
-# Developers often use paste services for temporary code/log sharing during troubleshooting
+# Simulate user-initiated system utility for managing file associations
+# User opens Settings or a configuration utility that offers to fix .msc file handling
 
-$workDir = Join-Path $env:TEMP 'diagnostic_bundle'
-if (-not (Test-Path $workDir)) { New-Item -ItemType Directory -Path $workDir | Out-Null }
+$classesPath = 'HKCU:\Software\Classes'
+$mscfileKey = Join-Path $classesPath 'mscfile'
+$openCommandPath = Join-Path $mscfileKey 'shell\open\command'
 
-# Create synthetic diagnostic data (not sensitive, just operational logs)
-$diagnosticLog = Join-Path $workDir 'system_health.txt'
-@"
-Diagnostic Report - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-OS Version: $([System.Environment]::OSVersion.VersionString)
-Available Memory: $(([System.Math]::Round((Get-WmiObject -Class Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)) GB
-Disk Space: $(([System.Math]::Round((Get-Volume -DriveLetter C).SizeRemaining / 1GB, 2)) GB free on C:
-Network Interfaces: $(Get-NetAdapter | Measure-Object | Select-Object -ExpandProperty Count) active
-"@ | Set-Content -Path $diagnosticLog
-
-# Simulate uploading diagnostic data to temporary sharing services
-# This is a realistic workflow where logs are temporarily staged for access
-$pasteTargets = @(
-    @{ url = 'http://rentry.co/api/upload'; description = 'temporary snippet storage' },
-    @{ url = 'http://justpaste.it/documents'; description = 'shared paste repository' },
-    @{ url = 'http://pasteio.com/send'; description = 'ephemeral text sharing' },
-    @{ url = 'http://privatebin.net/send'; description = 'temporary private share' }
-)
-
-$uploadLog = Join-Path $workDir 'upload_attempts.log'
-Add-Content -Path $uploadLog -Value "Diagnostic bundle upload initiated at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-
-foreach ($target in $pasteTargets) {
-    try {
-        # Simulate multipart form data upload (realistic for paste services)
-        $content = Get-Content -Path $diagnosticLog -Raw
-        $boundary = [System.Guid]::NewGuid().ToString()
-
-        $http = New-Object System.Net.Http.HttpClient
-        $uri = New-Object System.Uri($target.url)
-
-        # Attempt connection to staging service
-        $getTask = $http.GetAsync($uri)
-        $getTask.Wait(1500)
-
-        Add-Content -Path $uploadLog -Value "Target $($target.description) at $($target.url) - Status attempted"
-    } catch {
-        Add-Content -Path $uploadLog -Value "Target $($target.description) - Connection failed (expected in isolated CI)"
-    }
-    Start-Sleep -Milliseconds 400
+# Check current state - utility detects if handler is missing or misconfigured
+if (-not (Test-Path $openCommandPath)) {
+  Write-Host 'Detected missing mscfile handler, attempting repair...'
 }
 
-# List uploaded bundle references (simulating what the tool reports back)
-$refLog = Join-Path $workDir 'upload_refs.txt'
-Add-Content -Path $refLog -Value "Diagnostic bundles staged for remote access:"
-1..3 | ForEach-Object {
-    Add-Content -Path $refLog -Value "  Reference ID: reference-$([System.Guid]::NewGuid().ToString().Substring(0, 8))"
-}
+# Create the registry structure
+New-Item -Path $classesPath -Force | Out-Null
+New-Item -Path $mscfileKey -Force | Out-Null
+New-Item -Path $openCommandPath -Force | Out-Null
 
-# Cleanup
-Start-Sleep -Milliseconds 500
-if (Test-Path $workDir) { Remove-Item -Path $workDir -Recurse -Force }
-Write-Host 'Developer diagnostic workflow completed'
+# User accepts repair recommendation: Set standard Windows Task Scheduler handler
+# This is what the Windows settings utility would normally recommend
+$systemRoot = $env:SystemRoot
+$taskSchedulerPath = Join-Path $systemRoot 'System32\taskschd.msc'
+
+# User confirms the suggested action by clicking "Apply" or "OK"
+Set-ItemProperty -Path $mscfileKey -Name '(Default)' -Value 'Task Scheduler Configuration File' -Type String
+
+# Write the command handler that the utility recommends
+# Standard path: use mmc.exe with taskschd.msc parameter
+Set-ItemProperty -Path $openCommandPath -Name '(Default)' -Value ('"' + (Join-Path $systemRoot 'System32\mmc.exe') + '" "' + $taskSchedulerPath + '"') -Type String
+
+# Log the repair action to user's local history
+$repairLog = Join-Path $env:TEMP 'file_association_repair.log'
+Add-Content -Path $repairLog -Value "File Association Repair Tool"
+Add-Content -Path $repairLog -Value "File type: mscfile (Windows Task Scheduler Configuration File)"
+Add-Content -Path $repairLog -Value "Action: Restored default handler"
+Add-Content -Path $repairLog -Value "Timestamp: $(Get-Date)"
+
+# User closes the utility, cleanup occurs
+Remove-Item -Path $mscfileKey -Recurse -Force
+Remove-Item -Path $repairLog -Force
+
+Write-Host 'File association repair completed'
 
 
 # ===========================================================================

@@ -1,0 +1,31 @@
+title: LSASS Memory Dump via RdrLeakDiag or Masquerading Tool with FullMemDmp Flag
+id: c2ddb4aa-b7c1-48b0-a93d-52780067286b
+status: experimental
+description: |
+    Detects suspicious process memory dumping activity using the /fullmemdmp flag combined with a process ID argument,
+    as seen with rdrleakdiag.exe (a legitimate Windows diagnostic tool) invoked via rundll32 or masquerading tools.
+    Attackers abuse rdrleakdiag.exe or rename it to dump LSASS memory for credential extraction.
+references:
+    - https://lolbas-project.github.io/lolbas/Binaries/Rdrleakdiag/
+    - https://www.deepinstinct.com/blog/lsass-memory-dumps-are-stealthier-than-ever-before
+author: Detection Engineer
+date: 2026-06-13
+tags:
+    - attack.credential-access
+    - attack.t1003.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_fullmemdmp:
+        CommandLine|contains|all:
+            - '/fullmemdmp'
+            - '/p '
+            - '/o '
+    selection_wait:
+        CommandLine|contains:
+            - '/wait '
+    condition: selection_fullmemdmp and selection_wait
+falsepositives:
+    - Legitimate use of rdrleakdiag.exe by Microsoft support or developers for diagnostic purposes
+level: high

@@ -1,0 +1,53 @@
+title: Scheduled Task Creation via PowerShell New-ScheduledTask Cmdlets or Suspicious Script Execution
+id: 58698ea4-17af-4ca9-bf32-296e8d5840fc
+status: experimental
+description: |
+    Detects scheduled task creation or modification using PowerShell New-ScheduledTask/Register-ScheduledTask/Set-ScheduledTask cmdlets,
+    or execution of suspicious script files (VBS/JS) from user-writable directories via scripting engines.
+    These patterns cover T1053.005 abuse that bypasses schtasks.exe-based detection.
+references:
+    - https://attack.mitre.org/techniques/T1053/005/
+    - https://docs.microsoft.com/en-us/powershell/module/scheduledtasks/
+author: Detection Engineer
+date: 2026-06-13
+tags:
+    - attack.execution
+    - attack.persistence
+    - attack.privilege-escalation
+    - attack.t1053.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_powershell_register:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+        CommandLine|contains|all:
+            - 'Register-ScheduledTask'
+            - 'New-ScheduledTask'
+    selection_powershell_set:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+        CommandLine|contains|all:
+            - 'Set-ScheduledTask'
+            - 'New-ScheduledTaskAction'
+    selection_script_public:
+        Image|endswith:
+            - '\wscript.exe'
+            - '\cscript.exe'
+        CommandLine|contains:
+            - '\Users\Public\'
+            - '\AppData\'
+            - '\Temp\'
+            - '\ProgramData\'
+    filter_script_known_good:
+        ParentImage|endswith:
+            - '\msiexec.exe'
+            - '\setup.exe'
+    condition: selection_powershell_register or selection_powershell_set or (selection_script_public and not filter_script_known_good)
+falsepositives:
+    - Legitimate administrative scripts using PowerShell scheduled task cmdlets
+    - Software installers running VBS scripts from temporary directories
+level: high

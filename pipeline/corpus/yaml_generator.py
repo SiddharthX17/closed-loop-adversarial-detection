@@ -199,6 +199,7 @@ def _validate_script(script: str, shell: str) -> tuple[bool, str]:
     s = script.lower()
 
     _blocklist = [
+        # Security blocks
         ("invoke-mimikatz",               "credential dumping"),
         ("net user /add",                 "user creation"),
         ("net localgroup administrators", "privilege escalation"),
@@ -209,6 +210,18 @@ def _validate_script(script: str, shell: str) -> tuple[bool, str]:
         ("reg add hklm\\sam",             "SAM tampering"),
         ("wevtutil cl ",                  "log clearing"),
         ("clear-eventlog",                "log clearing"),
+        # Non-PowerShell language blocks — these break PS parser
+        ("import subprocess",             "python code"),
+        ("import os",                     "python code"),
+        ("import sys",                    "python code"),
+        ("def main(",                     "python code"),
+        ("if __name__",                   "python code"),
+        ("print('usage:",                 "python code"),
+        ("if not exist",                  "cmd batch syntax"),
+        ("if exist ",                     "cmd batch syntax"),
+        ("goto ",                         "cmd batch syntax"),
+        ("echo off",                      "cmd batch syntax"),
+        ("setlocal enabledelayedexpansion","cmd batch syntax - use PS instead"),
     ]
 
     for pattern, reason in _blocklist:

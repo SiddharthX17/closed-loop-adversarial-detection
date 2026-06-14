@@ -3,19 +3,24 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_14144e10-c88a-4337-9aa0-6e3302160728",
-      "singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3"
+      "singleton_bd5f77f5-9b6e-4e75-abd7-3ce69e7e2000",
+      "singleton_4f1f8b5d-1702-4c93-bf20-eab9af3175fa"
     ],
     "archetype_tags": [
-      "explorer",
+      "bypass",
+      "cmd",
+      "commandline",
+      "mshta",
+      "network",
       "parent_process",
-      "registry"
+      "powershell",
+      "script_host"
     ],
     "behavioral_intents": [
-      "Detect execution of critical Windows system processes (lsass, winlogon, svchost, etc.) from non-standard directories, a common technique for masquerading malware as legitimate system components.",
-      "Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handler registry path to execute arbitrary code with elevated privileges."
+      "Attackers register scheduled tasks via PowerShell with elevated privileges and logon/startup triggers to achieve persistence.",
+      "Detect shell interpreters (cmd, PowerShell, etc.) initiating outbound connections to public code-hosting and paste-bin services, a common vector for downloading and executing malicious payloads or exfiltrating data."
     ],
-    "committed_at": 1781358974.288882,
+    "committed_at": 1781454400.381686,
     "workflow_ran": true,
     "logs_produced": false,
     "rules_hit": [],
@@ -25,23 +30,15 @@
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_1289c991-b0ba-4f72-8ef9-4e4050be30bc",
-      "singleton_c2ddb4aa-b7c1-48b0-a93d-52780067286b"
+      "singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516"
     ],
     "archetype_tags": [
-      "commandline",
-      "mshta",
-      "parent_process",
-      "powershell",
-      "regsvr32",
-      "rundll32",
-      "script_host"
+      "registry"
     ],
     "behavioral_intents": [
-      "Detect scheduled task creation via PowerShell cmdlets or CIM methods, which attackers use for persistence and privilege escalation",
-      "Detects attempts to dump LSASS process memory using RdrLeakDiag or tool masquerading to extract credentials."
+      "Detect UAC bypass attempts via COM handler registry hijacking by modifying the mscfile shell command registry path to execute arbitrary code with elevated privileges."
     ],
-    "committed_at": 1781343341.336085,
+    "committed_at": 1781454538.2263734,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

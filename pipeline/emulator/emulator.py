@@ -441,6 +441,8 @@ def _emulate_technique(
                 procedure_text=cleaned.formatted_input,
                 evasion_hints=variant_hints,
                 executor_name=cleaned.executor_image,
+                elevation_required=getattr(
+                    cleaned, "elevation_required", False),
             )
 
             if log_event is not None:

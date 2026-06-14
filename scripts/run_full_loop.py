@@ -41,7 +41,7 @@ OPEN_PRS = os.getenv("OPEN_PRS", "0").lower() in ("1", "true")
 ITERATIONS = 2
 RULES_DIR = Path("rules")
 CORPUS_ROOT = Path("corpus/benign")
-OUTPUT_DIR = None  # suppress file writes during loop test
+OUTPUT_DIR = Path("corpus/attack")
 
 
 # ---------------------------------------------------------------------------

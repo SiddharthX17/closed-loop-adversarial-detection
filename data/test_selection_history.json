@@ -2,21 +2,33 @@
   "T1059.001": {
     "49eb9404-5e0f-4031-a179-b40f7be385e3": {
       "runs_seen": 1,
-      "rule_generated": false
+      "rule_generated": true
     },
     "a21bb23e-e677-4ee7-af90-6931b57b6350": {
       "runs_seen": 1,
-      "rule_generated": false
+      "rule_generated": true
     },
     "1289f78d-22d2-4590-ac76-166737e1811b": {
       "runs_seen": 1,
-      "rule_generated": false
+      "rule_generated": true
     },
     "af1800cf-9f9d-4fd1-a709-14b1e6de020d": {
       "runs_seen": 1,
-      "rule_generated": false
+      "rule_generated": true
     },
     "fa050f5e-bc75-4230-af73-b6fd7852cd73": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "8e5c5532-1181-4c1d-bb79-b3a9f5dbd680": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "bf8c1441-4674-4dab-8e4e-39d93d08f9b7": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "8a2ad40b-12c7-4b25-8521-2737b0a415af": {
       "runs_seen": 1,
       "rule_generated": false
     }
@@ -41,6 +53,18 @@
     "ecd3fa21-7792-41a2-8726-2c5c673414d3": {
       "runs_seen": 1,
       "rule_generated": true
+    },
+    "e16b3b75-dc9e-4cde-a23d-dfa2d0507b3b": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "42f53695-ad4a-4546-abb6-7d837f644a71": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "8fcfa3d5-ea7d-4e1c-bd3e-3c4ed315b7d2": {
+      "runs_seen": 1,
+      "rule_generated": true
     }
   },
   "T1036.005": {
@@ -61,6 +85,18 @@
       "rule_generated": true
     },
     "89ee4b5c-b1d7-4837-a28a-746d4b367cb3": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "2a7191d1-c12a-47bf-abe2-84ac27998a07": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "03ae82a6-9fa0-465b-91df-124d8ca5c4e8": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "c923e0a9-059e-4dd9-b938-0a5c0d7fa7d4": {
       "runs_seen": 1,
       "rule_generated": false
     }
@@ -85,6 +121,18 @@
     "453acf13-1dbd-47d7-b28a-172ce9228023": {
       "runs_seen": 1,
       "rule_generated": true
+    },
+    "6502c8f0-b775-4dbd-9193-1298f56b6781": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "7cede33f-0acd-44ef-9774-15511300b24b": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "0be2230c-9ab3-4ac2-8826-3199b9a0ebf8": {
+      "runs_seen": 1,
+      "rule_generated": false
     }
   },
   "T1567.003": {
@@ -106,6 +154,14 @@
     },
     "c2e8ab6e-431e-460a-a2aa-3bc6a32022e3": {
       "runs_seen": 1,
+      "rule_generated": false
+    },
+    "1aa8f6a2-2ee7-4d05-9122-87772b0080b9": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "002a8a65-1b61-4501-b122-05f663e6fdf5": {
+      "runs_seen": 2,
       "rule_generated": false
     }
   }

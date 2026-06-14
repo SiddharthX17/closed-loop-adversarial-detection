@@ -171,7 +171,7 @@ PLANNER_SYSTEM_PROMPT = (
     "One concise paragraph per opportunity included.\n\n"
 
     "══ OUTPUT FORMAT ════════════════════════════════════════════════════════════\n"
-    "Return ONLY valid JSON. No explanation, no markdown, no preamble.\n\n"
+    "Respond with only a valid JSON object. No explanation, no markdown fences, no preamble.\n\n"
     "{\n"
     '  "technique_objective": "single sentence",\n'
     '  "evidence_quality": {\n'

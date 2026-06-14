@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   3  |  Feasible: 2  |  Variants: 6
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,169 +10,267 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# SKIPPED variant 'Software installer/updater workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# SKIPPED variant 'User-driven workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# -- Cluster: singleton_e66d7887-58d4-4941-955e-0f9501b53347  (1 rule(s)) ---------------------
-# Intent:    Detect base64-encoded payloads staged in HKCU registry hives for later execution
-# Rules:     e66d7887-58d4-4941-955e-0f9501b53347
+# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
+# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
 # Archetype: IT admin workflow
 
-# Legitimate administrative configuration staging for scheduled task
-# Scenario: IT admin creating an automated backup verification routine
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
 
-$registryPath = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
-$valueName = 'BackupVerifyConfig'
+# Define paths for audit and remediation
+$mscfilePath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+$backupFile = Join-Path $env:TEMP 'mscfile_backup.reg'
+$auditLog = Join-Path $env:TEMP 'registry_audit.txt'
 
-# Base64-encoded configuration string representing legitimate task metadata
-# This would normally come from a management tool or configuration system
-$legitimateConfig = 'VmVyaWZ5QmFja3VwSW50ZWdyaXR5QXV0b21hdGVk'
-
-# Create registry path if it doesn't exist
-if (-not (Test-Path $registryPath)) {
-    New-Item -Path $registryPath -Force | Out-Null
+# Create audit directory structure
+$auditDir = Join-Path $env:TEMP 'SecurityAudit'
+if (-not (Test-Path $auditDir)) {
+  New-Item -ItemType Directory -Path $auditDir -Force | Out-Null
 }
 
-# Stage the base64 configuration in registry
-New-ItemProperty -Path $registryPath -Name $valueName -Value $legitimateConfig -PropertyType String -Force | Out-Null
+# Export current mscfile handler for audit documentation
+Write-Host "[*] Exporting current COM handler configuration..."
+reg export 'HKEY_LOCAL_MACHINE\SOFTWARE\Classes\mscfile' $backupFile /y 2>&1 | Out-Null
 
-# Verify the registry value was written (admin would validate their work)
-Get-ItemProperty -Path $registryPath -Name $valueName | Select-Object -ExpandProperty $valueName
+if (Test-Path $backupFile) {
+  Write-Host "[+] Handler configuration backed up to audit log"
+  Get-Content $backupFile | Add-Content $auditLog
+}
 
-# Create a scheduled task that references this registry configuration
-# This is realistic: tasks often read their parameters from registry
-$taskName = 'SystemMaintenanceVerification'
-$taskPath = '\\Microsoft\\Windows\\System32'
+# Verify and document the default mscfile command handler
+Write-Host "[*] Auditing mscfile shell handler registration..."
+if (Test-Path $mscfilePath) {
+  $defaultHandler = (Get-ItemProperty -Path $mscfilePath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  Write-Host "[+] Default mscfile handler: $defaultHandler"
+  Add-Content $auditLog "Audit Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+  Add-Content $auditLog "mscfile handler: $defaultHandler"
+}
 
-# Simulate the task reading the registry value and using it
-$taskAction = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument '-Command "Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\ NT\CurrentVersion\Winlogon -Name BackupVerifyConfig"'
+# Document all shell subkeys under mscfile
+Write-Host "[*] Documenting mscfile shell subkey structure..."
+$shellPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell'
+if (Test-Path $shellPath) {
+  $subkeys = Get-ChildItem -Path $shellPath -ErrorAction SilentlyContinue
+  foreach ($subkey in $subkeys) {
+    Write-Host "[+] Found shell subkey: $($subkey.PSChildName)"
+    Add-Content $auditLog "Shell subkey: $($subkey.PSChildName)"
+  }
+}
 
-# Register the task (this would trigger additional registry operations)
-Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger (New-ScheduledTaskTrigger -AtLogon) -Force -ErrorAction SilentlyContinue | Out-Null
+# Perform remediation: ensure mscfile command points to legitimate system binary
+Write-Host "[*] Verifying legitimate mscfile handler assignment..."
+$legitimateCommand = 'mmc.exe %1'
+if (Test-Path $mscfilePath) {
+  $currentCommand = (Get-ItemProperty -Path $mscfilePath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  if ($currentCommand -ne $legitimateCommand) {
+    Write-Host "[*] Remediating handler to legitimate value..."
+    Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $legitimateCommand -Force
+    Write-Host "[+] Handler remediated"
+    Add-Content $auditLog "Remediation: Updated mscfile handler to $legitimateCommand"
+  } else {
+    Write-Host "[+] Handler already points to legitimate tool"
+  }
+}
 
-# Clean up
-Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path $registryPath -Name $valueName -Force -ErrorAction SilentlyContinue
+# Clean up backup and audit files
+Write-Host "[*] Finalizing audit documentation..."
+if (Test-Path $backupFile) {
+  Remove-Item -Path $backupFile -Force
+}
 
-# -- Cluster: singleton_e66d7887-58d4-4941-955e-0f9501b53347  (1 rule(s)) ---------------------
-# Intent:    Detect base64-encoded payloads staged in HKCU registry hives for later execution
-# Rules:     e66d7887-58d4-4941-955e-0f9501b53347
+if (Test-Path $auditLog) {
+  Remove-Item -Path $auditLog -Force
+}
+
+if (Test-Path $auditDir) {
+  Remove-Item -Path $auditDir -Recurse -Force
+}
+
+Write-Host "[+] Registry audit and remediation completed"
+Write-Host "[*] All temporary audit files cleaned up"
+
+# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
+# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
 # Archetype: Software installer/updater workflow
 
-# Realistic browser or plugin installer storing encoded configuration
-# Scenario: Mozilla Firefox portable configuration setup
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
 
-$registryPath = 'HKCU:\Software\Mozilla\Firefox\Profiles\Default'
-$valueName = 'ExtensionMetadata'
+# Simulate legitimate software package registration during deployment
+$packageName = 'AdminConsoleTools'
+$packageVersion = '2024.01'
+$installRoot = Join-Path $env:ProgramFiles 'AdminTools'
+$configPath = Join-Path $env:TEMP 'package_setup.ini'
 
-# Base64-encoded extension configuration (realistic for browser plugins)
-$extensionConfig = 'RXh0ZW5zaW9uQ29uZmlndXJhdGlvbkRhdGFWMTA='
-
-# Create Firefox registry path
-if (-not (Test-Path $registryPath)) {
-    New-Item -Path $registryPath -Force | Out-Null
+# Create installation directory structure (simulating MSI deployment)
+Write-Host "[*] Initializing package deployment for $packageName $packageVersion"
+if (-not (Test-Path $installRoot)) {
+  New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
 }
 
-# Write the encoded configuration (installers do this during setup)
-New-ItemProperty -Path $registryPath -Name $valueName -Value $extensionConfig -PropertyType String -Force | Out-Null
+# Create placeholder executable for the management console tool
+$toolPath = Join-Path $installRoot 'console.exe'
+$toolStub = @'
+REM This is a placeholder for the management console application
+REM In real deployments, this would be the actual console binary
+'@
+$toolStub | Set-Content $toolPath -Force
 
-# Installer would verify the write
-$verifyValue = Get-ItemProperty -Path $registryPath -Name $valueName -ErrorAction SilentlyContinue
-if ($verifyValue.$valueName) {
-    Write-Host 'Configuration staged successfully'
+# Write installation manifest
+$manifest = @"
+[InstallationInfo]
+ProductName=$packageName
+ProductVersion=$packageVersion
+InstallPath=$installRoot
+DeploymentDate=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+InstallerType=MSI
+"@
+$manifest | Set-Content $configPath -Force
+
+Write-Host "[+] Package deployment structure created"
+
+# During software setup, register COM handlers for management console integration
+Write-Host "[*] Registering COM handlers for management console support..."
+$mscfilePath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+
+# Ensure parent key structure exists
+$classesPath = 'HKLM:\SOFTWARE\Classes\mscfile'
+if (-not (Test-Path $classesPath)) {
+  New-Item -Path $classesPath -Force | Out-Null
 }
 
-# Also simulate Adobe Reader doing the same under its registry branch
-$adobePath = 'HKCU:\Software\Adobe\Reader\DC\Trust\PluginWhitelist'
-if (-not (Test-Path $adobePath)) {
-    New-Item -Path $adobePath -Force | Out-Null
+if (-not (Test-Path $mscfilePath)) {
+  New-Item -Path $mscfilePath -Force | Out-Null
 }
 
-$adobePluginConfig = 'QWRvYmVQbHVnaW5Db25maWd1cmF0aW9u'
-New-ItemProperty -Path $adobePath -Name 'PluginSettings' -Value $adobePluginConfig -PropertyType String -Force | Out-Null
+# Set the legitimate mscfile handler during package deployment
+$consoleCommand = '"mmc.exe" "%1"'
+Write-Host "[*] Registering handler: $consoleCommand"
+Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $consoleCommand -Force
 
-# Verify Adobe configuration
-Get-ItemProperty -Path $adobePath -Name 'PluginSettings' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'PluginSettings'
+Write-Host "[+] COM handler registration completed"
 
-# Also test Google registry path (realistic for Chrome/Google Drive)
-$googlePath = 'HKCU:\Software\Google\Chrome\Preferences'
-if (-not (Test-Path $googlePath)) {
-    New-Item -Path $googlePath -Force | Out-Null
+# Document the deployment in package registry location
+$pkgRegPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AdminConsoleTools_2024'
+if (-not (Test-Path $pkgRegPath)) {
+  New-Item -Path $pkgRegPath -Force | Out-Null
 }
 
-$chromeConfig = 'Q2hyb21lUHJlZmVyZW5jZXNDb25maWd1cmF0aW9u'
-New-ItemProperty -Path $googlePath -Name 'Extensions' -Value $chromeConfig -PropertyType String -Force | Out-Null
+Set-ItemProperty -Path $pkgRegPath -Name 'DisplayName' -Value "$packageName $packageVersion" -Force
+Set-ItemProperty -Path $pkgRegPath -Name 'InstallLocation' -Value $installRoot -Force
+Set-ItemProperty -Path $pkgRegPath -Name 'Publisher' -Value 'IT Operations' -Force
 
-# Clean up all test registrations
-Remove-ItemProperty -Path $registryPath -Name $valueName -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path $adobePath -Name 'PluginSettings' -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $adobePath -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path $googlePath -Name 'Extensions' -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $googlePath -Force -ErrorAction SilentlyContinue
+Write-Host "[+] Deployment tracked in Windows Registry"
 
-# -- Cluster: singleton_e66d7887-58d4-4941-955e-0f9501b53347  (1 rule(s)) ---------------------
-# Intent:    Detect base64-encoded payloads staged in HKCU registry hives for later execution
-# Rules:     e66d7887-58d4-4941-955e-0f9501b53347
+# Verify handler registration
+Write-Host "[*] Verifying COM handler configuration..."
+$verifyPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+if (Test-Path $verifyPath) {
+  $registeredHandler = (Get-ItemProperty -Path $verifyPath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  Write-Host "[+] Handler verified: $registeredHandler"
+}
+
+# Clean up installation artifacts and registry entries
+Write-Host "[*] Cleaning up deployment temporary files..."
+if (Test-Path $configPath) {
+  Remove-Item -Path $configPath -Force
+}
+
+if (Test-Path $toolPath) {
+  Remove-Item -Path $toolPath -Force
+}
+
+if (Test-Path $installRoot) {
+  Remove-Item -Path $installRoot -Recurse -Force
+}
+
+# Remove test registry entries
+if (Test-Path $pkgRegPath) {
+  Remove-Item -Path $pkgRegPath -Recurse -Force
+}
+
+Write-Host "[+] Package deployment and cleanup completed"
+Write-Host "[*] Installation simulation finished"
+
+# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
+# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
 # Archetype: User-driven workflow
 
-# User installing and configuring a portable utility that uses registry for settings
-# Scenario: Developer tool (like Git Bash or Node.js integration) storing encoded config
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
 
-$registryPath = 'HKCU:\Software\Classes\CLSID\{9999AAAA-BBBB-CCCC-DDDD-000000000000}'
-if (-not (Test-Path $registryPath)) {
-    New-Item -Path $registryPath -Force | Out-Null
+# Simulate user installing an administrative utility that requires COM handler configuration
+Write-Host "[*] User administrative tool installation initiated"
+
+$toolName = 'RemoteManagementSnap'
+$tempInstallDir = Join-Path $env:TEMP "${toolName}_setup"
+$setupScript = Join-Path $tempInstallDir 'setup.ps1'
+
+# Create temporary installation directory
+if (-not (Test-Path $tempInstallDir)) {
+  New-Item -ItemType Directory -Path $tempInstallDir -Force | Out-Null
 }
 
-# Base64-encoded development tool configuration (realistic for dev utilities)
-$devToolConfig = 'RGV2ZWxvcG1lbnRUb29sQ29uZmlndXJhdGlvblN0cmluZw=='
-New-ItemProperty -Path $registryPath -Name 'Config' -Value $devToolConfig -PropertyType String -Force | Out-Null
+Write-Host "[+] Installation workspace prepared"
 
-# Verify configuration was written
-$storedConfig = Get-ItemProperty -Path $registryPath -Name 'Config' -ErrorAction SilentlyContinue
-if ($storedConfig) {
-    Write-Host 'Development tool configuration loaded'
+# Generate setup script that registers the tool's COM components
+$setupContent = @'
+# Administrative tool setup - registers console snap-in
+$toolPath = Join-Path $env:ProgramFiles "RemoteManagementSnap"
+
+if (-not (Test-Path $toolPath)) {
+  New-Item -ItemType Directory -Path $toolPath -Force | Out-Null
 }
 
-# Simulate the utility reading the configuration later
-$retrievedConfig = Get-ItemProperty -Path $registryPath -Name 'Config' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'Config'
+# Register mscfile handler for management console integration
+$mscfilePath = "HKLM:\SOFTWARE\Classes\mscfile\shell\open\command"
 
-# Test WOW6432Node path for 32-bit application on 64-bit system
-$wow6432Path = 'HKCU:\Software\WOW6432Node\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
-if (-not (Test-Path $wow6432Path)) {
-    New-Item -Path $wow6432Path -Force | Out-Null
+if (-not (Test-Path $mscfilePath)) {
+  New-Item -Path $mscfilePath -Force | Out-Null
 }
 
-$appCompatConfig = 'QXBwQ29tcGF0aWJpbGl0eUZsYWdzQ29uZmlndXJhdGlvbg=='
-New-ItemProperty -Path $wow6432Path -Name 'PortableAppSettings' -Value $appCompatConfig -PropertyType String -Force | Out-Null
+$handlerCmd = '"mmc.exe" "%1"'
+Set-ItemProperty -Path $mscfilePath -Name "(Default)" -Value $handlerCmd -Force
 
-# Retrieve and verify the AppCompat configuration
-Get-ItemProperty -Path $wow6432Path -Name 'PortableAppSettings' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'PortableAppSettings'
+Write-Host "Tool registration complete"
+'@
 
-# Simulate Policies path for enterprise tools that use GPO-like registry areas
-$policiesPath = 'HKCU:\Software\Policies\EnterpriseApp\Settings'
-if (-not (Test-Path $policiesPath)) {
-    New-Item -Path $policiesPath -Force | Out-Null
+$setupContent | Set-Content $setupScript -Force
+Write-Host "[+] Setup script generated"
+
+# Execute the installation setup (requires administrative privileges)
+Write-Host "[*] Executing administrative setup..."
+try {
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupScript 2>&1 | Out-Null
+  Write-Host "[+] Administrative setup executed successfully"
+} catch {
+  Write-Host "[-] Setup execution encountered an issue (expected in non-admin context)"
 }
 
-$policyConfig = 'RW50ZXJwcmlzZVBvbGljeUNvbmZpZ3VyYXRpb24='
-New-ItemProperty -Path $policiesPath -Name 'StoredConfig' -Value $policyConfig -PropertyType String -Force | Out-Null
+# Verify that COM handler was registered
+Write-Host "[*] Verifying COM handler registration..."
+$verifyPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+if (Test-Path $verifyPath) {
+  $handler = (Get-ItemProperty -Path $verifyPath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  Write-Host "[+] COM handler is registered: $handler"
+}
 
-# Verify the policy configuration
-Get-ItemProperty -Path $policiesPath -Name 'StoredConfig' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'StoredConfig'
+# Clean up installation artifacts
+Write-Host "[*] Cleaning up installation files..."
+if (Test-Path $setupScript) {
+  Remove-Item -Path $setupScript -Force
+}
 
-# Clean up all test registry entries
-Remove-ItemProperty -Path $registryPath -Name 'Config' -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path $wow6432Path -Name 'PortableAppSettings' -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $wow6432Path -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path $policiesPath -Name 'StoredConfig' -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $policiesPath -Force -ErrorAction SilentlyContinue
+if (Test-Path $tempInstallDir) {
+  Remove-Item -Path $tempInstallDir -Recurse -Force
+}
 
-# SKIPPED cluster singleton_17c277a0-618f-4fca-aa29-e679bcfc4d97: JSON parse error: Unterminated string starting at: line 39 column 17 (char 8194)
+Write-Host "[+] Installation cleanup completed"
+Write-Host "[*] Administrative tool setup process finished"
+
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

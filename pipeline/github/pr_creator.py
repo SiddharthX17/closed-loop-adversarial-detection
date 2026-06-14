@@ -413,11 +413,6 @@ class PRCreator:
                 if DEBUG:
                     print(f"[pr_creator] Updated {rule_path}")
             except GithubException as e:
-                if DEBUG:
-                    print(
-                        f"[corpus/pusher] get_contents failed: "
-                        f"status={e.status} data={e.data}"
-                    )
                 if e.status == 404:
                     _retry(lambda: self._repo.create_file(
                         path=rule_path,

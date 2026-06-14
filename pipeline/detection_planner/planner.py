@@ -27,6 +27,7 @@ Failure behaviour:
 from __future__ import annotations
 
 import json
+from json_repair import repair_json
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -153,12 +154,19 @@ class DetectionPlanner:
             detection_hint=detection_hint,
         )
 
-        raw = self._call_llm(PLANNER_SYSTEM_PROMPT, user_message)
+        strategy = None
+        for _attempt in range(2):
+            raw = self._call_llm(PLANNER_SYSTEM_PROMPT, user_message)
+            if raw is None:
+                return None
+            strategy = self._parse_response(technique_id, raw)
+            if strategy is not None:
+                break
+            if _attempt == 0:
+                if DEBUG:
+                    print(
+                        f"[detection_planner] {technique_id}: parse failed — retrying once")
 
-        if raw is None:
-            return None
-
-        strategy = self._parse_response(technique_id, raw)
         if strategy and DEBUG:
             unique = strategy.evidence_quality.get("unique_event_count", "?")
             print(
@@ -223,13 +231,17 @@ class DetectionPlanner:
     ) -> Optional[DetectionStrategy]:
         try:
             data = json.loads(raw)
-        except json.JSONDecodeError as e:
-            if DEBUG:
-                print(
-                    f"[detection_planner] {technique_id}: JSON parse failed: {e}\n"
-                    f"Raw response:\n{raw[:400]}"
-                )
-            return None
+        except json.JSONDecodeError as original_error:
+            try:
+                data = json.loads(repair_json(raw))
+            except Exception as repair_error:
+                if DEBUG:
+                    print(
+                        f"[detection_planner] {technique_id}: "
+                        f"JSON parse failed ({original_error}) and repair failed ({repair_error})\n"
+                        f"Raw response:\n{raw[:400]}"
+                    )
+                return None
 
         # Validate top-level fields — presence and type
         required = {

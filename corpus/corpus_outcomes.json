@@ -3,22 +3,19 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_7983fb82-b62d-4bf8-a004-6aba8686e0f9",
-      "singleton_cfdc1116-6584-471e-a0ff-c6b9db445068",
-      "singleton_abec472c-9603-482e-875d-36b27fbc6a33"
+      "singleton_14144e10-c88a-4337-9aa0-6e3302160728",
+      "singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3"
     ],
     "archetype_tags": [
       "explorer",
-      "network",
       "parent_process",
       "registry"
     ],
     "behavioral_intents": [
-      "Detect masquerading of legitimate Windows system processes by running copies with system process names from user-writable directories instead of protected system paths.",
-      "Detect adversaries writing base64-encoded payloads into registry keys under HKCU\\Software paths commonly modified by legitimate applications (Microsoft, Google, Mozilla, Adobe, Intel, Oracle) to persist code execution or configuration",
-      "Detect exfiltration of data to public paste/text storage services initiated by non-browser processes, which may indicate automated data stealing or C2 communication bypass."
+      "Detect execution of critical Windows system processes (lsass, winlogon, svchost, etc.) from non-standard directories, a common technique for masquerading malware as legitimate system components.",
+      "Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handler registry path to execute arbitrary code with elevated privileges."
     ],
-    "committed_at": 1781110552.9039907,
+    "committed_at": 1781358974.288882,
     "workflow_ran": true,
     "logs_produced": false,
     "rules_hit": [],
@@ -28,31 +25,23 @@
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_400acaef-ef37-498c-8d79-9757d1366c27",
-      "singleton_54e22e3e-d331-4bf5-8c34-25632c267241",
-      "singleton_ff2e2fd1-3f99-4bb7-b3bf-4601fe6cd3fc"
+      "singleton_1289c991-b0ba-4f72-8ef9-4e4050be30bc",
+      "singleton_c2ddb4aa-b7c1-48b0-a93d-52780067286b"
     ],
     "archetype_tags": [
-      "certutil",
-      "cmd",
       "commandline",
-      "explorer",
-      "installer",
       "mshta",
-      "network",
       "parent_process",
       "powershell",
-      "registry",
       "regsvr32",
       "rundll32",
       "script_host"
     ],
     "behavioral_intents": [
-      "Detect renamed system binaries or binaries with mismatched OriginalFileName metadata that indicate process masquerading attacks (T1036.005).",
-      "Detect exfiltration of sensitive data by scripting engines and utilities making outbound connections to public paste/text storage sites.",
-      "Detect adversaries using PowerShell to register and immediately modify scheduled tasks with elevated privileges, often originating from management/EDR parent processes to establish persistence or privilege escalation."
+      "Detect scheduled task creation via PowerShell cmdlets or CIM methods, which attackers use for persistence and privilege escalation",
+      "Detects attempts to dump LSASS process memory using RdrLeakDiag or tool masquerading to extract credentials."
     ],
-    "committed_at": 1781110920.1278377,
+    "committed_at": 1781343341.336085,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

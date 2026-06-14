@@ -153,12 +153,18 @@ class DetectionPlanner:
             detection_hint=detection_hint,
         )
 
-        raw = self._call_llm(PLANNER_SYSTEM_PROMPT, user_message)
+        strategy = None
+        for _attempt in range(2):
+            raw = self._call_llm(PLANNER_SYSTEM_PROMPT, user_message)
+            if raw is None:
+                return None
+            strategy = self._parse_response(technique_id, raw)
+            if strategy is not None:
+                break
+            if _attempt == 0:
+                if DEBUG:
+                    print(f"[detection_planner] {technique_id}: parse failed — retrying once")
 
-        if raw is None:
-            return None
-
-        strategy = self._parse_response(technique_id, raw)
         if strategy and DEBUG:
             unique = strategy.evidence_quality.get("unique_event_count", "?")
             print(
@@ -188,7 +194,10 @@ class DetectionPlanner:
                         "cache_control": {"type": "ephemeral"},
                     }
                 ],
-                messages=[{"role": "user", "content": user_message}],
+                messages=[
+                    {"role": "user", "content": user_message},
+                    {"role": "assistant", "content": "{"},
+                ],
             )
 
             if DEBUG:
@@ -200,16 +209,12 @@ class DetectionPlanner:
                     print(
                         f"[detection_planner] Cache HIT: {usage.cache_read_input_tokens} tokens")
 
-            raw = response.content[0].text.strip()
-
-            # Extract JSON payload defensively
-            start = raw.find("{")
+            # Prefill was "{" — prepend it back before parsing
+            raw = "{" + response.content[0].text.strip()
             end = raw.rfind("}")
-
-            if start != -1 and end != -1 and end > start:
-                raw = raw[start:end + 1]
-
-            return raw
+            if end == -1:
+                return None
+            return raw[:end + 1]
 
         except Exception as e:
             if DEBUG:

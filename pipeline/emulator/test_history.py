@@ -31,8 +31,7 @@ _HISTORY_PATH = Path("data/test_selection_history.json")
 # Cross-run penalty multipliers applied in _select_candidates.
 # These combine with the within-run _SEEN_PENALTY via min() — whichever
 # is more aggressive wins; penalties do not stack.
-PENALTY_CROSS_RUN = 0.35   # seen in a previous run, no rule yet
-PENALTY_RULE_GENERATED = 0.15   # test already produced a validated rule
+PENALTY_CROSS_RUN = 0.35   # seen in a previous run
 
 
 def load() -> dict:
@@ -110,15 +109,19 @@ def mark_rule_generated(
 def get_penalty(history: dict, technique_id: str, guid: str) -> float:
     """
     Return the cross-run penalty multiplier for a test.
-      1.0  — never seen
-      0.35 — seen in a previous run, no rule yet
-      0.15 — test already produced a validated rule
+      1.0                                   — never seen
+      0.35 - 0.05 × (runs_seen - 1) ≥ 0.10 — seen in previous runs
+
+    Penalty scales with exposure regardless of whether a rule was generated.
+    rule_generated is still tracked for informational purposes but carries
+    no special penalty — a test that produced a rule competes on the same
+    terms as any other seen test.
     """
     entry = history.get(technique_id, {}).get(guid)
     if entry is None:
         return 1.0
-    if entry.get("rule_generated"):
-        return PENALTY_RULE_GENERATED
-    if entry.get("runs_seen", 0) > 0:
-        return PENALTY_CROSS_RUN
+    runs_seen = entry.get("runs_seen", 0)
+    if runs_seen > 0:
+        scaled = PENALTY_CROSS_RUN - 0.05 * (runs_seen - 1)
+        return max(scaled, 0.10)
     return 1.0

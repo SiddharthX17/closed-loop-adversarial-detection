@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   2  |  Feasible: 1  |  Variants: 2
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,66 +10,267 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_1289c991-b0ba-4f72-8ef9-4e4050be30bc  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled task creation via PowerShell cmdlets or CIM methods, which atta
-# Rules:     1289c991-b0ba-4f72-8ef9-4e4050be30bc
+# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
+# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
 # Archetype: IT admin workflow
 
-$ScheduledTaskName = 'DailyBackupMaintenance'
-$TaskPath = '\BackupServices\'
-$Principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -RunLevel Highest
-$Trigger = New-ScheduledTaskTrigger -AtStartup
-$Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -Command "Write-Host Backup task started"'
-$Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable
-Register-ScheduledTask -TaskName $ScheduledTaskName -TaskPath $TaskPath -Principal $Principal -Action $Action -Trigger $Trigger -Settings $Settings -Force
-Start-Sleep -Seconds 2
-Unregister-ScheduledTask -TaskName $ScheduledTaskName -TaskPath $TaskPath -Confirm:$false
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
 
-# -- Cluster: singleton_1289c991-b0ba-4f72-8ef9-4e4050be30bc  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled task creation via PowerShell cmdlets or CIM methods, which atta
-# Rules:     1289c991-b0ba-4f72-8ef9-4e4050be30bc
+# Define paths for audit and remediation
+$mscfilePath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+$backupFile = Join-Path $env:TEMP 'mscfile_backup.reg'
+$auditLog = Join-Path $env:TEMP 'registry_audit.txt'
+
+# Create audit directory structure
+$auditDir = Join-Path $env:TEMP 'SecurityAudit'
+if (-not (Test-Path $auditDir)) {
+  New-Item -ItemType Directory -Path $auditDir -Force | Out-Null
+}
+
+# Export current mscfile handler for audit documentation
+Write-Host "[*] Exporting current COM handler configuration..."
+reg export 'HKEY_LOCAL_MACHINE\SOFTWARE\Classes\mscfile' $backupFile /y 2>&1 | Out-Null
+
+if (Test-Path $backupFile) {
+  Write-Host "[+] Handler configuration backed up to audit log"
+  Get-Content $backupFile | Add-Content $auditLog
+}
+
+# Verify and document the default mscfile command handler
+Write-Host "[*] Auditing mscfile shell handler registration..."
+if (Test-Path $mscfilePath) {
+  $defaultHandler = (Get-ItemProperty -Path $mscfilePath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  Write-Host "[+] Default mscfile handler: $defaultHandler"
+  Add-Content $auditLog "Audit Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+  Add-Content $auditLog "mscfile handler: $defaultHandler"
+}
+
+# Document all shell subkeys under mscfile
+Write-Host "[*] Documenting mscfile shell subkey structure..."
+$shellPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell'
+if (Test-Path $shellPath) {
+  $subkeys = Get-ChildItem -Path $shellPath -ErrorAction SilentlyContinue
+  foreach ($subkey in $subkeys) {
+    Write-Host "[+] Found shell subkey: $($subkey.PSChildName)"
+    Add-Content $auditLog "Shell subkey: $($subkey.PSChildName)"
+  }
+}
+
+# Perform remediation: ensure mscfile command points to legitimate system binary
+Write-Host "[*] Verifying legitimate mscfile handler assignment..."
+$legitimateCommand = 'mmc.exe %1'
+if (Test-Path $mscfilePath) {
+  $currentCommand = (Get-ItemProperty -Path $mscfilePath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  if ($currentCommand -ne $legitimateCommand) {
+    Write-Host "[*] Remediating handler to legitimate value..."
+    Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $legitimateCommand -Force
+    Write-Host "[+] Handler remediated"
+    Add-Content $auditLog "Remediation: Updated mscfile handler to $legitimateCommand"
+  } else {
+    Write-Host "[+] Handler already points to legitimate tool"
+  }
+}
+
+# Clean up backup and audit files
+Write-Host "[*] Finalizing audit documentation..."
+if (Test-Path $backupFile) {
+  Remove-Item -Path $backupFile -Force
+}
+
+if (Test-Path $auditLog) {
+  Remove-Item -Path $auditLog -Force
+}
+
+if (Test-Path $auditDir) {
+  Remove-Item -Path $auditDir -Recurse -Force
+}
+
+Write-Host "[+] Registry audit and remediation completed"
+Write-Host "[*] All temporary audit files cleaned up"
+
+# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
+# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
 # Archetype: Software installer/updater workflow
 
-$CimSession = New-CimSession -ComputerName localhost
-$ClassName = 'PS_ScheduledTask'
-$NamespaceName = 'root\Microsoft\Windows\TaskScheduler'
-$TaskName = 'AppHealthMonitor'
-$TaskPath = '\ApplicationServices\'
-$MethodName = 'Create'
-$Principal = @{
-  'UserId' = 'BUILTIN\Administrators'
-  'RunLevel' = 'Highest'
-}
-$Trigger = @{
-  'Schedule' = 'AtLogon'
-}
-$Action = @{
-  'Path' = 'powershell.exe'
-  'Arguments' = '-NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Measure-Object"'
-}
-try {
-  $CimArguments = @{
-    'TaskName' = $TaskName
-    'TaskPath' = $TaskPath
-    'Principal' = $Principal
-    'Trigger' = $Trigger
-    'Action' = $Action
-    'Register' = $true
-  }
-  Invoke-CimMethod -CimSession $CimSession -ClassName $ClassName -NamespaceName $NamespaceName -MethodName $MethodName -Arguments $CimArguments -ErrorAction SilentlyContinue
-  Start-Sleep -Seconds 2
-  $RemoveArgs = @{
-    'TaskName' = $TaskName
-    'TaskPath' = $TaskPath
-  }
-  Invoke-CimMethod -CimSession $CimSession -ClassName $ClassName -NamespaceName $NamespaceName -MethodName 'Delete' -Arguments $RemoveArgs -ErrorAction SilentlyContinue
-} catch {
-  Write-Host 'CIM operation completed with expected behavior'
-} finally {
-  Remove-CimSession -CimSession $CimSession -ErrorAction SilentlyContinue
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
+
+# Simulate legitimate software package registration during deployment
+$packageName = 'AdminConsoleTools'
+$packageVersion = '2024.01'
+$installRoot = Join-Path $env:ProgramFiles 'AdminTools'
+$configPath = Join-Path $env:TEMP 'package_setup.ini'
+
+# Create installation directory structure (simulating MSI deployment)
+Write-Host "[*] Initializing package deployment for $packageName $packageVersion"
+if (-not (Test-Path $installRoot)) {
+  New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
 }
 
-# SKIPPED cluster singleton_c2ddb4aa-b7c1-48b0-a93d-52780067286b: This rule detects memory dump operations targeting LSASS (Local Security Authority Subsystem Service) using RdrLeakDiag or masquerading tools with specific command-line flags (/fullmemdmp, /p, /o, /wait). Generating a benign stress-test that invokes these exact command-line patterns is not feasible because: (1) RdrLeakDiag is a Windows Diagnostic and Recovery Toolset utility not typically installed on standard windows-latest runners, (2) Creating legitimate LSASS memory dumps requires either the actual RdrLeakDiag tool or native Windows diagnostic utilities (like procdump or WinDbg) with specific prerequisites, (3) Even benign invocations of LSASS memory dump operations are inherently suspicious and inappropriate for CI/CD stress-testing—there is no realistic enterprise workflow where a GitHub Actions automation would legitimately dump LSASS memory as part of normal system maintenance, logging, or software operation, (4) The command-line pattern itself (/fullmemdmp /p /o /wait) is highly specific to credential harvesting attacks and lacks any natural analogue in legitimate system administration, monitoring, or application behavior on a headless CI runner.
+# Create placeholder executable for the management console tool
+$toolPath = Join-Path $installRoot 'console.exe'
+$toolStub = @'
+REM This is a placeholder for the management console application
+REM In real deployments, this would be the actual console binary
+'@
+$toolStub | Set-Content $toolPath -Force
+
+# Write installation manifest
+$manifest = @"
+[InstallationInfo]
+ProductName=$packageName
+ProductVersion=$packageVersion
+InstallPath=$installRoot
+DeploymentDate=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+InstallerType=MSI
+"@
+$manifest | Set-Content $configPath -Force
+
+Write-Host "[+] Package deployment structure created"
+
+# During software setup, register COM handlers for management console integration
+Write-Host "[*] Registering COM handlers for management console support..."
+$mscfilePath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+
+# Ensure parent key structure exists
+$classesPath = 'HKLM:\SOFTWARE\Classes\mscfile'
+if (-not (Test-Path $classesPath)) {
+  New-Item -Path $classesPath -Force | Out-Null
+}
+
+if (-not (Test-Path $mscfilePath)) {
+  New-Item -Path $mscfilePath -Force | Out-Null
+}
+
+# Set the legitimate mscfile handler during package deployment
+$consoleCommand = '"mmc.exe" "%1"'
+Write-Host "[*] Registering handler: $consoleCommand"
+Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $consoleCommand -Force
+
+Write-Host "[+] COM handler registration completed"
+
+# Document the deployment in package registry location
+$pkgRegPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AdminConsoleTools_2024'
+if (-not (Test-Path $pkgRegPath)) {
+  New-Item -Path $pkgRegPath -Force | Out-Null
+}
+
+Set-ItemProperty -Path $pkgRegPath -Name 'DisplayName' -Value "$packageName $packageVersion" -Force
+Set-ItemProperty -Path $pkgRegPath -Name 'InstallLocation' -Value $installRoot -Force
+Set-ItemProperty -Path $pkgRegPath -Name 'Publisher' -Value 'IT Operations' -Force
+
+Write-Host "[+] Deployment tracked in Windows Registry"
+
+# Verify handler registration
+Write-Host "[*] Verifying COM handler configuration..."
+$verifyPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+if (Test-Path $verifyPath) {
+  $registeredHandler = (Get-ItemProperty -Path $verifyPath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  Write-Host "[+] Handler verified: $registeredHandler"
+}
+
+# Clean up installation artifacts and registry entries
+Write-Host "[*] Cleaning up deployment temporary files..."
+if (Test-Path $configPath) {
+  Remove-Item -Path $configPath -Force
+}
+
+if (Test-Path $toolPath) {
+  Remove-Item -Path $toolPath -Force
+}
+
+if (Test-Path $installRoot) {
+  Remove-Item -Path $installRoot -Recurse -Force
+}
+
+# Remove test registry entries
+if (Test-Path $pkgRegPath) {
+  Remove-Item -Path $pkgRegPath -Recurse -Force
+}
+
+Write-Host "[+] Package deployment and cleanup completed"
+Write-Host "[*] Installation simulation finished"
+
+# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
+# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
+# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
+# Archetype: User-driven workflow
+
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
+
+# Simulate user installing an administrative utility that requires COM handler configuration
+Write-Host "[*] User administrative tool installation initiated"
+
+$toolName = 'RemoteManagementSnap'
+$tempInstallDir = Join-Path $env:TEMP "${toolName}_setup"
+$setupScript = Join-Path $tempInstallDir 'setup.ps1'
+
+# Create temporary installation directory
+if (-not (Test-Path $tempInstallDir)) {
+  New-Item -ItemType Directory -Path $tempInstallDir -Force | Out-Null
+}
+
+Write-Host "[+] Installation workspace prepared"
+
+# Generate setup script that registers the tool's COM components
+$setupContent = @'
+# Administrative tool setup - registers console snap-in
+$toolPath = Join-Path $env:ProgramFiles "RemoteManagementSnap"
+
+if (-not (Test-Path $toolPath)) {
+  New-Item -ItemType Directory -Path $toolPath -Force | Out-Null
+}
+
+# Register mscfile handler for management console integration
+$mscfilePath = "HKLM:\SOFTWARE\Classes\mscfile\shell\open\command"
+
+if (-not (Test-Path $mscfilePath)) {
+  New-Item -Path $mscfilePath -Force | Out-Null
+}
+
+$handlerCmd = '"mmc.exe" "%1"'
+Set-ItemProperty -Path $mscfilePath -Name "(Default)" -Value $handlerCmd -Force
+
+Write-Host "Tool registration complete"
+'@
+
+$setupContent | Set-Content $setupScript -Force
+Write-Host "[+] Setup script generated"
+
+# Execute the installation setup (requires administrative privileges)
+Write-Host "[*] Executing administrative setup..."
+try {
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupScript 2>&1 | Out-Null
+  Write-Host "[+] Administrative setup executed successfully"
+} catch {
+  Write-Host "[-] Setup execution encountered an issue (expected in non-admin context)"
+}
+
+# Verify that COM handler was registered
+Write-Host "[*] Verifying COM handler registration..."
+$verifyPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+if (Test-Path $verifyPath) {
+  $handler = (Get-ItemProperty -Path $verifyPath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
+  Write-Host "[+] COM handler is registered: $handler"
+}
+
+# Clean up installation artifacts
+Write-Host "[*] Cleaning up installation files..."
+if (Test-Path $setupScript) {
+  Remove-Item -Path $setupScript -Force
+}
+
+if (Test-Path $tempInstallDir) {
+  Remove-Item -Path $tempInstallDir -Recurse -Force
+}
+
+Write-Host "[+] Installation cleanup completed"
+Write-Host "[*] Administrative tool setup process finished"
+
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

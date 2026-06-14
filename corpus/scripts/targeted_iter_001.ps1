@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 2  |  Variants: 6
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,152 +10,85 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# SKIPPED variant 'Software installer/updater workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# SKIPPED variant 'Document/file operation workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# -- Cluster: singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3  (1 rule(s)) ---------------------
-# Intent:    Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handle
-# Rules:     524a6953-b920-4eb1-b13f-8fc75e7219d3
+# -- Cluster: singleton_60c04e77-f1ae-4795-8f15-809f59b7409e  (1 rule(s)) ---------------------
+# Intent:    Detection of privilege-escalated scheduled task creation via PowerShell cmdlets,
+# Rules:     60c04e77-f1ae-4795-8f15-809f59b7409e
 # Archetype: IT admin workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
+$taskName = 'SystemMaintenanceDiskCleanup'
+$taskPath = '\\Microsoft\\Windows\\Maintenance\\'
+$taskDescription = 'Automated disk cleanup and temporary file removal for system health'
 
-# Define the mscfile handler registry path for auditing
-$mscfilePath = 'HKCU:\Software\Classes\mscfile\shell\open\command'
-$classesRoot = 'HKCU:\Software\Classes\mscfile'
-
-# Backup current state for audit logging
-$backupFile = Join-Path $env:TEMP 'mscfile_audit_backup.txt'
-
-# Create Classes hive structure if needed (standard Windows setup)
-if (-not (Test-Path $classesRoot)) {
-  New-Item -Path $classesRoot -Force | Out-Null
-}
-
-# Read existing registry configuration for audit purposes
 try {
-  $currentHandler = (Get-Item $mscfilePath -ErrorAction Stop).GetValue('') 2>$null
-  "Current mscfile handler: $currentHandler" | Out-File -FilePath $backupFile -Append
-} catch {
-  "Registry path not yet configured" | Out-File -FilePath $backupFile
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Path $env:TEMP\\* -Force -ErrorAction SilentlyContinue; Remove-Item -Path $env:SystemRoot\\Temp\\* -Force -ErrorAction SilentlyContinue"'
+
+    $trigger = New-ScheduledTaskTrigger -Daily -At 2:00AM
+
+    $principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -RunLevel Highest -LogonType ServiceAccount
+
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+    Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description $taskDescription -Force
+
+    Write-Output "Task $taskName registered successfully"
+
+    Start-Sleep -Seconds 2
+
+    Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false
+
+    Write-Output "Task $taskName cleaned up"
+}
+catch {
+    Write-Error "Failed to complete task operation: $_"
+    try {
+        Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {}
 }
 
-# Legitimate operation: Restore default Task Scheduler handler
-$defaultTaskSchedulerPath = 'C:\Windows\System32\mmc.exe'
-$legitimateHandler = "\"$defaultTaskSchedulerPath\" /s taskschd.msc"
-
-# Write legitimate registry value
-New-Item -Path $mscfilePath -Force | Out-Null
-Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $legitimateHandler -Type String
-
-# Verify the value was set correctly
-$verifyHandler = (Get-ItemProperty -Path $mscfilePath).'(Default)'
-"Verified handler set to: $verifyHandler" | Out-File -FilePath $backupFile -Append
-
-# Cleanup: Remove the test registry entries
-Remove-Item -Path $classesRoot -Recurse -Force
-Remove-Item -Path $backupFile -Force
-
-Write-Host 'Administrator audit completed successfully'
-
-# -- Cluster: singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3  (1 rule(s)) ---------------------
-# Intent:    Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handle
-# Rules:     524a6953-b920-4eb1-b13f-8fc75e7219d3
+# -- Cluster: singleton_60c04e77-f1ae-4795-8f15-809f59b7409e  (1 rule(s)) ---------------------
+# Intent:    Detection of privilege-escalated scheduled task creation via PowerShell cmdlets,
+# Rules:     60c04e77-f1ae-4795-8f15-809f59b7409e
 # Archetype: Software installer/updater workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
+$taskName = 'PatchManagementAgent'
+$taskPath = '\\Software\\Deployment\\'
+$taskDescription = 'Automated system patching and update deployment'
 
-# Simulate enterprise task management tool installation setup
-$installPath = Join-Path $env:ProgramFiles 'EnterpriseTaskManager'
-$executableName = 'taskmanager_engine.exe'
-$mockToolPath = Join-Path $env:TEMP $executableName
+try {
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -Command "Write-Host 1 > $null"'
 
-# Create mock installer executable (stub file for registry association)
-if (-not (Test-Path $mockToolPath)) {
-  Set-Content -Path $mockToolPath -Value 'MZ' -Encoding Ascii
+    $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 3:00AM
+
+    $principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -RunLevel Highest -LogonType ServiceAccount
+
+    Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $action -Trigger $trigger -Principal $principal -Description $taskDescription -Force
+
+    Write-Output "Task $taskName created"
+
+    Start-Sleep -Seconds 1
+
+    $existingTask = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath
+
+    $newAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -Command "Write-Host 2 > $null"'
+
+    $newPrincipal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -RunLevel Highest -LogonType ServiceAccount
+
+    Set-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $newAction -Principal $newPrincipal
+
+    Write-Output "Task $taskName updated with elevated principal"
+
+    Start-Sleep -Seconds 2
+
+    Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false
+
+    Write-Output "Task $taskName cleaned up"
 }
-
-# Define installation registry paths
-$classesPath = 'HKCU:\Software\Classes'
-$mscfileBase = Join-Path $classesPath 'mscfile'
-$shellPath = Join-Path $mscfileBase 'shell\open\command'
-
-# Installation step: Register custom mscfile handler for the enterprise tool
-# This is typical during MSI or installer execution
-New-Item -Path $classesPath -Force | Out-Null
-New-Item -Path $mscfileBase -Force | Out-Null
-New-Item -Path $shellPath -Force | Out-Null
-
-# Set the file type description
-Set-ItemProperty -Path $mscfileBase -Name '(Default)' -Value 'Windows Task Scheduler File' -Type String
-
-# Register command handler - installer associates .msc files with its execution engine
-Set-ItemProperty -Path $shellPath -Name '(Default)' -Value ('"' + $mockToolPath + '" "%1"') -Type String
-
-# Log installation configuration
-$configLog = Join-Path $env:TEMP 'installation_config.log'
-Add-Content -Path $configLog -Value "Installation: EnterpriseTaskManager"
-Add-Content -Path $configLog -Value "Handler registered: $mockToolPath"
-Add-Content -Path $configLog -Value "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-
-# Uninstall cleanup: Remove registry entries created during setup
-Remove-Item -Path $mscfileBase -Recurse -Force
-Remove-Item -Path $mockToolPath -Force
-Remove-Item -Path $configLog -Force
-
-Write-Host 'Installation setup completed'
-
-# -- Cluster: singleton_524a6953-b920-4eb1-b13f-8fc75e7219d3  (1 rule(s)) ---------------------
-# Intent:    Detect UAC bypass attempts that hijack the mscfile (Task Scheduler) shell handle
-# Rules:     524a6953-b920-4eb1-b13f-8fc75e7219d3
-# Archetype: User-driven workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Simulate user-initiated system utility for managing file associations
-# User opens Settings or a configuration utility that offers to fix .msc file handling
-
-$classesPath = 'HKCU:\Software\Classes'
-$mscfileKey = Join-Path $classesPath 'mscfile'
-$openCommandPath = Join-Path $mscfileKey 'shell\open\command'
-
-# Check current state - utility detects if handler is missing or misconfigured
-if (-not (Test-Path $openCommandPath)) {
-  Write-Host 'Detected missing mscfile handler, attempting repair...'
+catch {
+    Write-Error "Failed to complete task operation: $_"
+    try {
+        Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {}
 }
-
-# Create the registry structure
-New-Item -Path $classesPath -Force | Out-Null
-New-Item -Path $mscfileKey -Force | Out-Null
-New-Item -Path $openCommandPath -Force | Out-Null
-
-# User accepts repair recommendation: Set standard Windows Task Scheduler handler
-# This is what the Windows settings utility would normally recommend
-$systemRoot = $env:SystemRoot
-$taskSchedulerPath = Join-Path $systemRoot 'System32\taskschd.msc'
-
-# User confirms the suggested action by clicking "Apply" or "OK"
-Set-ItemProperty -Path $mscfileKey -Name '(Default)' -Value 'Task Scheduler Configuration File' -Type String
-
-# Write the command handler that the utility recommends
-# Standard path: use mmc.exe with taskschd.msc parameter
-Set-ItemProperty -Path $openCommandPath -Name '(Default)' -Value ('"' + (Join-Path $systemRoot 'System32\mmc.exe') + '" "' + $taskSchedulerPath + '"') -Type String
-
-# Log the repair action to user's local history
-$repairLog = Join-Path $env:TEMP 'file_association_repair.log'
-Add-Content -Path $repairLog -Value "File Association Repair Tool"
-Add-Content -Path $repairLog -Value "File type: mscfile (Windows Task Scheduler Configuration File)"
-Add-Content -Path $repairLog -Value "Action: Restored default handler"
-Add-Content -Path $repairLog -Value "Timestamp: $(Get-Date)"
-
-# User closes the utility, cleanup occurs
-Remove-Item -Path $mscfileKey -Recurse -Force
-Remove-Item -Path $repairLog -Force
-
-Write-Host 'File association repair completed'
 
 
 # ===========================================================================

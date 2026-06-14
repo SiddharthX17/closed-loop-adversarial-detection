@@ -314,6 +314,17 @@ def _ground_fields(
             grounded[k] = v
             continue
 
+        # Check 5 — TargetObject: strip conventional \(Default) suffix before
+        # re-checking verbatim. The LLM correctly appends \(Default) for default
+        # registry value writes (e.g. HKCU\...\command\(Default)), but this
+        # suffix is a Windows registry convention that never appears in
+        # procedure_text — only the key path does.
+        if k == "TargetObject" and v_lower.endswith("\\(default)"):
+            base_key = v_lower[: -len("\\(default)")]
+            if base_key in text:
+                grounded[k] = v
+                continue
+
         # EID 3 implicit metadata — DestinationPort, Protocol, Initiated are
         # structural facts about a TCP connection, not extractable from prose.
         # Grounding would always drop them. Pass LLM output through and let

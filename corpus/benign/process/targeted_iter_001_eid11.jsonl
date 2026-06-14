@@ -1,0 +1,2 @@
+﻿{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-06-14T13:33:10.9685733+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-06-14 13:33:10.967"}
+{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-06-14T13:33:10.8749503+00:00","Image":"C:\\actions-runner\\cached\\2.335.1\\bin\\Runner.Worker.exe","TargetFilename":"2026-06-14 13:33:10.874"}

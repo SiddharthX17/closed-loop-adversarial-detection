@@ -1,0 +1,31 @@
+title: UAC Bypass via HKCU mscfile Shell Handler Registry Hijack
+id: 524a6953-b920-4eb1-b13f-8fc75e7219d3
+status: experimental
+description: |
+    Detects registry writes to the HKCU mscfile shell open command handler, which is a known UAC bypass technique.
+    By hijacking this key, attackers cause auto-elevated processes such as eventvwr.exe or CompMgmtLauncher.exe
+    to execute an attacker-controlled binary instead of mmc.exe, bypassing UAC to enable privileged operations
+    such as scheduled task creation. This registry path has no legitimate write use case in enterprise environments.
+references:
+    - https://attack.mitre.org/techniques/T1548/002/
+    - https://enigma0x3.net/2016/08/15/fileless-uac-bypass-using-eventvwr-exe-and-registry-hijacking/
+    - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1548.002/T1548.002.md
+author: Detection Engineer
+date: 2024-01-01
+tags:
+    - attack.privilege-escalation
+    - attack.defense-evasion
+    - attack.execution
+    - attack.t1053.005
+    - attack.t1548.002
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        EventID: 13
+        TargetObject|contains: '\Software\Classes\mscfile\shell\open\command'
+    condition: selection
+falsepositives:
+    - None known; this registry path has no legitimate write use case
+level: high

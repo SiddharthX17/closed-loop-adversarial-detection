@@ -1,0 +1,63 @@
+title: System Process Name Executed from Non-System Directory
+id: 14144e10-c88a-4337-9aa0-6e3302160728
+status: experimental
+description: |
+  Detects execution of a process whose image filename matches a well-known Windows system process
+  name but whose full image path resides outside the canonical Windows system directories.
+  Adversaries name malicious binaries after legitimate system processes (lsass.exe, winlogon.exe,
+  svchost.exe, etc.) and place them in user-writable directories to evade process-name-based
+  detection and analyst triage (T1036.005).
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-06-13
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    Image|endswith:
+      - '\lsass.exe'
+      - '\winlogon.exe'
+      - '\svchost.exe'
+      - '\csrss.exe'
+      - '\smss.exe'
+      - '\services.exe'
+      - '\explorer.exe'
+      - '\wininit.exe'
+      - '\lsm.exe'
+      - '\spoolsv.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\dwm.exe'
+      - '\conhost.exe'
+      - '\dllhost.exe'
+      - '\sihost.exe'
+      - '\fontdrvhost.exe'
+      - '\RuntimeBroker.exe'
+  filter_system32:
+    Image|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+      - 'C:\Windows\WinSxS\'
+      - 'C:\Windows\explorer.exe'
+  filter_security_tools:
+    Image|startswith:
+      - 'C:\Program Files\'
+      - 'C:\Program Files (x86)\'
+  filter_build_tools:
+    ParentImage|endswith:
+      - '\devenv.exe'
+      - '\msbuild.exe'
+      - '\dotnet.exe'
+      - '\MSBuild.exe'
+  condition: selection and not 1 of filter_*
+falsepositives:
+  - Security tooling or EDR agents that shadow or copy system binaries for analysis purposes
+  - Developer or build environments compiling test binaries with system process names
+  - Rare enterprise software that legitimately names components after system processes
+level: high

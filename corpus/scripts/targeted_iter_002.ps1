@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   2  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,267 +10,136 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
-# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
-# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
+# -- Cluster: singleton_09a91ef1-5e25-4f77-ad55-38a652652c00  (1 rule(s)) ---------------------
+# Intent:    Detect scheduled task engines or system loaders spawning WSH interpreters (cscri
+# Rules:     09a91ef1-5e25-4f77-ad55-38a652652c00
 # Archetype: IT admin workflow
 
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = 'Continue'
+$taskName = 'MaintenanceLogCleanup'
+$taskPath = Join-Path $env:ProgramData 'Microsoft\Windows\maintenance_cleanup.vbs'
 
-# Define paths for audit and remediation
-$mscfilePath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
-$backupFile = Join-Path $env:TEMP 'mscfile_backup.reg'
-$auditLog = Join-Path $env:TEMP 'registry_audit.txt'
+# Create a realistic maintenance script that processes logs
+$vbscript = @'
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+strLogsPath = "" & objFSO.GetSpecialFolder(2) & "\Windows\Temp"
+Set objFolder = objFSO.GetFolder(strLogsPath)
+For Each objFile In objFolder.Files
+    If objFSO.GetExtensionName(objFile.Name) = "log" Then
+        If DateDiff("d", objFile.DateCreated, Now) > 7 Then
+            objFile.Delete
+        End If
+    End If
+Next
+'@
 
-# Create audit directory structure
-$auditDir = Join-Path $env:TEMP 'SecurityAudit'
-if (-not (Test-Path $auditDir)) {
-  New-Item -ItemType Directory -Path $auditDir -Force | Out-Null
+if (-not (Test-Path (Split-Path $taskPath))) {
+    New-Item -ItemType Directory -Path (Split-Path $taskPath) -Force | Out-Null
 }
 
-# Export current mscfile handler for audit documentation
-Write-Host "[*] Exporting current COM handler configuration..."
-reg export 'HKEY_LOCAL_MACHINE\SOFTWARE\Classes\mscfile' $backupFile /y 2>&1 | Out-Null
+Set-Content -Path $taskPath -Value $vbscript -Encoding UTF8
 
-if (Test-Path $backupFile) {
-  Write-Host "[+] Handler configuration backed up to audit log"
-  Get-Content $backupFile | Add-Content $auditLog
-}
+# Register the scheduled task using schtasks (which invokes taskeng.exe)
+$action = New-ScheduledTaskAction -Execute 'cscript.exe' -Argument "`"$taskPath`""
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(5)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
-# Verify and document the default mscfile command handler
-Write-Host "[*] Auditing mscfile shell handler registration..."
-if (Test-Path $mscfilePath) {
-  $defaultHandler = (Get-ItemProperty -Path $mscfilePath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
-  Write-Host "[+] Default mscfile handler: $defaultHandler"
-  Add-Content $auditLog "Audit Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-  Add-Content $auditLog "mscfile handler: $defaultHandler"
-}
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force -ErrorAction SilentlyContinue
 
-# Document all shell subkeys under mscfile
-Write-Host "[*] Documenting mscfile shell subkey structure..."
-$shellPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell'
-if (Test-Path $shellPath) {
-  $subkeys = Get-ChildItem -Path $shellPath -ErrorAction SilentlyContinue
-  foreach ($subkey in $subkeys) {
-    Write-Host "[+] Found shell subkey: $($subkey.PSChildName)"
-    Add-Content $auditLog "Shell subkey: $($subkey.PSChildName)"
-  }
-}
+# Wait for task engine to spawn and execute the script
+Start-Sleep -Seconds 3
 
-# Perform remediation: ensure mscfile command points to legitimate system binary
-Write-Host "[*] Verifying legitimate mscfile handler assignment..."
-$legitimateCommand = 'mmc.exe %1'
-if (Test-Path $mscfilePath) {
-  $currentCommand = (Get-ItemProperty -Path $mscfilePath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
-  if ($currentCommand -ne $legitimateCommand) {
-    Write-Host "[*] Remediating handler to legitimate value..."
-    Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $legitimateCommand -Force
-    Write-Host "[+] Handler remediated"
-    Add-Content $auditLog "Remediation: Updated mscfile handler to $legitimateCommand"
-  } else {
-    Write-Host "[+] Handler already points to legitimate tool"
-  }
-}
+# Cleanup
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+Remove-Item -Path $taskPath -Force -ErrorAction SilentlyContinue
 
-# Clean up backup and audit files
-Write-Host "[*] Finalizing audit documentation..."
-if (Test-Path $backupFile) {
-  Remove-Item -Path $backupFile -Force
-}
-
-if (Test-Path $auditLog) {
-  Remove-Item -Path $auditLog -Force
-}
-
-if (Test-Path $auditDir) {
-  Remove-Item -Path $auditDir -Recurse -Force
-}
-
-Write-Host "[+] Registry audit and remediation completed"
-Write-Host "[*] All temporary audit files cleaned up"
-
-# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
-# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
-# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
+# -- Cluster: singleton_09a91ef1-5e25-4f77-ad55-38a652652c00  (1 rule(s)) ---------------------
+# Intent:    Detect scheduled task engines or system loaders spawning WSH interpreters (cscri
+# Rules:     09a91ef1-5e25-4f77-ad55-38a652652c00
 # Archetype: Software installer/updater workflow
 
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = 'Continue'
+$configPath = Join-Path $env:ProgramData 'ConfigMgr\agent_config.vbs'
+$helperScript = Join-Path $env:ProgramData 'ConfigMgr\deploy_helper.html'
 
-# Simulate legitimate software package registration during deployment
-$packageName = 'AdminConsoleTools'
-$packageVersion = '2024.01'
-$installRoot = Join-Path $env:ProgramFiles 'AdminTools'
-$configPath = Join-Path $env:TEMP 'package_setup.ini'
-
-# Create installation directory structure (simulating MSI deployment)
-Write-Host "[*] Initializing package deployment for $packageName $packageVersion"
-if (-not (Test-Path $installRoot)) {
-  New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+# Ensure directory exists
+if (-not (Test-Path (Split-Path $configPath))) {
+    New-Item -ItemType Directory -Path (Split-Path $configPath) -Force | Out-Null
 }
 
-# Create placeholder executable for the management console tool
-$toolPath = Join-Path $installRoot 'console.exe'
-$toolStub = @'
-REM This is a placeholder for the management console application
-REM In real deployments, this would be the actual console binary
+# Create a VBScript that simulates configuration deployment
+$vbscript = @'
+Set objWMI = GetObject("winmgmts:")
+Set colItems = objWMI.ExecQuery("Select * from Win32_OperatingSystem")
+For Each objItem in colItems
+    Set objReg = GetObject("winmgmts:root\\default:StdRegProv")
+    objReg.SetStringValue &H80000002, "Software\\Microsoft\\ConfigMgr\\Agent", "LastUpdate", Now
+Next
 '@
-$toolStub | Set-Content $toolPath -Force
 
-# Write installation manifest
-$manifest = @"
-[InstallationInfo]
-ProductName=$packageName
-ProductVersion=$packageVersion
-InstallPath=$installRoot
-DeploymentDate=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-InstallerType=MSI
-"@
-$manifest | Set-Content $configPath -Force
+Set-Content -Path $configPath -Value $vbscript -Encoding UTF8
 
-Write-Host "[+] Package deployment structure created"
+# Create an HTML file that mshta will execute (common in enterprise deployment)
+$htmlContent = @'
+<html>
+<script language="VBScript">
+CreateObject("WScript.Shell").Run "cscript.exe \""" & configPath & "\"" ", 0, False
+</script>
+</html>
+'@
 
-# During software setup, register COM handlers for management console integration
-Write-Host "[*] Registering COM handlers for management console support..."
-$mscfilePath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
+Set-Content -Path $helperScript -Value $htmlContent -Encoding UTF8
 
-# Ensure parent key structure exists
-$classesPath = 'HKLM:\SOFTWARE\Classes\mscfile'
-if (-not (Test-Path $classesPath)) {
-  New-Item -Path $classesPath -Force | Out-Null
-}
+# Execute via mshta (simulating enterprise deployment tooling)
+& mshta.exe ("file://" + $helperScript) -ErrorAction SilentlyContinue
 
-if (-not (Test-Path $mscfilePath)) {
-  New-Item -Path $mscfilePath -Force | Out-Null
-}
+Start-Sleep -Seconds 2
 
-# Set the legitimate mscfile handler during package deployment
-$consoleCommand = '"mmc.exe" "%1"'
-Write-Host "[*] Registering handler: $consoleCommand"
-Set-ItemProperty -Path $mscfilePath -Name '(Default)' -Value $consoleCommand -Force
+# Cleanup
+Remove-Item -Path $configPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $helperScript -Force -ErrorAction SilentlyContinue
 
-Write-Host "[+] COM handler registration completed"
-
-# Document the deployment in package registry location
-$pkgRegPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AdminConsoleTools_2024'
-if (-not (Test-Path $pkgRegPath)) {
-  New-Item -Path $pkgRegPath -Force | Out-Null
-}
-
-Set-ItemProperty -Path $pkgRegPath -Name 'DisplayName' -Value "$packageName $packageVersion" -Force
-Set-ItemProperty -Path $pkgRegPath -Name 'InstallLocation' -Value $installRoot -Force
-Set-ItemProperty -Path $pkgRegPath -Name 'Publisher' -Value 'IT Operations' -Force
-
-Write-Host "[+] Deployment tracked in Windows Registry"
-
-# Verify handler registration
-Write-Host "[*] Verifying COM handler configuration..."
-$verifyPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
-if (Test-Path $verifyPath) {
-  $registeredHandler = (Get-ItemProperty -Path $verifyPath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
-  Write-Host "[+] Handler verified: $registeredHandler"
-}
-
-# Clean up installation artifacts and registry entries
-Write-Host "[*] Cleaning up deployment temporary files..."
-if (Test-Path $configPath) {
-  Remove-Item -Path $configPath -Force
-}
-
-if (Test-Path $toolPath) {
-  Remove-Item -Path $toolPath -Force
-}
-
-if (Test-Path $installRoot) {
-  Remove-Item -Path $installRoot -Recurse -Force
-}
-
-# Remove test registry entries
-if (Test-Path $pkgRegPath) {
-  Remove-Item -Path $pkgRegPath -Recurse -Force
-}
-
-Write-Host "[+] Package deployment and cleanup completed"
-Write-Host "[*] Installation simulation finished"
-
-# -- Cluster: singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516  (1 rule(s)) ---------------------
-# Intent:    Detect UAC bypass attempts via COM handler registry hijacking by modifying the m
-# Rules:     11b744c0-0dd8-4678-a5a8-b0d9a7ab9516
+# -- Cluster: singleton_09a91ef1-5e25-4f77-ad55-38a652652c00  (1 rule(s)) ---------------------
+# Intent:    Detect scheduled task engines or system loaders spawning WSH interpreters (cscri
+# Rules:     09a91ef1-5e25-4f77-ad55-38a652652c00
 # Archetype: User-driven workflow
 
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = 'Continue'
+$appDataPath = Join-Path $env:APPDATA 'LocalToolkit\report_generator.vbs'
+$tempLoader = Join-Path $env:TEMP 'toolkit_loader.vbs'
 
-# Simulate user installing an administrative utility that requires COM handler configuration
-Write-Host "[*] User administrative tool installation initiated"
-
-$toolName = 'RemoteManagementSnap'
-$tempInstallDir = Join-Path $env:TEMP "${toolName}_setup"
-$setupScript = Join-Path $tempInstallDir 'setup.ps1'
-
-# Create temporary installation directory
-if (-not (Test-Path $tempInstallDir)) {
-  New-Item -ItemType Directory -Path $tempInstallDir -Force | Out-Null
+# Ensure AppData structure exists
+if (-not (Test-Path (Split-Path $appDataPath))) {
+    New-Item -ItemType Directory -Path (Split-Path $appDataPath) -Force | Out-Null
 }
 
-Write-Host "[+] Installation workspace prepared"
-
-# Generate setup script that registers the tool's COM components
-$setupContent = @'
-# Administrative tool setup - registers console snap-in
-$toolPath = Join-Path $env:ProgramFiles "RemoteManagementSnap"
-
-if (-not (Test-Path $toolPath)) {
-  New-Item -ItemType Directory -Path $toolPath -Force | Out-Null
-}
-
-# Register mscfile handler for management console integration
-$mscfilePath = "HKLM:\SOFTWARE\Classes\mscfile\shell\open\command"
-
-if (-not (Test-Path $mscfilePath)) {
-  New-Item -Path $mscfilePath -Force | Out-Null
-}
-
-$handlerCmd = '"mmc.exe" "%1"'
-Set-ItemProperty -Path $mscfilePath -Name "(Default)" -Value $handlerCmd -Force
-
-Write-Host "Tool registration complete"
+# Create a realistic utility script that generates a report
+$utilityScript = @'
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+Set objFile = objFSO.CreateTextFile(objFSO.GetSpecialFolder(2) & "\\runtime_report.txt", True)
+objFile.WriteLine "=== System Report ==="
+objFile.WriteLine "Generated: " & Now
+objFile.Close
 '@
 
-$setupContent | Set-Content $setupScript -Force
-Write-Host "[+] Setup script generated"
+Set-Content -Path $appDataPath -Value $utilityScript -Encoding UTF8
 
-# Execute the installation setup (requires administrative privileges)
-Write-Host "[*] Executing administrative setup..."
-try {
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupScript 2>&1 | Out-Null
-  Write-Host "[+] Administrative setup executed successfully"
-} catch {
-  Write-Host "[-] Setup execution encountered an issue (expected in non-admin context)"
-}
+# Create a loader script in temp that rundll32 can invoke
+$loaderScript = @'
+CreateObject("WScript.Shell").Run "wscript.exe \"" & appDataPath & "\"" , 0, False
+'@
 
-# Verify that COM handler was registered
-Write-Host "[*] Verifying COM handler registration..."
-$verifyPath = 'HKLM:\SOFTWARE\Classes\mscfile\shell\open\command'
-if (Test-Path $verifyPath) {
-  $handler = (Get-ItemProperty -Path $verifyPath -Name '(Default)' -ErrorAction SilentlyContinue).'(Default)'
-  Write-Host "[+] COM handler is registered: $handler"
-}
+Set-Content -Path $tempLoader -Value $loaderScript -Encoding UTF8
 
-# Clean up installation artifacts
-Write-Host "[*] Cleaning up installation files..."
-if (Test-Path $setupScript) {
-  Remove-Item -Path $setupScript -Force
-}
+# Execute the loader via rundll32 (simulating application launcher behavior)
+# rundll32 is used by many legitimate tools to delegate script execution
+$result = & rundll32.exe ("shell32.dll,ShellExec_RunDLL") ("wscript.exe") (`"$tempLoader`") -ErrorAction SilentlyContinue
 
-if (Test-Path $tempInstallDir) {
-  Remove-Item -Path $tempInstallDir -Recurse -Force
-}
+Start-Sleep -Seconds 2
 
-Write-Host "[+] Installation cleanup completed"
-Write-Host "[*] Administrative tool setup process finished"
+# Cleanup
+Remove-Item -Path $appDataPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $tempLoader -Force -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $env:TEMP 'runtime_report.txt') -Force -ErrorAction SilentlyContinue
 
+# SKIPPED cluster singleton_abf62430-d14c-4519-9d75-25daec01a6a9: rdrleakdiag.exe is a Microsoft Remote Desktop Leak Diagnostic tool that is NOT installed on standard windows-latest GitHub Actions runners. The tool is part of the Remote Desktop Client suite and requires explicit installation. Additionally, the /fullmemdmp flag is specifically designed for diagnosing remote desktop memory leaks in production RDP environments, not standalone systems. Attempting to invoke a non-existent executable will fail with 'file not found' rather than generating the intended Sysmon process creation events. While the tool could theoretically be downloaded and installed, doing so would require either: (1) a pre-built binary artifact (introducing supply chain concerns in a security research pipeline), or (2) building from source (not available publicly). The legitimate use case for rdrleakdiag requires an active RDP session context and diagnostic scenario that cannot be meaningfully replicated on an ephemeral CI runner.
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 2  |  Variants: 4
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,147 +10,72 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_6c7fdc8a-2c7b-49ea-8836-3f426cbca870  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled task registration via PowerShell with elevated (Administrators)
-# Rules:     6c7fdc8a-2c7b-49ea-8836-3f426cbca870
+# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
+
+# -- Cluster: singleton_ea375969-3118-4b3d-a0c2-c3755f610e40  (1 rule(s)) ---------------------
+# Intent:    Detect PowerShell-based scheduled task creation with elevated privileges, a tech
+# Rules:     ea375969-3118-4b3d-a0c2-c3755f610e40
 # Archetype: Software installer/updater workflow
 
-$taskName = 'SystemMaintenance_' + (Get-Random -Minimum 10000 -Maximum 99999)
-$taskPath = '\Microsoft\Windows\SystemMaintenance\'
-$taskAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c echo Maintenance check completed' -WorkingDirectory $env:WINDIR
-$taskTrigger = New-ScheduledTaskTrigger -Daily -At 2:00 AM
-$principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -RunLevel Highest
+$ErrorActionPreference = 'SilentlyContinue'
+$taskName = 'ServiceRestartDeferred'
+$taskPath = '\\Microsoft\\Windows\\Application Maintenance\\'
 
 try {
-  Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Principal $principal -TaskPath $taskPath -Description 'Automated system maintenance task' -Force -ErrorAction Stop
-  Write-Host "Task $taskName registered successfully"
-  Start-Sleep -Milliseconds 500
-  Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction Stop
-  Write-Host "Task $taskName cleaned up"
-} catch {
-  Write-Host "Error during task lifecycle: $_"
-}
+    # Create a service maintenance script
+    $maintenanceScript = Join-Path $env:TEMP 'deferred_maintenance.ps1'
+    $scriptContent = @'
+$logPath = Join-Path $env:TEMP 'maintenance.log'
+Add-Content -Path $logPath -Value "Maintenance started at $(Get-Date)"
+GC.Collect()
+Add-Content -Path $logPath -Value "Memory cleanup completed"
+'@
+    Set-Content -Path $maintenanceScript -Value $scriptContent -Force
 
-# -- Cluster: singleton_6c7fdc8a-2c7b-49ea-8836-3f426cbca870  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled task registration via PowerShell with elevated (Administrators)
-# Rules:     6c7fdc8a-2c7b-49ea-8836-3f426cbca870
-# Archetype: IT admin workflow
+    # Create scheduled task action with elevated context
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $maintenanceScript)
 
-$existingTaskName = 'DefragmentationEngine'
-$existingTaskPath = '\Microsoft\Windows\Defrag\'
+    # Set trigger for task (can be at login or on schedule)
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
 
-$taskAction = New-ScheduledTaskAction -Execute 'defrag.exe' -Argument 'C: /U /V' -WorkingDirectory $env:WINDIR
-$taskTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 3:00 AM
-$principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -RunLevel Highest
+    # Configure task settings
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries
 
-try {
-  Register-ScheduledTask -TaskName $existingTaskName -Action $taskAction -Trigger $taskTrigger -Principal $principal -TaskPath $existingTaskPath -Description 'Weekly disk defragmentation' -Force -ErrorAction Stop
-  Write-Host "Base task $existingTaskName registered"
-  Start-Sleep -Milliseconds 300
+    # Set principal with highest privilege level (required for service operations)
+    $principal = New-ScheduledTaskPrincipal -UserID 'NT AUTHORITY\\SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 
-  Set-ScheduledTask -TaskName $existingTaskName -TaskPath $existingTaskPath -Principal $principal -Action $taskAction -ErrorAction Stop
-  Write-Host "Task $existingTaskName updated with elevated principal"
-  Start-Sleep -Milliseconds 300
+    # Register the task
+    Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+    Write-Output "Deferred maintenance task created"
 
-  Unregister-ScheduledTask -TaskName $existingTaskName -TaskPath $existingTaskPath -Confirm:$false -ErrorAction Stop
-  Write-Host "Task $existingTaskName removed"
-} catch {
-  Write-Host "Error during task modification: $_"
-}
+    # Simulate installer verification
+    Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath | Out-Null
 
-# -- Cluster: singleton_fe52fb60-d778-4c5b-b602-efbb645233f8  (1 rule(s)) ---------------------
-# Intent:    Detect WScript.exe that has been renamed or disguised to execute from security v
-# Rules:     fe52fb60-d778-4c5b-b602-efbb645233f8
-# Archetype: Software installer/updater workflow
+    # Installer updates task with additional metadata
+    $existingTask = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath
+    $existingTask.Description = 'Deferred application maintenance tasks'
+    Set-ScheduledTask -InputObject $existingTask | Out-Null
+    Write-Output "Task configuration updated"
 
-# Simulates a security vendor post-installation configuration task
-# This represents legitimate EDR/antivirus setup automation
+} finally {
+    # Cleanup tasks and files
+    try {
+        Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
+        Write-Output "Deferred task removed"
+    } catch {}
 
-$vendorPath = 'C:\Program Files\Symantec\Endpoint Protection\ToolRunner'
-$wscriptSource = 'C:\Windows\System32\wscript.exe'
-$configScript = Join-Path $vendorPath 'config_setup.vbs'
-
-try {
-    # Create vendor tool directory structure
-    if (-not (Test-Path $vendorPath)) {
-        New-Item -ItemType Directory -Path $vendorPath -Force | Out-Null
+    $maintenanceScript = Join-Path $env:TEMP 'deferred_maintenance.ps1'
+    if (Test-Path $maintenanceScript) {
+        Remove-Item -Path $maintenanceScript -Force -ErrorAction SilentlyContinue
     }
 
-    # Copy legitimate wscript.exe to vendor directory
-    # This preserves OriginalFileName metadata pointing to wscript.exe
-    Copy-Item -Path $wscriptSource -Destination (Join-Path $vendorPath 'wscript.exe') -Force
-
-    # Create a harmless VBScript configuration task
-    $vbsContent = @'
-Set objShell = CreateObject("WScript.Shell")
-objShell.LogEvent 4, "Configuration initialization started"
-WScript.Sleep 500
-objShell.LogEvent 4, "Configuration initialization completed"
-'@
-    Set-Content -Path $configScript -Value $vbsContent -Encoding ASCII
-
-    # Invoke wscript.exe from the vendor directory to execute the configuration script
-    # Sysmon will record: Image = C:\Program Files\Symantec\..., OriginalFileName = wscript.exe
-    & (Join-Path $vendorPath 'wscript.exe') $configScript //NoLogo
-    Start-Sleep -Milliseconds 1000
-
-    # Clean up
-    Remove-Item -Path $configScript -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path (Join-Path $vendorPath 'wscript.exe') -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path $vendorPath -Force -ErrorAction SilentlyContinue
-} catch {
-    Write-Warning "Configuration task encountered an issue: $_"
-    # Attempt cleanup on error
-    Remove-Item -Path $vendorPath -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_fe52fb60-d778-4c5b-b602-efbb645233f8  (1 rule(s)) ---------------------
-# Intent:    Detect WScript.exe that has been renamed or disguised to execute from security v
-# Rules:     fe52fb60-d778-4c5b-b602-efbb645233f8
-# Archetype: IT admin workflow
-
-# Simulates IT admin using vendor-supplied diagnostic tooling
-# This represents legitimate compliance verification and agent health checks
-
-$vendorPath = 'C:\Program Files\CrowdStrike\CSFalconService\Diagnostics'
-$wscriptSource = 'C:\Windows\System32\wscript.exe'
-$diagnosticScript = Join-Path $vendorPath 'health_check.vbs'
-
-try {
-    # Create vendor diagnostics directory
-    if (-not (Test-Path $vendorPath)) {
-        New-Item -ItemType Directory -Path $vendorPath -Force | Out-Null
+    $logPath = Join-Path $env:TEMP 'maintenance.log'
+    if (Test-Path $logPath) {
+        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
     }
-
-    # Copy wscript.exe for vendor diagnostics
-    Copy-Item -Path $wscriptSource -Destination (Join-Path $vendorPath 'wscript.exe') -Force
-
-    # Create health check VBScript
-    $vbsContent = @'
-Set objShell = CreateObject("WScript.Shell")
-Set objFS = CreateObject("Scripting.FileSystemObject")
-objShell.LogEvent 4, "Initiating agent health verification"
-WScript.Sleep 300
-objShell.LogEvent 4, "Agent services responding: ACTIVE"
-WScript.Sleep 300
-objShell.LogEvent 4, "License validation: CURRENT"
-WScript.Sleep 300
-objShell.LogEvent 4, "Health check completed successfully"
-'@
-    Set-Content -Path $diagnosticScript -Value $vbsContent -Encoding ASCII
-
-    # Execute the health check from vendor path
-    & (Join-Path $vendorPath 'wscript.exe') $diagnosticScript //NoLogo
-    Start-Sleep -Milliseconds 500
-
-    # Clean up diagnostic artifacts
-    Remove-Item -Path $diagnosticScript -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path (Join-Path $vendorPath 'wscript.exe') -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path $vendorPath -Force -ErrorAction SilentlyContinue
-} catch {
-    Write-Warning "Diagnostic verification failed: $_"
-    Remove-Item -Path $vendorPath -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# SKIPPED variant 'Document/file operation workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
 
 # ===========================================================================

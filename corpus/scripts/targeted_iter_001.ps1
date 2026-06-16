@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 2  |  Variants: 5
+# Clusters:   2  |  Feasible: 2  |  Variants: 4
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,271 +10,147 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_bd5f77f5-9b6e-4e75-abd7-3ce69e7e2000  (1 rule(s)) ---------------------
-# Intent:    Attackers register scheduled tasks via PowerShell with elevated privileges and l
-# Rules:     bd5f77f5-9b6e-4e75-abd7-3ce69e7e2000
-# Archetype: IT admin workflow
-
-$taskName = 'SystemMaintenance_LogRotation'
-$taskPath = '\Microsoft\Windows\Maintenance\'
-$description = 'Automated log rotation and temporary file cleanup for system health monitoring'
-
-# Create a legitimate maintenance script in Program Files
-$maintenanceDir = 'C:\Program Files\SystemMaintenance'
-if (-not (Test-Path $maintenanceDir)) {
-    New-Item -ItemType Directory -Path $maintenanceDir -Force | Out-Null
-}
-
-$scriptPath = Join-Path -Path $maintenanceDir -ChildPath 'maintenance.ps1'
-$scriptContent = @'
-# Maintenance operations
-$logPath = Join-Path -Path $env:TEMP -ChildPath 'syslogs'
-if (Test-Path $logPath) {
-    Get-ChildItem -Path $logPath -Filter '*.log' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force -ErrorAction SilentlyContinue
-}
-
-# Clean temporary files
-Get-ChildItem -Path $env:TEMP -ErrorAction SilentlyContinue | Where-Object { $_.LastAccessTime -lt (Get-Date).AddDays(-7) -and $_.PSIsContainer -eq $false } | Remove-Item -Force -ErrorAction SilentlyContinue
-'@
-
-Set-Content -Path $scriptPath -Value $scriptContent -Force
-
-# Register scheduled task with elevated RunLevel and startup trigger
-try {
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath)
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -RunLevel 'Highest' -LogonType ServiceAccount
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description $description -Force | Out-Null
-} catch {
-    # Task may already exist or registration may fail in test environment
-}
-
-# Verification and cleanup
-Start-Sleep -Seconds 1
-
-# Unregister the task to clean up
-try {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-} catch {
-    # Task may not exist
-}
-
-# Remove the maintenance script directory
-if (Test-Path $maintenanceDir) {
-    Remove-Item -Path $maintenanceDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_bd5f77f5-9b6e-4e75-abd7-3ce69e7e2000  (1 rule(s)) ---------------------
-# Intent:    Attackers register scheduled tasks via PowerShell with elevated privileges and l
-# Rules:     bd5f77f5-9b6e-4e75-abd7-3ce69e7e2000
+# -- Cluster: singleton_6c7fdc8a-2c7b-49ea-8836-3f426cbca870  (1 rule(s)) ---------------------
+# Intent:    Detect scheduled task registration via PowerShell with elevated (Administrators)
+# Rules:     6c7fdc8a-2c7b-49ea-8836-3f426cbca870
 # Archetype: Software installer/updater workflow
 
-$taskName = 'ApplicationHealthMonitor_LogonTask'
-$description = 'Application health verification and recovery at user logon'
+$taskName = 'SystemMaintenance_' + (Get-Random -Minimum 10000 -Maximum 99999)
+$taskPath = '\Microsoft\Windows\SystemMaintenance\'
+$taskAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c echo Maintenance check completed' -WorkingDirectory $env:WINDIR
+$taskTrigger = New-ScheduledTaskTrigger -Daily -At 2:00 AM
+$principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -RunLevel Highest
 
-# Simulate software installation in ProgramData (common for enterprise apps)
-$appDir = 'C:\ProgramData\EnterpriseApp\HealthMonitor'
-if (-not (Test-Path $appDir)) {
-    New-Item -ItemType Directory -Path $appDir -Force | Out-Null
-}
-
-$monitorScript = Join-Path -Path $appDir -ChildPath 'health_check.ps1'
-$scriptContent = @'
-# Application health monitoring
-$appState = @{
-    ServiceRunning = $true
-    LastCheck = (Get-Date)
-    ConfigValid = $true
-}
-
-# Verify critical application services are running
-$criticalServices = @('EventLog', 'Winmgmt')
-foreach ($svc in $criticalServices) {
-    $serviceStatus = Get-Service -Name $svc -ErrorAction SilentlyContinue
-    if ($null -eq $serviceStatus -or $serviceStatus.Status -ne 'Running') {
-        Start-Service -Name $svc -ErrorAction SilentlyContinue
-    }
-}
-'@
-
-Set-Content -Path $monitorScript -Value $scriptContent -Force
-
-# Register task with AtLogon trigger and highest privilege level
 try {
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument @(
-        '-NoProfile',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', $monitorScript
-    )
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -RunLevel 'Highest' -LogonType ServiceAccount
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description $description -Force | Out-Null
+  Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Principal $principal -TaskPath $taskPath -Description 'Automated system maintenance task' -Force -ErrorAction Stop
+  Write-Host "Task $taskName registered successfully"
+  Start-Sleep -Milliseconds 500
+  Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction Stop
+  Write-Host "Task $taskName cleaned up"
 } catch {
-    # Task registration may fail in limited CI environments
+  Write-Host "Error during task lifecycle: $_"
 }
 
-Start-Sleep -Seconds 1
-
-# Cleanup
-try {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-} catch {
-    # Task may not exist
-}
-
-if (Test-Path $appDir) {
-    Remove-Item -Path $appDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_4f1f8b5d-1702-4c93-bf20-eab9af3175fa  (1 rule(s)) ---------------------
-# Intent:    Detect shell interpreters (cmd, PowerShell, etc.) initiating outbound connection
-# Rules:     4f1f8b5d-1702-4c93-bf20-eab9af3175fa
+# -- Cluster: singleton_6c7fdc8a-2c7b-49ea-8836-3f426cbca870  (1 rule(s)) ---------------------
+# Intent:    Detect scheduled task registration via PowerShell with elevated (Administrators)
+# Rules:     6c7fdc8a-2c7b-49ea-8836-3f426cbca870
 # Archetype: IT admin workflow
 
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = 'Continue'
+$existingTaskName = 'DefragmentationEngine'
+$existingTaskPath = '\Microsoft\Windows\Defrag\'
 
-# Simulate infrastructure admin downloading deployment validation script from public GitHub
-# This represents a realistic scenario where ops teams fetch setup utilities
-$repoUrl = 'https://raw.githubusercontent.com/PowerShell/PowerShell/master/README.md'
-$tempDir = [System.IO.Path]::GetTempPath()
-$configFile = Join-Path $tempDir 'deployment_manifest.txt'
+$taskAction = New-ScheduledTaskAction -Execute 'defrag.exe' -Argument 'C: /U /V' -WorkingDirectory $env:WINDIR
+$taskTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 3:00 AM
+$principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -RunLevel Highest
 
 try {
-    # Admin downloading configuration manifest from GitHub raw endpoint
-    Write-Host 'Retrieving deployment manifest from repository...'
-    $manifest = Invoke-WebRequest -Uri $repoUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+  Register-ScheduledTask -TaskName $existingTaskName -Action $taskAction -Trigger $taskTrigger -Principal $principal -TaskPath $existingTaskPath -Description 'Weekly disk defragmentation' -Force -ErrorAction Stop
+  Write-Host "Base task $existingTaskName registered"
+  Start-Sleep -Milliseconds 300
 
-    if ($manifest.StatusCode -eq 200) {
-        # Validate content locally
-        $contentHash = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($manifest.Content))
-        $hashString = ($contentHash | ForEach-Object { $_.ToString('x2') }) -join ''
+  Set-ScheduledTask -TaskName $existingTaskName -TaskPath $existingTaskPath -Principal $principal -Action $taskAction -ErrorAction Stop
+  Write-Host "Task $existingTaskName updated with elevated principal"
+  Start-Sleep -Milliseconds 300
 
-        Write-Host "Manifest retrieved. Hash: $($hashString.Substring(0,16))..."
-
-        # Save for audit trail
-        Add-Content -Path $configFile -Value (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') -ErrorAction SilentlyContinue
-        Add-Content -Path $configFile -Value "Source: raw.githubusercontent.com" -ErrorAction SilentlyContinue
-        Add-Content -Path $configFile -Value "Status: Downloaded" -ErrorAction SilentlyContinue
-    }
-}
-catch {
-    Write-Host "Download attempt completed with status: $_"
-}
-finally {
-    # Cleanup
-    Remove-Item -Path $configFile -Force -ErrorAction SilentlyContinue
-    Write-Host 'Cleanup complete.'
+  Unregister-ScheduledTask -TaskName $existingTaskName -TaskPath $existingTaskPath -Confirm:$false -ErrorAction Stop
+  Write-Host "Task $existingTaskName removed"
+} catch {
+  Write-Host "Error during task modification: $_"
 }
 
-Start-Sleep -Milliseconds 500
-
-# -- Cluster: singleton_4f1f8b5d-1702-4c93-bf20-eab9af3175fa  (1 rule(s)) ---------------------
-# Intent:    Detect shell interpreters (cmd, PowerShell, etc.) initiating outbound connection
-# Rules:     4f1f8b5d-1702-4c93-bf20-eab9af3175fa
+# -- Cluster: singleton_fe52fb60-d778-4c5b-b602-efbb645233f8  (1 rule(s)) ---------------------
+# Intent:    Detect WScript.exe that has been renamed or disguised to execute from security v
+# Rules:     fe52fb60-d778-4c5b-b602-efbb645233f8
 # Archetype: Software installer/updater workflow
 
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = 'Continue'
+# Simulates a security vendor post-installation configuration task
+# This represents legitimate EDR/antivirus setup automation
 
-# Simulate CI/CD build system verifying tool dependencies
-# Represents realistic build orchestration where parent CI process spawns PowerShell
-$buildWorkspace = Join-Path $env:TEMP 'build_cache_verify'
-if (-not (Test-Path $buildWorkspace)) {
-    New-Item -ItemType Directory -Path $buildWorkspace -Force | Out-Null
-}
-
-$versionCacheFile = Join-Path $buildWorkspace 'tool_versions.log'
+$vendorPath = 'C:\Program Files\Symantec\Endpoint Protection\ToolRunner'
+$wscriptSource = 'C:\Windows\System32\wscript.exe'
+$configScript = Join-Path $vendorPath 'config_setup.vbs'
 
 try {
-    # CI system downloading tool version manifest from GitHub
-    Write-Host 'Build system: Retrieving dependency versions from upstream...'
-
-    $githubUrl = 'https://raw.githubusercontent.com/dotnet/runtime/main/README.md'
-    $pasteUrl = 'https://paste.rs/raw'
-
-    # Fetch from primary source
-    Write-Host 'Contacting primary repository...'
-    $response1 = Invoke-WebRequest -Uri $githubUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction SilentlyContinue
-    if ($response1) {
-        Add-Content -Path $versionCacheFile -Value "[$(Get-Date -Format 'HH:mm:ss')] Primary source: OK" -ErrorAction SilentlyContinue
+    # Create vendor tool directory structure
+    if (-not (Test-Path $vendorPath)) {
+        New-Item -ItemType Directory -Path $vendorPath -Force | Out-Null
     }
 
-    # Build system may also check alternative hosts for mirrors
-    Write-Host 'Checking backup location...'
-    $response2 = Invoke-WebRequest -Uri $pasteUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction SilentlyContinue
-    if ($response2) {
-        Add-Content -Path $versionCacheFile -Value "[$(Get-Date -Format 'HH:mm:ss')] Backup location: Checked" -ErrorAction SilentlyContinue
-    }
+    # Copy legitimate wscript.exe to vendor directory
+    # This preserves OriginalFileName metadata pointing to wscript.exe
+    Copy-Item -Path $wscriptSource -Destination (Join-Path $vendorPath 'wscript.exe') -Force
 
-    Write-Host 'Dependency verification complete.'
-}
-catch {
-    Write-Host "Upstream check result: $_"
-}
-finally {
-    # Cleanup build workspace
-    Remove-Item -Path $buildWorkspace -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host 'Build workspace cleaned.'
-}
+    # Create a harmless VBScript configuration task
+    $vbsContent = @'
+Set objShell = CreateObject("WScript.Shell")
+objShell.LogEvent 4, "Configuration initialization started"
+WScript.Sleep 500
+objShell.LogEvent 4, "Configuration initialization completed"
+'@
+    Set-Content -Path $configScript -Value $vbsContent -Encoding ASCII
 
-Start-Sleep -Milliseconds 300
+    # Invoke wscript.exe from the vendor directory to execute the configuration script
+    # Sysmon will record: Image = C:\Program Files\Symantec\..., OriginalFileName = wscript.exe
+    & (Join-Path $vendorPath 'wscript.exe') $configScript //NoLogo
+    Start-Sleep -Milliseconds 1000
 
-# -- Cluster: singleton_4f1f8b5d-1702-4c93-bf20-eab9af3175fa  (1 rule(s)) ---------------------
-# Intent:    Detect shell interpreters (cmd, PowerShell, etc.) initiating outbound connection
-# Rules:     4f1f8b5d-1702-4c93-bf20-eab9af3175fa
-# Archetype: User-driven workflow
-
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = 'Continue'
-
-# Developer bootstrapping project workspace with configuration from public sources
-# Represents realistic onboarding where developers fetch project templates
-$projectRoot = Join-Path $env:TEMP 'project_bootstrap'
-if (-not (Test-Path $projectRoot)) {
-    New-Item -ItemType Directory -Path $projectRoot -Force | Out-Null
+    # Clean up
+    Remove-Item -Path $configScript -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path (Join-Path $vendorPath 'wscript.exe') -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $vendorPath -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Warning "Configuration task encountered an issue: $_"
+    # Attempt cleanup on error
+    Remove-Item -Path $vendorPath -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-$configLog = Join-Path $projectRoot 'setup_log.txt'
+# -- Cluster: singleton_fe52fb60-d778-4c5b-b602-efbb645233f8  (1 rule(s)) ---------------------
+# Intent:    Detect WScript.exe that has been renamed or disguised to execute from security v
+# Rules:     fe52fb60-d778-4c5b-b602-efbb645233f8
+# Archetype: IT admin workflow
+
+# Simulates IT admin using vendor-supplied diagnostic tooling
+# This represents legitimate compliance verification and agent health checks
+
+$vendorPath = 'C:\Program Files\CrowdStrike\CSFalconService\Diagnostics'
+$wscriptSource = 'C:\Windows\System32\wscript.exe'
+$diagnosticScript = Join-Path $vendorPath 'health_check.vbs'
 
 try {
-    Write-Host 'Developer: Initializing project workspace...'
-
-    # Fetch project configuration template from gist
-    Write-Host 'Retrieving project configuration template...'
-    $gistUrl = 'https://gist.githubusercontent.com/octocat/1234567/raw/config.json'
-    $configResponse = Invoke-WebRequest -Uri $gistUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction SilentlyContinue
-
-    if ($configResponse) {
-        Write-Host 'Configuration template retrieved.'
-        Add-Content -Path $configLog -Value "Config source: gist.githubusercontent.com" -ErrorAction SilentlyContinue
+    # Create vendor diagnostics directory
+    if (-not (Test-Path $vendorPath)) {
+        New-Item -ItemType Directory -Path $vendorPath -Force | Out-Null
     }
 
-    # Check build guidelines from alternative paste service
-    Write-Host 'Checking build documentation...'
-    $docsUrl = 'https://paste.ee/r/abc123'
-    $docsResponse = Invoke-WebRequest -Uri $docsUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction SilentlyContinue
+    # Copy wscript.exe for vendor diagnostics
+    Copy-Item -Path $wscriptSource -Destination (Join-Path $vendorPath 'wscript.exe') -Force
 
-    if ($docsResponse) {
-        Write-Host 'Build documentation available.'
-        Add-Content -Path $configLog -Value "Docs verified from: paste.ee" -ErrorAction SilentlyContinue
-    }
+    # Create health check VBScript
+    $vbsContent = @'
+Set objShell = CreateObject("WScript.Shell")
+Set objFS = CreateObject("Scripting.FileSystemObject")
+objShell.LogEvent 4, "Initiating agent health verification"
+WScript.Sleep 300
+objShell.LogEvent 4, "Agent services responding: ACTIVE"
+WScript.Sleep 300
+objShell.LogEvent 4, "License validation: CURRENT"
+WScript.Sleep 300
+objShell.LogEvent 4, "Health check completed successfully"
+'@
+    Set-Content -Path $diagnosticScript -Value $vbsContent -Encoding ASCII
 
-    # Validate workspace structure
-    Write-Host 'Workspace ready for development.'
-}
-catch {
-    Write-Host "Workspace setup status: $_"
-}
-finally {
-    # Cleanup project bootstrap directory
-    Remove-Item -Path $projectRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host 'Workspace cleanup complete.'
-}
+    # Execute the health check from vendor path
+    & (Join-Path $vendorPath 'wscript.exe') $diagnosticScript //NoLogo
+    Start-Sleep -Milliseconds 500
 
-Start-Sleep -Milliseconds 300
+    # Clean up diagnostic artifacts
+    Remove-Item -Path $diagnosticScript -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path (Join-Path $vendorPath 'wscript.exe') -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $vendorPath -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Warning "Diagnostic verification failed: $_"
+    Remove-Item -Path $vendorPath -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 
 # ===========================================================================

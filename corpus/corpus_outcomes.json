@@ -3,26 +3,17 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_bd5f77f5-9b6e-4e75-abd7-3ce69e7e2000",
-      "singleton_4f1f8b5d-1702-4c93-bf20-eab9af3175fa"
+      "singleton_ea375969-3118-4b3d-a0c2-c3755f610e40"
     ],
     "archetype_tags": [
-      "bypass",
-      "cmd",
-      "commandline",
-      "mshta",
-      "network",
-      "parent_process",
-      "powershell",
-      "script_host"
+      "commandline"
     ],
     "behavioral_intents": [
-      "Attackers register scheduled tasks via PowerShell with elevated privileges and logon/startup triggers to achieve persistence.",
-      "Detect shell interpreters (cmd, PowerShell, etc.) initiating outbound connections to public code-hosting and paste-bin services, a common vector for downloading and executing malicious payloads or exfiltrating data."
+      "Detect PowerShell-based scheduled task creation with elevated privileges, a technique used to establish persistence or automate privilege-escalated operations."
     ],
-    "committed_at": 1781454400.381686,
+    "committed_at": 1781631028.548112,
     "workflow_ran": true,
-    "logs_produced": false,
+    "logs_produced": true,
     "rules_hit": [],
     "useful_corpus": false
   },
@@ -30,15 +21,21 @@
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_11b744c0-0dd8-4678-a5a8-b0d9a7ab9516"
+      "singleton_abf62430-d14c-4519-9d75-25daec01a6a9",
+      "singleton_09a91ef1-5e25-4f77-ad55-38a652652c00"
     ],
     "archetype_tags": [
-      "registry"
+      "commandline",
+      "mshta",
+      "parent_process",
+      "rundll32",
+      "script_host"
     ],
     "behavioral_intents": [
-      "Detect UAC bypass attempts via COM handler registry hijacking by modifying the mscfile shell command registry path to execute arbitrary code with elevated privileges."
+      "Detect attackers using rdrleakdiag.exe with /fullmemdmp flag to dump LSASS process memory for credential extraction (T1003.001 - OS Credential Dumping).",
+      "Detect scheduled task engines or system loaders spawning WSH interpreters (cscript/wscript) to execute scripts from user-writable or temporary paths, a common lateral movement and persistence technique."
     ],
-    "committed_at": 1781454538.2263734,
+    "committed_at": 1781601480.2558641,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

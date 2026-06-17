@@ -112,29 +112,29 @@ Cluster confidence (intra-similarity): {confidence:.2f}
      powershell.exe, cmd.exe, reg.exe, schtasks.exe, wmic.exe, net.exe,
      certutil.exe, msiexec.exe, robocopy.exe, xcopy.exe, wevtutil.exe.
    - NEVER use HKCU: registry paths for writes. The script runs as
-     NT AUTHORITY\SYSTEM. HKCU for SYSTEM maps to HKU\.DEFAULT which
+     NT AUTHORITY\\SYSTEM. HKCU for SYSTEM maps to HKU\\.DEFAULT which
      Sysmon does not monitor. Use HKLM: paths for registry write activity.
      Monitored HKLM paths include:
-     HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
-     HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
-     HKLM:\SYSTEM\CurrentControlSet\Services\
-     HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+     HKLM:\\SOFTWARE\Microsoft\\Windows\\CurrentVersion\\Run
+     HKLM:\\SOFTWARE\Microsoft\\Windows\\CurrentVersion\\RunOnce
+     HKLM:\\SYSTEM\CurrentControlSet\\Services\
+     HKLM:\\SOFTWARE\Microsoft\\Windows NT\\CurrentVersion\\Winlogon
    - Generates real Sysmon events (the target EventIDs)
    - Avoid escaped quotes inside PowerShell strings.
      Prefer Join-Path and ArgumentList arrays over manually constructed command strings.
    - Reads like real enterprise activity, not test scaffolding. Specifically:
      AVOID: comments like "# Simulate X activity", variable names like $testScript,
      one-liners that just Write-Host a message, placeholder paths like C:\test\thing,
-     invented registry paths like HKLM:\Software\myapp-test, words like "test",
+     invented registry paths like HKLM:\\Software\\myapp-test, words like "test",
      "stress test", "stress-test" anywhere in scripts or comments
      USE: real tool invocations with realistic parameters, actual paths like
-     $env:TEMP\report_Q3.csv or $env:APPDATA\CompanyName\config.ini, plausible
+     $env:TEMP\report_Q3.csv or $env:APPDATA\CompanyName\\config.ini, plausible
      operational reasons for each action
    - For registry operations: use real Windows subsystem paths, not invented ones.
      Examples: Task Scheduler tasks live under
-     HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks\
-     Run keys live under HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
-     Services live under HKLM:\SYSTEM\CurrentControlSet\Services\
+     HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks\
+     Run keys live under HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run
+     Services live under HKLM:\\SYSTEM\\CurrentControlSet\\Services\
      Use the real path the rule is monitoring, not a stand-in
    - Cleans up any files or registry keys it creates
    - Includes brief inline comments explaining the legitimate business use case

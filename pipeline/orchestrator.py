@@ -97,11 +97,18 @@ def _flatten_log_stream(
     """
     Flatten all LogEvents across all techniques into a single list[dict]
     for the detection engine.
+
+    Injects _technique_id into each serialised event so the detection layer
+    can attribute matched events back to their originating technique.
+    Prevents cross-technique attribution where a broad rule fires on foreign
+    events and falsely reports coverage. Stripped in _build_detection_results.
     """
     events = []
-    for technique_events in log_stream.values():
+    for tid, technique_events in log_stream.items():
         for event in technique_events:
-            events.append(event.model_dump(exclude_none=True))
+            d = event.model_dump(exclude_none=True)
+            d["_technique_id"] = tid
+            events.append(d)
     return events
 
 
@@ -111,11 +118,25 @@ def _build_detection_results(
     """
     Convert list[RuleMatchResult] from engine.run() into
     dict[technique_id, DetectionResult] keyed by technique ID.
-    Last DetectionResult per technique wins (shouldn't overlap, but safe).
+
+    Filters matched_events in each DetectionResult to only include events
+    tagged with _technique_id matching that technique — injected by
+    _flatten_log_stream, stripped here after filtering.
+
+    Fixes cross-technique attribution: a broad rule firing on technique B's
+    events must not count as coverage for technique A, even if it is a
+    technique A rule. covered is re-derived after filtering so a rule that
+    fired only on foreign events does not mark a technique as covered.
     """
     parsed = parse_results(rule_match_results)
     result_map = {}
     for dr in parsed:
+        dr.matched_events = [
+            {k: v for k, v in e.items() if k != "_technique_id"}
+            for e in dr.matched_events
+            if e.get("_technique_id") == dr.technique_id
+        ]
+        dr.covered = bool(dr.matched_events)
         result_map[dr.technique_id] = dr
     return result_map
 

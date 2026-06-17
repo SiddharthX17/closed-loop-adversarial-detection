@@ -66,6 +66,7 @@ def get_run_selections() -> dict[str, list[str]]:
 
 
 _MAX_CANDIDATES = 1     # tests selected per technique per iteration
+_FALLBACK_POOL = 3      # additional ranked candidates to try if primary yields 0 events
 _SEEN_PENALTY = 0.4     # weight multiplier for previously selected tests
 
 
@@ -265,6 +266,7 @@ def _select_candidates(
     technique_id: str,
     selected_guid: str | None = None,
     history: dict | None = None,
+    max_candidates: int | None = None,
 ) -> list:
     """
     Weighted random sampling without replacement.
@@ -314,7 +316,8 @@ def _select_candidates(
         )
 
     candidates.sort(reverse=True)
-    fill_slots = _MAX_CANDIDATES - (1 if pinned else 0)
+    _cap = max_candidates if max_candidates is not None else _MAX_CANDIDATES
+    fill_slots = _cap - (1 if pinned else 0)
     top = candidates[:fill_slots]
 
     seen_set = _prior_attempts.setdefault(technique_id, set())
@@ -376,6 +379,7 @@ def _select_tests(
         cleaned_all, technique_id,
         selected_guid=selected_guid,
         history=history,
+        max_candidates=_MAX_CANDIDATES + _FALLBACK_POOL,
     )
 
     for i, cleaned in enumerate(selected):
@@ -419,14 +423,23 @@ def _emulate_technique(
     hints = evasion_hints.get(technique_id) if evasion_hints else None
     hints_v2 = evasion_hints_v2.get(technique_id) if evasion_hints_v2 else None
 
-    events = []
+    events: list[LogEvent] = []
 
-    # Always: attacker picks one test (pinned first by _select_candidates),
-    # generate base + mutated variant from it. 1 test × 2 events per iteration.
-    tests_to_emit = cleaned_tests[:1]
+    # Try each ranked candidate until at least 1 event is produced.
+    # Primary test (index 0) is the attacker-pinned or highest-scored test.
+    # Fallbacks (index 1+) are only tried if all variants of the primary
+    # return None from build_log_event — e.g. grounding killed CommandLine.
     hint_sets = [hints, hints_v2] if hints_v2 is not None else [hints]
 
-    for cleaned in tests_to_emit:
+    for test_idx, cleaned in enumerate(cleaned_tests):
+        if test_idx > 0:
+            _dbg(
+                f"{technique_id}: '{cleaned_tests[0].test_name}' yielded 0 events "
+                f"— trying fallback [{test_idx}]: '{cleaned.test_name}'"
+            )
+
+        candidate_events: list[LogEvent] = []
+
         for variant_idx, variant_hints in enumerate(hint_sets):
             _dbg(
                 f"{technique_id} / '{cleaned.test_name}': "
@@ -446,7 +459,7 @@ def _emulate_technique(
             )
 
             if log_event is not None:
-                events.append(log_event)
+                candidate_events.append(log_event)
                 _dbg(
                     f"{technique_id} / '{cleaned.test_name}': "
                     f"LogEvent generated (EID {log_event.EventID}, {log_event.event_type})"
@@ -456,6 +469,10 @@ def _emulate_technique(
                     f"{technique_id} / '{cleaned.test_name}': "
                     f"build_log_event returned None — dropped"
                 )
+
+        if candidate_events:
+            events.extend(candidate_events)
+            break   # first test to produce events wins; unused fallbacks discarded
 
     return events
 

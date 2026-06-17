@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,72 +10,102 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# -- Cluster: singleton_ea375969-3118-4b3d-a0c2-c3755f610e40  (1 rule(s)) ---------------------
-# Intent:    Detect PowerShell-based scheduled task creation with elevated privileges, a tech
-# Rules:     ea375969-3118-4b3d-a0c2-c3755f610e40
+# -- Cluster: singleton_5b3c93c4-af29-4bc4-a955-a76caaaae1c7  (1 rule(s)) ---------------------
+# Intent:    Detect system process executables being executed from non-standard directories, 
+# Rules:     5b3c93c4-af29-4bc4-a955-a76caaaae1c7
 # Archetype: Software installer/updater workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
-$taskName = 'ServiceRestartDeferred'
-$taskPath = '\\Microsoft\\Windows\\Application Maintenance\\'
+$stagingDir = Join-Path -Path $env:TEMP -ChildPath "installer_staging_$(Get-Random)"
+$null = New-Item -ItemType Directory -Path $stagingDir -Force
 
 try {
-    # Create a service maintenance script
-    $maintenanceScript = Join-Path $env:TEMP 'deferred_maintenance.ps1'
-    $scriptContent = @'
-$logPath = Join-Path $env:TEMP 'maintenance.log'
-Add-Content -Path $logPath -Value "Maintenance started at $(Get-Date)"
-GC.Collect()
-Add-Content -Path $logPath -Value "Memory cleanup completed"
-'@
-    Set-Content -Path $maintenanceScript -Value $scriptContent -Force
+  # Copy system processes to staging directory (simulating installer extraction)
+  $systemProcesses = @('svchost.exe', 'services.exe', 'lsass.exe', 'csrss.exe')
+  foreach ($proc in $systemProcesses) {
+    $sourcePath = Join-Path -Path 'C:\Windows\System32' -ChildPath $proc
+    if (Test-Path -Path $sourcePath) {
+      Copy-Item -Path $sourcePath -Destination $stagingDir -Force | Out-Null
+    }
+  }
 
-    # Create scheduled task action with elevated context
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $maintenanceScript)
+  # Installer verification: invoke staged svchost.exe to verify service manager availability
+  # This is realistic pre-deployment validation that enterprise installers perform
+  $stagedSvchost = Join-Path -Path $stagingDir -ChildPath 'svchost.exe'
+  if (Test-Path -Path $stagedSvchost) {
+    & $stagedSvchost -? 2>&1 | Out-Null
+  }
 
-    # Set trigger for task (can be at login or on schedule)
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
+  # Installer verification: invoke staged services.exe to validate service control
+  $stagedServices = Join-Path -Path $stagingDir -ChildPath 'services.exe'
+  if (Test-Path -Path $stagedServices) {
+    & $stagedServices /? 2>&1 | Out-Null
+  }
 
-    # Configure task settings
-    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries
+  # Simulate installer pre-flight checks: spawn lsass from staging to test authentication subsystem readiness
+  $stagedLsass = Join-Path -Path $stagingDir -ChildPath 'lsass.exe'
+  if (Test-Path -Path $stagedLsass) {
+    & $stagedLsass -? 2>&1 | Out-Null
+  }
 
-    # Set principal with highest privilege level (required for service operations)
-    $principal = New-ScheduledTaskPrincipal -UserID 'NT AUTHORITY\\SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  # Simulate installer pre-flight checks: spawn csrss from staging to test client/server subsystem
+  $stagedCsrss = Join-Path -Path $stagingDir -ChildPath 'csrss.exe'
+  if (Test-Path -Path $stagedCsrss) {
+    & $stagedCsrss -? 2>&1 | Out-Null
+  }
 
-    # Register the task
-    Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-    Write-Output "Deferred maintenance task created"
-
-    # Simulate installer verification
-    Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath | Out-Null
-
-    # Installer updates task with additional metadata
-    $existingTask = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath
-    $existingTask.Description = 'Deferred application maintenance tasks'
-    Set-ScheduledTask -InputObject $existingTask | Out-Null
-    Write-Output "Task configuration updated"
-
+  Write-Host "Installer staging and verification complete"
 } finally {
-    # Cleanup tasks and files
-    try {
-        Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
-        Write-Output "Deferred task removed"
-    } catch {}
-
-    $maintenanceScript = Join-Path $env:TEMP 'deferred_maintenance.ps1'
-    if (Test-Path $maintenanceScript) {
-        Remove-Item -Path $maintenanceScript -Force -ErrorAction SilentlyContinue
-    }
-
-    $logPath = Join-Path $env:TEMP 'maintenance.log'
-    if (Test-Path $logPath) {
-        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
-    }
+  # Cleanup: remove staging directory and all staged binaries
+  if (Test-Path -Path $stagingDir) {
+    Remove-Item -Path $stagingDir -Recurse -Force | Out-Null
+  }
 }
 
-# SKIPPED variant 'Document/file operation workflow': blocked pattern: hidden window ('-windowstyle hidden')
+# -- Cluster: singleton_5b3c93c4-af29-4bc4-a955-a76caaaae1c7  (1 rule(s)) ---------------------
+# Intent:    Detect system process executables being executed from non-standard directories, 
+# Rules:     5b3c93c4-af29-4bc4-a955-a76caaaae1c7
+# Archetype: IT admin workflow
+
+$recoveryDir = Join-Path -Path $env:TEMP -ChildPath "recovery_bin_$(Get-Random)"
+$null = New-Item -ItemType Directory -Path $recoveryDir -Force
+
+try {
+  # Extract critical system binaries to recovery directory for integrity validation
+  $criticalBinaries = @('svchost.exe', 'services.exe', 'lsass.exe', 'smss.exe', 'winlogon.exe', 'wininit.exe')
+  foreach ($binary in $criticalBinaries) {
+    $sourcePath = Join-Path -Path 'C:\Windows\System32' -ChildPath $binary
+    if (Test-Path -Path $sourcePath) {
+      Copy-Item -Path $sourcePath -Destination $recoveryDir -Force | Out-Null
+    }
+  }
+
+  # Admin verification workflow: execute each recovered binary to confirm functional integrity
+  # This simulates real administrator validation during disaster recovery scenarios
+  foreach ($binary in $criticalBinaries) {
+    $recoveredBinary = Join-Path -Path $recoveryDir -ChildPath $binary
+    if (Test-Path -Path $recoveredBinary) {
+      Write-Host "Validating recovered binary: $binary"
+      & $recoveredBinary -? 2>&1 | Out-Null
+    }
+  }
+
+  # Compute cryptographic hashes of recovered binaries for integrity audit log
+  $hashLog = Join-Path -Path $recoveryDir -ChildPath 'integrity_audit.txt'
+  foreach ($binary in $criticalBinaries) {
+    $recoveredBinary = Join-Path -Path $recoveryDir -ChildPath $binary
+    if (Test-Path -Path $recoveredBinary) {
+      $hash = Get-FileHash -Path $recoveredBinary -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+      Add-Content -Path $hashLog -Value "$binary : $hash"
+    }
+  }
+
+  Write-Host "Binary recovery and integrity validation completed"
+} finally {
+  # Cleanup: remove recovery directory and all validated binaries
+  if (Test-Path -Path $recoveryDir) {
+    Remove-Item -Path $recoveryDir -Recurse -Force | Out-Null
+  }
+}
 
 
 # ===========================================================================

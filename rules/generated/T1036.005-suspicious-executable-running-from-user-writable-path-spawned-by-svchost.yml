@@ -1,0 +1,56 @@
+title: Suspicious Executable Running From User-Writable Path Spawned by Svchost
+id: 4e7e8fba-d84a-42a4-bf20-4237927292f1
+status: experimental
+description: |
+  Detects svchost.exe spawning child processes whose Image path falls outside canonical
+  Windows system directories (System32, SysWOW64, Program Files). Legitimate svchost
+  children are constrained to system directories; any child executing from a user-writable
+  path (ProgramData, Users, Temp) is structurally anomalous and indicative of a masquerade
+  attempt per T1036.005.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-06-17
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_parent:
+    ParentImage|endswith: '\svchost.exe'
+  selection_suspicious_path:
+    Image|contains:
+      - '\ProgramData\'
+      - '\Users\'
+      - '\Windows\Temp\'
+      - '\Temp\'
+      - '\AppData\'
+  filter_system_paths:
+    Image|contains:
+      - '\Windows\System32\'
+      - '\Windows\SysWOW64\'
+      - '\Program Files\'
+      - '\Program Files (x86)\'
+      - '\Windows\WinSxS\'
+  filter_windows_update:
+    ParentCommandLine|contains:
+      - '-k wuauserv'
+      - '-k utcsvc'
+      - '-k WaaSMedicSvc'
+    Image|contains:
+      - '\SoftwareDistribution\Download\'
+      - '\WinSxS\'
+  filter_deployment_agents:
+    ParentImage|endswith:
+      - '\ccmexec.exe'
+      - '\IntuneManagementExtension.exe'
+      - '\MsMpEng.exe'
+  condition: selection_parent and selection_suspicious_path and not filter_system_paths and not filter_windows_update and not filter_deployment_agents
+falsepositives:
+  - Windows Update or telemetry components briefly spawned by svchost from non-standard staging paths
+  - Enterprise software agents (SCCM, Intune) executing installers from ProgramData
+  - Legitimate monitoring or management agents installed under ProgramData with svchost as indirect parent
+level: high

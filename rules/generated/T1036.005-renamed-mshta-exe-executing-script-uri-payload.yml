@@ -1,0 +1,36 @@
+title: Renamed mshta.exe Executing Script URI Payload
+id: 3e718cf2-d474-43b5-81d3-7c065d7329d6
+status: experimental
+description: |
+  Detects execution of a binary whose PE OriginalFileName is mshta.exe but whose on-disk name
+  differs (i.e. the binary has been renamed). Reinforced by the presence of mshta-style script
+  URI schemes (vbscript:, javascript:, about:) in the command line, which are invariant to
+  renaming. This is a high-confidence indicator of T1036.005 masquerading via binary rename.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://mgreen27.github.io/posts/2019/05/12/BinaryRename.html
+  - https://lolbas-project.github.io/lolbas/Binaries/Mshta/
+author: Detection Engineer
+date: 2026-06-18
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_originalfilename:
+    OriginalFileName: 'mshta.exe'
+  filter_legitimate_image:
+    Image|endswith: '\mshta.exe'
+  selection_script_uri:
+    CommandLine|contains:
+      - 'vbscript:'
+      - 'javascript:'
+      - 'about:'
+  condition: selection_originalfilename and not filter_legitimate_image and selection_script_uri
+falsepositives:
+  - Legitimate mshta.exe running from its canonical path will not match due to the Image filter.
+  - Extremely unlikely to produce false positives; no known legitimate use case for a renamed
+    mshta.exe executing script URI arguments.
+level: high

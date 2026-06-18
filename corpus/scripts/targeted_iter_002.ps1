@@ -10,136 +10,142 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_09a91ef1-5e25-4f77-ad55-38a652652c00  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled task engines or system loaders spawning WSH interpreters (cscri
-# Rules:     09a91ef1-5e25-4f77-ad55-38a652652c00
+# -- Cluster: singleton_c4dd5877-1471-4762-ac8e-171cc9798b01  (1 rule(s)) ---------------------
+# Intent:    Detect credential dumping via LSASS process memory extraction initiated through 
+# Rules:     c4dd5877-1471-4762-ac8e-171cc9798b01
 # Archetype: IT admin workflow
 
-$taskName = 'MaintenanceLogCleanup'
-$taskPath = Join-Path $env:ProgramData 'Microsoft\Windows\maintenance_cleanup.vbs'
+$diagReportPath = Join-Path $env:TEMP 'system_diagnostics_20240115.log'
+$processListPath = Join-Path $env:TEMP 'process_inventory.txt'
 
-# Create a realistic maintenance script that processes logs
-$vbscript = @'
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-strLogsPath = "" & objFSO.GetSpecialFolder(2) & "\Windows\Temp"
-Set objFolder = objFSO.GetFolder(strLogsPath)
-For Each objFile In objFolder.Files
-    If objFSO.GetExtensionName(objFile.Name) = "log" Then
-        If DateDiff("d", objFile.DateCreated, Now) > 7 Then
-            objFile.Delete
-        End If
-    End If
-Next
-'@
+# Admin activity: Enumerate all running processes and write to report
+$processes = Get-Process | Select-Object Id, Name, CommandLine, StartTime | Format-Table -AutoSize
+Add-Content -Path $processListPath -Value "Process Inventory Report $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Add-Content -Path $processListPath -Value ($processes | Out-String)
 
-if (-not (Test-Path (Split-Path $taskPath))) {
-    New-Item -ItemType Directory -Path (Split-Path $taskPath) -Force | Out-Null
+# Admin uses tasklist for secondary process verification (common in troubleshooting)
+Add-Content -Path $diagReportPath -Value "System Process Listing"
+cmd /c "tasklist /v >> `"$diagReportPath`" 2>&1"
+
+# Admin retrieves specific process details for memory diagnostics
+$lsassProcess = Get-Process -Name lsass -ErrorAction SilentlyContinue
+if ($lsassProcess) {
+    Add-Content -Path $diagReportPath -Value "LSASS Process ID: $($lsassProcess.Id)"
+    Add-Content -Path $diagReportPath -Value "Working Set: $($lsassProcess.WorkingSet) bytes"
 }
 
-Set-Content -Path $taskPath -Value $vbscript -Encoding UTF8
-
-# Register the scheduled task using schtasks (which invokes taskeng.exe)
-$action = New-ScheduledTaskAction -Execute 'cscript.exe' -Argument "`"$taskPath`""
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(5)
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force -ErrorAction SilentlyContinue
-
-# Wait for task engine to spawn and execute the script
-Start-Sleep -Seconds 3
+# Admin invokes System File Checker from temp (legitimate diagnostic tool)
+$diagToolPath = Join-Path $env:TEMP 'system_check.exe'
+if (Test-Path -Path 'C:\Windows\System32\sfc.exe') {
+    Copy-Item -Path 'C:\Windows\System32\sfc.exe' -Destination $diagToolPath -Force
+    & $diagToolPath /scannow 2>&1 | Out-Null
+    Remove-Item -Path $diagToolPath -Force -ErrorAction SilentlyContinue
+}
 
 # Cleanup
-Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-Remove-Item -Path $taskPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $processListPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $diagReportPath -Force -ErrorAction SilentlyContinue
 
-# -- Cluster: singleton_09a91ef1-5e25-4f77-ad55-38a652652c00  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled task engines or system loaders spawning WSH interpreters (cscri
-# Rules:     09a91ef1-5e25-4f77-ad55-38a652652c00
+# -- Cluster: singleton_c4dd5877-1471-4762-ac8e-171cc9798b01  (1 rule(s)) ---------------------
+# Intent:    Detect credential dumping via LSASS process memory extraction initiated through 
+# Rules:     c4dd5877-1471-4762-ac8e-171cc9798b01
 # Archetype: Software installer/updater workflow
 
-$configPath = Join-Path $env:ProgramData 'ConfigMgr\agent_config.vbs'
-$helperScript = Join-Path $env:ProgramData 'ConfigMgr\deploy_helper.html'
+$appDataTempDir = Join-Path $env:APPDATA 'Local\Temp' 'AppInstall_Staging'
+$logPath = Join-Path $appDataTempDir 'install_validation.log'
 
-# Ensure directory exists
-if (-not (Test-Path (Split-Path $configPath))) {
-    New-Item -ItemType Directory -Path (Split-Path $configPath) -Force | Out-Null
+# Ensure staging directory exists
+if (-not (Test-Path -Path $appDataTempDir)) {
+    New-Item -Path $appDataTempDir -ItemType Directory -Force | Out-Null
 }
 
-# Create a VBScript that simulates configuration deployment
-$vbscript = @'
-Set objWMI = GetObject("winmgmts:")
-Set colItems = objWMI.ExecQuery("Select * from Win32_OperatingSystem")
-For Each objItem in colItems
-    Set objReg = GetObject("winmgmts:root\\default:StdRegProv")
-    objReg.SetStringValue &H80000002, "Software\\Microsoft\\ConfigMgr\\Agent", "LastUpdate", Now
-Next
-'@
+# Installer queries running processes to check for conflicts
+Add-Content -Path $logPath -Value "Installation Validation Log: $(Get-Date)"
 
-Set-Content -Path $configPath -Value $vbscript -Encoding UTF8
+# Use Get-Process to enumerate running applications
+$runningApps = Get-Process | Where-Object { $_.ProcessName -match '^(svchost|lsass|csrss|services)' } | Select-Object Name, Id
+Add-Content -Path $logPath -Value "Critical System Processes: $(($runningApps | Measure-Object).Count) detected"
 
-# Create an HTML file that mshta will execute (common in enterprise deployment)
-$htmlContent = @'
-<html>
-<script language="VBScript">
-CreateObject("WScript.Shell").Run "cscript.exe \""" & configPath & "\"" ", 0, False
-</script>
-</html>
-'@
-
-Set-Content -Path $helperScript -Value $htmlContent -Encoding UTF8
-
-# Execute via mshta (simulating enterprise deployment tooling)
-& mshta.exe ("file://" + $helperScript) -ErrorAction SilentlyContinue
-
-Start-Sleep -Seconds 2
-
-# Cleanup
-Remove-Item -Path $configPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $helperScript -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_09a91ef1-5e25-4f77-ad55-38a652652c00  (1 rule(s)) ---------------------
-# Intent:    Detect scheduled task engines or system loaders spawning WSH interpreters (cscri
-# Rules:     09a91ef1-5e25-4f77-ad55-38a652652c00
-# Archetype: User-driven workflow
-
-$appDataPath = Join-Path $env:APPDATA 'LocalToolkit\report_generator.vbs'
-$tempLoader = Join-Path $env:TEMP 'toolkit_loader.vbs'
-
-# Ensure AppData structure exists
-if (-not (Test-Path (Split-Path $appDataPath))) {
-    New-Item -ItemType Directory -Path (Split-Path $appDataPath) -Force | Out-Null
+# Installer uses Get-WmiObject for detailed system process enumeration
+$wmiProcs = Get-WmiObject -Class Win32_Process -Filter "Name='lsass.exe' OR Name='services.exe'" -ErrorAction SilentlyContinue
+if ($wmiProcs) {
+    Add-Content -Path $logPath -Value "WMI Process Query: System services verified"
 }
 
-# Create a realistic utility script that generates a report
-$utilityScript = @'
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objFile = objFSO.CreateTextFile(objFSO.GetSpecialFolder(2) & "\\runtime_report.txt", True)
-objFile.WriteLine "=== System Report ==="
-objFile.WriteLine "Generated: " & Now
-objFile.Close
+# Installer stages verification utility to AppData
+$verifyToolPath = Join-Path $appDataTempDir 'verify_prerequisites.exe'
+if (Test-Path -Path 'C:\Windows\System32\cmd.exe') {
+    Copy-Item -Path 'C:\Windows\System32\cmd.exe' -Destination $verifyToolPath -Force -ErrorAction SilentlyContinue
+
+    # Execute verification tool from staging directory
+    & $verifyToolPath /c "echo System prerequisite verification complete" 2>&1 | Out-Null
+    Remove-Item -Path $verifyToolPath -Force -ErrorAction SilentlyContinue
+}
+
+# Cleanup staging directory
+Remove-Item -Path $appDataTempDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_c4dd5877-1471-4762-ac8e-171cc9798b01  (1 rule(s)) ---------------------
+# Intent:    Detect credential dumping via LSASS process memory extraction initiated through 
+# Rules:     c4dd5877-1471-4762-ac8e-171cc9798b01
+# Archetype: Document/file operation workflow
+
+$downloadsDir = [Environment]::GetFolderPath('UserProfile') + '\Downloads'
+$appDataLocalDir = $env:APPDATA + '\Local'
+$tempDir = $env:TEMP
+
+# Create a maintenance script in AppData to audit system processes
+$auditScriptPath = Join-Path $appDataLocalDir 'file_audit_helper.ps1'
+
+# This script will be used to enumerate processes before cleanup
+$auditScriptContent = @'
+# Legacy file audit helper - enumerates processes that may lock files
+Write-Host "Auditing file locks and process state"
+
+# Query all processes
+$allProcs = Get-Process -ErrorAction SilentlyContinue
+
+# Check for system critical processes
+foreach ($proc in $allProcs) {
+    if ($proc.Name -match 'lsass|svchost|services') {
+        Write-Host "Critical process: $($proc.Name) (PID: $($proc.Id))"
+    }
+}
+
+# Use WMI for detailed process information
+try {
+    $wmiProcs = Get-WmiObject -Class Win32_Process -Filter "Name='svchost.exe'" -ErrorAction SilentlyContinue
+    if ($wmiProcs) {
+        Write-Host "System service processes verified"
+    }
+} catch {
+    Write-Host "WMI query completed"
+}
 '@
 
-Set-Content -Path $appDataPath -Value $utilityScript -Encoding UTF8
+Set-Content -Path $auditScriptPath -Value $auditScriptContent -Force
 
-# Create a loader script in temp that rundll32 can invoke
-$loaderScript = @'
-CreateObject("WScript.Shell").Run "wscript.exe \"" & appDataPath & "\"" , 0, False
-'@
+# Create a harmless utility file in Downloads to simulate maintenance tools
+$maintenanceToolPath = Join-Path $downloadsDir 'file_integrity_checker.exe'
+if (Test-Path -Path 'C:\Windows\System32\findstr.exe') {
+    Copy-Item -Path 'C:\Windows\System32\findstr.exe' -Destination $maintenanceToolPath -Force -ErrorAction SilentlyContinue
+}
 
-Set-Content -Path $tempLoader -Value $loaderScript -Encoding UTF8
+# Execute the audit script (which enumerates processes including LSASS)
+if (Test-Path -Path $auditScriptPath) {
+    & powershell.exe -ExecutionPolicy Bypass -File $auditScriptPath 2>&1 | Out-Null
+}
 
-# Execute the loader via rundll32 (simulating application launcher behavior)
-# rundll32 is used by many legitimate tools to delegate script execution
-$result = & rundll32.exe ("shell32.dll,ShellExec_RunDLL") ("wscript.exe") (`"$tempLoader`") -ErrorAction SilentlyContinue
-
-Start-Sleep -Seconds 2
+# Invoke the utility from Downloads
+if (Test-Path -Path $maintenanceToolPath) {
+    & $maintenanceToolPath 'dummy search pattern' 'C:\\Windows\\Temp' 2>&1 | Out-Null
+    Remove-Item -Path $maintenanceToolPath -Force -ErrorAction SilentlyContinue
+}
 
 # Cleanup
-Remove-Item -Path $appDataPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $tempLoader -Force -ErrorAction SilentlyContinue
-Remove-Item -Path (Join-Path $env:TEMP 'runtime_report.txt') -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $auditScriptPath -Force -ErrorAction SilentlyContinue
 
-# SKIPPED cluster singleton_abf62430-d14c-4519-9d75-25daec01a6a9: rdrleakdiag.exe is a Microsoft Remote Desktop Leak Diagnostic tool that is NOT installed on standard windows-latest GitHub Actions runners. The tool is part of the Remote Desktop Client suite and requires explicit installation. Additionally, the /fullmemdmp flag is specifically designed for diagnosing remote desktop memory leaks in production RDP environments, not standalone systems. Attempting to invoke a non-existent executable will fail with 'file not found' rather than generating the intended Sysmon process creation events. While the tool could theoretically be downloaded and installed, doing so would require either: (1) a pre-built binary artifact (introducing supply chain concerns in a security research pipeline), or (2) building from source (not available publicly). The legitimate use case for rdrleakdiag requires an active RDP session context and diagnostic scenario that cannot be meaningfully replicated on an ephemeral CI runner.
+# SKIPPED cluster singleton_3e718cf2-d474-43b5-81d3-7c065d7329d6: JSON parse error: Invalid \escape: line 15 column 1150 (char 2172)
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

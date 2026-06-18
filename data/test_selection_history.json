@@ -25,7 +25,7 @@
       "rule_generated": true
     },
     "bf8c1441-4674-4dab-8e4e-39d93d08f9b7": {
-      "runs_seen": 1,
+      "runs_seen": 2,
       "rule_generated": true
     },
     "8a2ad40b-12c7-4b25-8521-2737b0a415af": {
@@ -67,6 +67,14 @@
     "4396927f-e503-427b-b023-31049b9b09a6": {
       "runs_seen": 1,
       "rule_generated": false
+    },
+    "686a9785-f99b-41d4-90df-66ed515f81d7": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "a538de64-1c74-46ed-aa60-b995ed302598": {
+      "runs_seen": 1,
+      "rule_generated": false
     }
   },
   "T1053.005": {
@@ -75,7 +83,7 @@
       "rule_generated": true
     },
     "e895677d-4f06-49ab-91b6-ae3742d0a2ba": {
-      "runs_seen": 3,
+      "runs_seen": 4,
       "rule_generated": true
     },
     "cd925593-fbb4-486d-8def-16cbdf944bf4": {
@@ -87,7 +95,7 @@
       "rule_generated": true
     },
     "ecd3fa21-7792-41a2-8726-2c5c673414d3": {
-      "runs_seen": 1,
+      "runs_seen": 2,
       "rule_generated": true
     },
     "e16b3b75-dc9e-4cde-a23d-dfa2d0507b3b": {

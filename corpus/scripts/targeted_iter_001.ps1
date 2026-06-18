@@ -10,102 +10,44 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_5b3c93c4-af29-4bc4-a955-a76caaaae1c7  (1 rule(s)) ---------------------
-# Intent:    Detect system process executables being executed from non-standard directories, 
-# Rules:     5b3c93c4-af29-4bc4-a955-a76caaaae1c7
+# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
+
+# -- Cluster: singleton_2d43b208-1119-4cdb-bf44-d400a6f53d39  (1 rule(s)) ---------------------
+# Intent:    Detect adversaries using PowerShell to register and immediately modify scheduled
+# Rules:     2d43b208-1119-4cdb-bf44-d400a6f53d39
 # Archetype: Software installer/updater workflow
 
-$stagingDir = Join-Path -Path $env:TEMP -ChildPath "installer_staging_$(Get-Random)"
-$null = New-Item -ItemType Directory -Path $stagingDir -Force
+$msiLogPath = Join-Path $env:TEMP -ChildPath ('msi_install_' + [System.Guid]::NewGuid().ToString().Substring(0, 8) + '.log')
+$psScriptPath = Join-Path $env:TEMP -ChildPath ('installer_task_' + [System.Guid]::NewGuid().ToString().Substring(0, 8) + '.ps1')
 
-try {
-  # Copy system processes to staging directory (simulating installer extraction)
-  $systemProcesses = @('svchost.exe', 'services.exe', 'lsass.exe', 'csrss.exe')
-  foreach ($proc in $systemProcesses) {
-    $sourcePath = Join-Path -Path 'C:\Windows\System32' -ChildPath $proc
-    if (Test-Path -Path $sourcePath) {
-      Copy-Item -Path $sourcePath -Destination $stagingDir -Force | Out-Null
-    }
-  }
+$installerTaskScript = @'
+$taskName = "EnterpriseAppHealthCheck_" + [System.DateTime]::Now.Ticks
+$taskPath = "\EnterpriseApplications"
 
-  # Installer verification: invoke staged svchost.exe to verify service manager availability
-  # This is realistic pre-deployment validation that enterprise installers perform
-  $stagedSvchost = Join-Path -Path $stagingDir -ChildPath 'svchost.exe'
-  if (Test-Path -Path $stagedSvchost) {
-    & $stagedSvchost -? 2>&1 | Out-Null
-  }
+$taskPrincipal = New-ScheduledTaskPrincipal -UserId "BUILTIN\Administrators" -RunLevel Highest
+$taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Write-EventLog -LogName Application -Source EnterpriseApp -EventId 5001 -Message 'Health check started'"`"
+$taskTrigger = New-ScheduledTaskTrigger -Daily -At 2am
 
-  # Installer verification: invoke staged services.exe to validate service control
-  $stagedServices = Join-Path -Path $stagingDir -ChildPath 'services.exe'
-  if (Test-Path -Path $stagedServices) {
-    & $stagedServices /? 2>&1 | Out-Null
-  }
+Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $taskAction -Trigger $taskTrigger -Principal $taskPrincipal -Force | Out-Null
 
-  # Simulate installer pre-flight checks: spawn lsass from staging to test authentication subsystem readiness
-  $stagedLsass = Join-Path -Path $stagingDir -ChildPath 'lsass.exe'
-  if (Test-Path -Path $stagedLsass) {
-    & $stagedLsass -? 2>&1 | Out-Null
-  }
+Start-Sleep -Milliseconds 300
 
-  # Simulate installer pre-flight checks: spawn csrss from staging to test client/server subsystem
-  $stagedCsrss = Join-Path -Path $stagingDir -ChildPath 'csrss.exe'
-  if (Test-Path -Path $stagedCsrss) {
-    & $stagedCsrss -? 2>&1 | Out-Null
-  }
-
-  Write-Host "Installer staging and verification complete"
-} finally {
-  # Cleanup: remove staging directory and all staged binaries
-  if (Test-Path -Path $stagingDir) {
-    Remove-Item -Path $stagingDir -Recurse -Force | Out-Null
-  }
+$registered = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
+if ($registered) {
+  $newAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c powershell.exe -NoProfile -Command Write-Host 'Health check pulse'"
+  Set-ScheduledTask -InputObject $registered -Action $newAction -Principal $taskPrincipal | Out-Null
+  Unregister-ScheduledTask -InputObject $registered -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 }
+'@
 
-# -- Cluster: singleton_5b3c93c4-af29-4bc4-a955-a76caaaae1c7  (1 rule(s)) ---------------------
-# Intent:    Detect system process executables being executed from non-standard directories, 
-# Rules:     5b3c93c4-af29-4bc4-a955-a76caaaae1c7
-# Archetype: IT admin workflow
+Set-Content -Path $psScriptPath -Value $installerTaskScript -Encoding UTF8 -Force
 
-$recoveryDir = Join-Path -Path $env:TEMP -ChildPath "recovery_bin_$(Get-Random)"
-$null = New-Item -ItemType Directory -Path $recoveryDir -Force
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File $psScriptPath
 
-try {
-  # Extract critical system binaries to recovery directory for integrity validation
-  $criticalBinaries = @('svchost.exe', 'services.exe', 'lsass.exe', 'smss.exe', 'winlogon.exe', 'wininit.exe')
-  foreach ($binary in $criticalBinaries) {
-    $sourcePath = Join-Path -Path 'C:\Windows\System32' -ChildPath $binary
-    if (Test-Path -Path $sourcePath) {
-      Copy-Item -Path $sourcePath -Destination $recoveryDir -Force | Out-Null
-    }
-  }
+Start-Sleep -Milliseconds 500
 
-  # Admin verification workflow: execute each recovered binary to confirm functional integrity
-  # This simulates real administrator validation during disaster recovery scenarios
-  foreach ($binary in $criticalBinaries) {
-    $recoveredBinary = Join-Path -Path $recoveryDir -ChildPath $binary
-    if (Test-Path -Path $recoveredBinary) {
-      Write-Host "Validating recovered binary: $binary"
-      & $recoveredBinary -? 2>&1 | Out-Null
-    }
-  }
-
-  # Compute cryptographic hashes of recovered binaries for integrity audit log
-  $hashLog = Join-Path -Path $recoveryDir -ChildPath 'integrity_audit.txt'
-  foreach ($binary in $criticalBinaries) {
-    $recoveredBinary = Join-Path -Path $recoveryDir -ChildPath $binary
-    if (Test-Path -Path $recoveredBinary) {
-      $hash = Get-FileHash -Path $recoveredBinary -Algorithm SHA256 | Select-Object -ExpandProperty Hash
-      Add-Content -Path $hashLog -Value "$binary : $hash"
-    }
-  }
-
-  Write-Host "Binary recovery and integrity validation completed"
-} finally {
-  # Cleanup: remove recovery directory and all validated binaries
-  if (Test-Path -Path $recoveryDir) {
-    Remove-Item -Path $recoveryDir -Recurse -Force | Out-Null
-  }
-}
+Remove-Item -Path $psScriptPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $msiLogPath -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

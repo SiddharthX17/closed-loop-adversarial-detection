@@ -1,0 +1,41 @@
+title: PowerShell Scheduled Task Register and Immediate Modify in Single Invocation
+id: 2d43b208-1119-4cdb-bf44-d400a6f53d39
+status: experimental
+description: |
+    Detects a command line containing both Register-ScheduledTask and Set-ScheduledTask cmdlets in a single invocation,
+    indicating the create-then-modify pattern used to establish privileged persistent code execution via PowerShell
+    ScheduledTasks cmdlets. This pattern is structurally required by T1053.005 procedures that register and immediately
+    reconfigure a scheduled task in one call. Legitimate scheduled task management separates creation and modification
+    into distinct operations. The rule matches on CommandLine only, covering both direct PowerShell invocations and
+    cases where PowerShell is launched via cmd.exe or other parent processes.
+references:
+    - https://attack.mitre.org/techniques/T1053/005/
+    - https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/register-scheduledtask
+    - https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/set-scheduledtask
+author: Detection Engineer
+date: 2024-01-01
+tags:
+    - attack.execution
+    - attack.persistence
+    - attack.privilege-escalation
+    - attack.t1053.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_cmdlets:
+        CommandLine|contains|all:
+            - 'Register-ScheduledTask'
+            - 'Set-ScheduledTask'
+    selection_privilege:
+        CommandLine|contains|all:
+            - 'New-ScheduledTaskPrincipal'
+            - 'RunLevel Highest'
+            - 'BUILTIN'
+    filter_installer:
+        ParentImage|endswith: '\msiexec.exe'
+    condition: all of selection_* and not filter_installer
+falsepositives:
+    - Enterprise deployment or configuration management scripts that create and reconfigure elevated scheduled tasks in a single invocation; these are rare and should be reviewed
+    - Software installers using PowerShell to register privileged scheduled tasks (partially mitigated by msiexec.exe parent filter)
+level: high

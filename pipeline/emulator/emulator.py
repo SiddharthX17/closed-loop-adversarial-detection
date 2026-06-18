@@ -44,6 +44,11 @@ _CONFIG_PATH = Path("config/techniques.yaml")
 
 _prior_attempts: dict[str, set[str]] = {}
 
+# technique_id → guid of the test that actually produced events this run.
+# Subset of _prior_attempts — only the candidate that succeeded, not every
+# candidate that was tried. Used to mark rule_generated correctly.
+_used_guids: dict[str, str] = {}
+
 
 def reset_seen_tests() -> None:
     """
@@ -51,18 +56,33 @@ def reset_seen_tests() -> None:
     pipeline run so separate invocations do not bleed into each other.
     """
     _prior_attempts.clear()
+    _used_guids.clear()
 
 
 def get_run_selections() -> dict[str, list[str]]:
     """
-    Return guids selected in the most recent run_emulator() call.
-    Keyed by technique_id. Used by the orchestrator to identify which
-    specific test to mark as rule_generated after a successful PR —
-    avoids marking every historical guid for a technique.
-    Valid to call any time after run_emulator() returns and before the
-    next run_emulator() call (which resets _prior_attempts).
+    Return guids actually attempted (tried in _emulate_technique's fallback
+    loop) in the most recent run_emulator() call. Keyed by technique_id.
+    Excludes unused fallback pool candidates that were ranked but never
+    reached because an earlier candidate already produced events. Used for
+    cross-run penalty bookkeeping (test_history.record_selections) and
+    within-run seen-penalty scoring on subsequent iterations. For the guid
+    that produced the events a generated rule is based on, use
+    get_used_guids() instead.
     """
     return {tid: list(guids) for tid, guids in _prior_attempts.items()}
+
+
+def get_used_guids() -> dict[str, str]:
+    """
+    Return the guid of the test that actually produced events, per
+    technique, in the most recent run_emulator() call. Only includes
+    techniques where at least one event was generated. This is the correct
+    source for marking rule_generated — a test that was tried but yielded
+    0 events, or a fallback candidate that was never reached, must not be
+    penalised as if its output became a merged rule.
+    """
+    return dict(_used_guids)
 
 
 _MAX_CANDIDATES = 1     # tests selected per technique per iteration
@@ -283,9 +303,11 @@ def _select_candidates(
     to appear first in the result regardless of its sampled priority. The
     remaining slots are filled by the weighted draw as normal.
 
-    Updates _prior_attempts[technique_id] with the selected GUIDs.
-    Note: cross-run history is updated by run_emulator() after all techniques
-    complete — not here — so record_selections() sees the full run's choices.
+    Does NOT mark guids as seen. Returns the ranked candidate pool as
+    (guid, cleaned) tuples for _emulate_technique to try in order. Being
+    ranked into the pool is not the same as being emulated — only
+    candidates _emulate_technique actually attempts get added to
+    _prior_attempts, and that happens there, not here.
     """
     seen = _prior_attempts.get(technique_id, set())
     pinned: tuple | None = None
@@ -320,16 +342,15 @@ def _select_candidates(
     fill_slots = _cap - (1 if pinned else 0)
     top = candidates[:fill_slots]
 
-    seen_set = _prior_attempts.setdefault(technique_id, set())
+    # Seen-marking deliberately removed from here — see docstring.
+    # _emulate_technique marks each guid as seen at the point it is tried.
 
-    result: list = []
+    result: list[tuple[str, object]] = []
     if pinned:
-        seen_set.add(pinned[0])
-        result.append(pinned[1])
+        result.append((pinned[0], pinned[1]))
 
     for _, guid, _, cleaned in top:
-        seen_set.add(guid)
-        result.append(cleaned)
+        result.append((guid, cleaned))
 
     return result if result else []
 
@@ -382,12 +403,11 @@ def _select_tests(
         max_candidates=_MAX_CANDIDATES + _FALLBACK_POOL,
     )
 
-    for i, cleaned in enumerate(selected):
+    for i, (guid, cleaned) in enumerate(selected):
         _dbg(
             f"{technique_id} / '{cleaned.test_name}': selected ({i + 1}/{len(selected)})")
 
     return selected
-
 # ─── Per-technique emulation ──────────────────────────────────────────────────
 
 
@@ -431,12 +451,18 @@ def _emulate_technique(
     # return None from build_log_event — e.g. grounding killed CommandLine.
     hint_sets = [hints, hints_v2] if hints_v2 is not None else [hints]
 
-    for test_idx, cleaned in enumerate(cleaned_tests):
+    for test_idx, (test_guid, cleaned) in enumerate(cleaned_tests):
         if test_idx > 0:
             _dbg(
-                f"{technique_id}: '{cleaned_tests[0].test_name}' yielded 0 events "
+                f"{technique_id}: '{cleaned_tests[0][1].test_name}' yielded 0 events "
                 f"— trying fallback [{test_idx}]: '{cleaned.test_name}'"
             )
+
+        # Mark seen only now, at the point this candidate is actually tried.
+        # Fallback candidates further down cleaned_tests that are never
+        # reached (an earlier one already succeeded) stay fully eligible
+        # for future selection — they were never run.
+        _prior_attempts.setdefault(technique_id, set()).add(test_guid)
 
         candidate_events: list[LogEvent] = []
 
@@ -472,6 +498,7 @@ def _emulate_technique(
 
         if candidate_events:
             events.extend(candidate_events)
+            _used_guids[technique_id] = test_guid
             break   # first test to produce events wins; unused fallbacks discarded
 
     return events

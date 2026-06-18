@@ -3,19 +3,21 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_ea375969-3118-4b3d-a0c2-c3755f610e40"
+      "singleton_2d43b208-1119-4cdb-bf44-d400a6f53d39"
     ],
     "archetype_tags": [
-      "commandline"
+      "commandline",
+      "installer",
+      "parent_process"
     ],
     "behavioral_intents": [
-      "Detect PowerShell-based scheduled task creation with elevated privileges, a technique used to establish persistence or automate privilege-escalated operations."
+      "Detect adversaries using PowerShell to register and immediately modify scheduled tasks with elevated privileges, often via MSI installers as a persistence or privilege escalation vector."
     ],
-    "committed_at": 1781631028.548112,
-    "workflow_ran": true,
-    "logs_produced": true,
-    "rules_hit": [],
-    "useful_corpus": false
+    "committed_at": 1781772226.6405857,
+    "workflow_ran": null,
+    "logs_produced": null,
+    "rules_hit": null,
+    "useful_corpus": null
   },
   {
     "iteration_id": "iter_002",

@@ -29,6 +29,83 @@ def _format_data_sources(data_sources: list[str]) -> str:
         return "  (not specified)"
     return "\n".join(f"  - {ds}" for ds in data_sources[:8])
 
+PLANNER_OUTPUT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "technique_objective": {"type": "string"},
+        "evidence_quality": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "unique_event_count": {"type": "integer"},
+                "diversity_note": {"type": "string"},
+            },
+            "required": ["unique_event_count", "diversity_note"],
+        },
+        "evidence_assessment": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "field": {"type": "string"},
+                    "value_summary": {"type": "string"},
+                    "classification": {"type": "string", "enum": ["artifact", "instance", "invariant"]},
+                    "rationale": {"type": "string"},
+                    "detection_use": {"type": "string"},
+                },
+                "required": ["field", "value_summary", "classification", "rationale", "detection_use"],
+            },
+        },
+        "detection_opportunities": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "description": {"type": "string"},
+                    "event_type": {"type": "string", "enum": ["process_creation", "registry", "network"]},
+                    "anchor_fields": {"type": "array", "items": {"type": "string"}},
+                    "coverage_type": {"type": "string", "enum": ["specific", "adjacent", "family"]},
+                    "observable_invariant": {"type": "string"},
+                    "coverage_gain": {"type": "string", "enum": ["high", "medium", "low"]},
+                    "precision_estimate": {"type": "string", "enum": ["high", "medium", "low"]},
+                    "viability": {"type": "string", "enum": ["high", "medium", "low"]},
+                    "selection_reason": {"type": "string"},
+                    "fp_risk": {"type": "string"},
+                },
+                "required": [
+                    "description", "event_type", "anchor_fields", "coverage_type",
+                    "observable_invariant", "coverage_gain", "precision_estimate",
+                    "viability", "selection_reason", "fp_risk",
+                ],
+            },
+        },
+        "false_positive_profile": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "category": {"type": "string"},
+                    "manifests_via": {"type": "array", "items": {"type": "string"}},
+                    "filter_approach": {"type": "string"},
+                    "applies_to": {"type": "string", "enum": ["all", "specific", "adjacent", "family"]},
+                },
+                "required": ["category", "manifests_via", "filter_approach", "applies_to"],
+            },
+        },
+        "rule_design_guidance": {"type": "string"},
+    },
+    "required": [
+        "technique_objective", "evidence_quality", "evidence_assessment",
+        "detection_opportunities", "false_positive_profile", "rule_design_guidance",
+    ],
+}
+
 
 PLANNER_SYSTEM_PROMPT = (
     "You are a senior detection engineer triaging a missed attack detection.\n"
@@ -170,47 +247,10 @@ PLANNER_SYSTEM_PROMPT = (
     "The rule writer is responsible for translating this into Sigma.\n"
     "One concise paragraph per opportunity included.\n\n"
 
-    "══ OUTPUT FORMAT ════════════════════════════════════════════════════════════\n"
-    "Respond with only a valid JSON object. No explanation, no markdown fences, no preamble.\n\n"
-    "{\n"
-    '  "technique_objective": "single sentence",\n'
-    '  "evidence_quality": {\n'
-    '    "unique_event_count": 1,\n'
-    '    "diversity_note": "both events are byte-identical — single data point"\n'
-    "  },\n"
-    '  "evidence_assessment": [\n'
-    "    {\n"
-    '      "field": "TargetObject",\n'
-    '      "value_summary": "registry path under HKCU\\\\SOFTWARE with test framework identifier",\n'
-    '      "classification": "artifact",\n'
-    '      "rationale": "path contains ATOMIC- test harness identifier, not present in real attacks",\n'
-    '      "detection_use": "ignore"\n'
-    "    }\n"
-    "  ],\n"
-    '  "detection_opportunities": [\n'
-    "    {\n"
-    '      "description": "...",\n'
-    '      "event_type": "registry",\n'
-    '      "anchor_fields": ["TargetObject", "Details"],\n'
-    '      "coverage_type": "family",\n'
-    '      "observable_invariant": "...",\n'
-    '      "coverage_gain": "high",\n'
-    '      "precision_estimate": "medium",\n'
-    '      "viability": "high",\n'
-    '      "selection_reason": "...",\n'
-    '      "fp_risk": "..."\n'
-    "    }\n"
-    "  ],\n"
-    '  "false_positive_profile": [\n'
-    "    {\n"
-    '      "category": "...",\n'
-    '      "manifests_via": ["Details"],\n'
-    '      "filter_approach": "...",\n'
-    '      "applies_to": "all"\n'
-    "    }\n"
-    "  ],\n"
-    '  "rule_design_guidance": "..."\n'
-    "}"
+    "══ OUTPUT ══════════════════════════════════════════════════════════════════\n"
+    "Your response is constrained to a JSON schema enforced by the API — you do\n"
+    "not need to format the output yourself. Focus entirely on the quality of\n"
+    "the reasoning in each field; the structure is guaranteed.\n"
 )
 
 

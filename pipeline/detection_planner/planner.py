@@ -27,7 +27,6 @@ Failure behaviour:
 from __future__ import annotations
 
 import json
-from json_repair import repair_json
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -35,7 +34,7 @@ from typing import Optional
 import anthropic
 from dotenv import load_dotenv
 
-from pipeline.detection_planner.prompts import build_planner_user_message, PLANNER_SYSTEM_PROMPT
+from pipeline.detection_planner.prompts import build_planner_user_message, PLANNER_SYSTEM_PROMPT, PLANNER_OUTPUT_SCHEMA
 from pipeline.data.stix_loader import MITREMetadata
 
 load_dotenv()
@@ -187,7 +186,7 @@ class DetectionPlanner:
         try:
             response = self._client.messages.create(
                 model=MODEL,
-                max_tokens=4096,
+                max_tokens=6144,
                 temperature=0,
                 system=[
                     {
@@ -197,6 +196,12 @@ class DetectionPlanner:
                     }
                 ],
                 messages=[{"role": "user", "content": user_message}],
+                output_config={
+                    "format": {
+                        "type": "json_schema",
+                        "schema": PLANNER_OUTPUT_SCHEMA,
+                    }
+                },
             )
 
             if DEBUG:
@@ -208,16 +213,13 @@ class DetectionPlanner:
                     print(
                         f"[detection_planner] Cache HIT: {usage.cache_read_input_tokens} tokens")
 
-            raw = response.content[0].text.strip()
+            if DEBUG and response.stop_reason == "max_tokens":
+                print(
+                    f"[detection_planner] stop_reason=max_tokens — response may be truncated")
 
-            # Extract JSON payload defensively
-            start = raw.find("{")
-            end = raw.rfind("}")
-
-            if start != -1 and end != -1 and end > start:
-                raw = raw[start:end + 1]
-
-            return raw
+            # Schema-constrained decoding guarantees valid JSON syntax — no
+            # defensive bracket extraction needed.
+            return response.content[0].text.strip()
 
         except Exception as e:
             if DEBUG:
@@ -231,17 +233,14 @@ class DetectionPlanner:
     ) -> Optional[DetectionStrategy]:
         try:
             data = json.loads(raw)
-        except json.JSONDecodeError as original_error:
-            try:
-                data = json.loads(repair_json(raw))
-            except Exception as repair_error:
-                if DEBUG:
-                    print(
-                        f"[detection_planner] {technique_id}: "
-                        f"JSON parse failed ({original_error}) and repair failed ({repair_error})\n"
-                        f"Raw response:\n{raw[:400]}"
-                    )
-                return None
+        except json.JSONDecodeError as e:
+            if DEBUG:
+                print(
+                    f"[detection_planner] {technique_id}: "
+                    f"JSON parse failed despite schema enforcement: {e}\n"
+                    f"Raw response:\n{raw[:400]}"
+                )
+            return None
 
         # Validate top-level fields — presence and type
         required = {

@@ -14,7 +14,13 @@ back to the attacker agent for mutation-driven adaptation.
 
 Usage:
     from pipeline.orchestrator import Orchestrator
-    result = Orchestrator().run(iterations=2)
+
+    # Explicit override per call
+    result: dict = Orchestrator().run(technique_ids=[...], iterations=2)
+
+    # Or configure at construction — this is the shape app.py (FastAPI) uses
+    orchestrator = Orchestrator(technique_ids=[...], max_iterations=2)
+    result: dict = orchestrator.run()
 """
 
 import os
@@ -38,7 +44,7 @@ from pipeline.emulator.procedure_interpreter import get_drop_stats
 from pipeline.corpus.learner import run as run_corpus_learner
 from pipeline.corpus.pusher import update_outcome
 from pipeline.emulator.test_history import mark_rule_generated
-from pipeline.emulator.emulator import get_run_selections
+from pipeline.emulator.emulator import get_used_guids
 
 import yaml
 import anthropic
@@ -72,6 +78,18 @@ class IterationSummary:
         default_factory=dict)  # tid → "matched/total"
     prs_opened: list[str] = field(default_factory=list)  # PR URLs
 
+    def to_dict(self) -> dict:
+        return {
+            "iteration": self.iteration,
+            "techniques_attempted": self.techniques_attempted,
+            "techniques_covered": self.techniques_covered,
+            "techniques_with_gaps": self.techniques_with_gaps,
+            "rules_generated": self.rules_generated,
+            "rules_validated": self.rules_validated,
+            "event_coverage": self.event_coverage,
+            "prs_opened": self.prs_opened,
+        }
+
 
 @dataclass
 class OrchestrationResult:
@@ -79,6 +97,35 @@ class OrchestrationResult:
     summaries: list[IterationSummary] = field(default_factory=list)
     # technique_id → covered:bool
     final_coverage: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        """
+        JSON-serialisable shape for API consumers (e.g. FastAPI /run).
+
+        Keys:
+          iterations_run: int
+          coverage:       {technique_id: "full" | "partial" | "missed"} — final snapshot
+          pr_urls:        [str, ...] — every PR opened across all iterations
+          run_summary:    {techniques_run, gaps_found, rules_generated, rules_validated}
+          iterations:     [IterationSummary.to_dict(), ...] — full per-iteration detail
+        """
+        pr_urls = [url for s in self.summaries for url in s.prs_opened]
+        techniques_run = (
+            self.summaries[-1].techniques_attempted if self.summaries else 0
+        )
+
+        return {
+            "iterations_run": self.iterations_run,
+            "coverage": dict(self.final_coverage),
+            "pr_urls": pr_urls,
+            "run_summary": {
+                "techniques_run": techniques_run,
+                "gaps_found": sum(s.techniques_with_gaps for s in self.summaries),
+                "rules_generated": sum(s.rules_generated for s in self.summaries),
+                "rules_validated": sum(s.rules_validated for s in self.summaries),
+            },
+            "iterations": [s.to_dict() for s in self.summaries],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -97,11 +144,18 @@ def _flatten_log_stream(
     """
     Flatten all LogEvents across all techniques into a single list[dict]
     for the detection engine.
+
+    Injects _technique_id into each serialised event so the detection layer
+    can attribute matched events back to their originating technique.
+    Prevents cross-technique attribution where a broad rule fires on foreign
+    events and falsely reports coverage. Stripped in _build_detection_results.
     """
     events = []
-    for technique_events in log_stream.values():
+    for tid, technique_events in log_stream.items():
         for event in technique_events:
-            events.append(event.model_dump(exclude_none=True))
+            d = event.model_dump(exclude_none=True)
+            d["_technique_id"] = tid
+            events.append(d)
     return events
 
 
@@ -111,11 +165,25 @@ def _build_detection_results(
     """
     Convert list[RuleMatchResult] from engine.run() into
     dict[technique_id, DetectionResult] keyed by technique ID.
-    Last DetectionResult per technique wins (shouldn't overlap, but safe).
+
+    Filters matched_events in each DetectionResult to only include events
+    tagged with _technique_id matching that technique — injected by
+    _flatten_log_stream, stripped here after filtering.
+
+    Fixes cross-technique attribution: a broad rule firing on technique B's
+    events must not count as coverage for technique A, even if it is a
+    technique A rule. covered is re-derived after filtering so a rule that
+    fired only on foreign events does not mark a technique as covered.
     """
     parsed = parse_results(rule_match_results)
     result_map = {}
     for dr in parsed:
+        dr.matched_events = [
+            {k: v for k, v in e.items() if k != "_technique_id"}
+            for e in dr.matched_events
+            if e.get("_technique_id") == dr.technique_id
+        ]
+        dr.covered = bool(dr.matched_events)
         result_map[dr.technique_id] = dr
     return result_map
 
@@ -236,6 +304,8 @@ class Orchestrator:
 
     def __init__(
         self,
+        technique_ids: Optional[list[str]] = None,
+        max_iterations: int = 2,
         rules_dir: Path = RULES_DIR,
         corpus_root: Path = CORPUS_ROOT,
         output_dir: Optional[Path] = OUTPUT_DIR,
@@ -243,11 +313,19 @@ class Orchestrator:
     ):
         """
         Args:
+            technique_ids:  default techniques for .run() when called with no
+                             override. None = resolved from techniques.yaml
+                             lazily inside run() (not here — keeps __init__
+                             side-effect-free for test construction).
+            max_iterations: default iteration count for .run() when called
+                             with no override.
             rules_dir:   directory containing curated Sigma rules
             corpus_root: root of benign corpus for noise gate
             output_dir:  where emulator writes JSONL + stats. None = suppress writes.
             open_prs:    set False to skip PR creation (useful for testing loop logic)
         """
+        self._technique_ids = technique_ids
+        self._max_iterations = max_iterations
         self._rules_dir = rules_dir
         self._corpus_root = corpus_root
         self._output_dir = output_dir
@@ -279,20 +357,27 @@ class Orchestrator:
     def run(
         self,
         technique_ids: Optional[list[str]] = None,
-        iterations: int = 2,
-    ) -> OrchestrationResult:
+        iterations: Optional[int] = None,
+    ) -> dict:
         """
         Run the full adversarial detection loop.
 
         Args:
-            technique_ids: techniques to target. Reads techniques.yaml if None.
+            technique_ids: techniques to target. Resolution order:
+                           this arg → __init__'s technique_ids → techniques.yaml.
             iterations:    number of attacker→emulator→detect→defend cycles.
+                           Resolution order: this arg → __init__'s max_iterations.
 
         Returns:
-            OrchestrationResult with per-iteration summaries.
+            JSON-serialisable dict — see OrchestrationResult.to_dict().
         """
         if technique_ids is None:
+            technique_ids = self._technique_ids
+        if technique_ids is None:
             technique_ids = _load_technique_ids()
+
+        if iterations is None:
+            iterations = self._max_iterations
 
         print(f"[orchestrator] Starting run: {len(technique_ids)} techniques, "
               f"{iterations} iteration(s)")
@@ -347,7 +432,7 @@ class Orchestrator:
         )
 
         self._print_summary(result)
-        return result
+        return result.to_dict()
 
     def _run_iteration(
         self,
@@ -428,6 +513,20 @@ class Orchestrator:
         if gaps:
             print(f"[orchestrator] Gaps: {gaps}")
 
+        if DEBUG:
+            for tid, dr in detection_results.items():
+                total_attack = len(log_stream.get(tid, []))
+                matched = len(dr.matched_events)
+                ratio = f"{matched}/{total_attack}" if total_attack > 0 else "0/0"
+                if matched == total_attack and total_attack > 0:
+                    label, marker = "Fully Covered", "✓"
+                elif matched > 0:
+                    label, marker = "Partially Covered", "~"
+                else:
+                    label, marker = (
+                        "Missed" if dr.total_rules > 0 else "No Rules"), "✗"
+                _dbg(f"{marker} {tid}: {ratio} events matched — {label}")
+
         # Record detection metrics
         event_coverage = {}
         for tid in technique_ids:
@@ -491,8 +590,8 @@ class Orchestrator:
             if strategy:
                 _dbg(
                     f"{technique_id}: planner produced strategy — "
-                    f"{len(strategy.key_behaviors)} behavior(s), "
-                    f"{len(strategy.detection_invariants)} invariant(s)"
+                    f"{len(strategy.detection_opportunities)} detection opportunity(ies), "
+                    f"objective: {strategy.technique_objective[:80]}"
                 )
             else:
                 _dbg(
@@ -542,13 +641,15 @@ class Orchestrator:
                     summary.prs_opened.append(pr_result.pr_url)
                     print(f"[orchestrator] PR opened: {pr_result.pr_url}")
 
-                    # Mark only the test emulated THIS iteration as rule_generated.
-                    # get_run_selections() returns _prior_attempts — exactly the
-                    # guid(s) selected in the most recent run_emulator() call,
-                    # not every historical guid for the technique.
-                    for guid in get_run_selections().get(technique_id, []):
+                    # Mark only the test that actually produced events this
+                    # iteration — not the full candidate pool. get_run_selections()
+                    # includes unused fallback candidates (zero-event fallback)
+                    # which must NOT be penalised as rule_generated since they
+                    # were never emulated.
+                    used_guid = get_used_guids().get(technique_id)
+                    if used_guid:
                         mark_rule_generated(
-                            emulation_history, technique_id, guid)
+                            emulation_history, technique_id, used_guid)
 
                 except Exception as e:
                     print(
@@ -568,6 +669,9 @@ class Orchestrator:
                 f"{corpus_result.n_variants_generated} variant(s), "
                 f"push={'ok' if corpus_result.push_succeeded else 'failed'}"
             )
+            if corpus_result.errors:
+                for err in corpus_result.errors:
+                    print(f"[orchestrator] [corpus error] {err}")
 
         # Update previous iteration's outcome now that detection has run
         if iteration > 1:

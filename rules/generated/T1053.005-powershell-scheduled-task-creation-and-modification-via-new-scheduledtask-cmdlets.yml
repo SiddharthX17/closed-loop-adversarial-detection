@@ -1,0 +1,35 @@
+title: PowerShell Scheduled Task Creation and Modification via New-ScheduledTask Cmdlets
+id: ea375969-3118-4b3d-a0c2-c3755f610e40
+status: experimental
+description: Detects PowerShell usage of New-ScheduledTask and Register-ScheduledTask cmdlets combined with Set-ScheduledTask to create and modify scheduled tasks, often used by attackers to establish persistence with high privileges at logon.
+references:
+    - https://attack.mitre.org/techniques/T1053/005/
+    - https://docs.microsoft.com/en-us/powershell/module/scheduledtasks/
+author: Detection Engineer
+date: 2026-06-16
+tags:
+    - attack.execution
+    - attack.persistence
+    - attack.privilege-escalation
+    - attack.t1053.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_register:
+        CommandLine|contains:
+            - 'Register-ScheduledTask'
+    selection_set:
+        CommandLine|contains:
+            - 'Set-ScheduledTask'
+    selection_new_action:
+        CommandLine|contains:
+            - 'New-ScheduledTaskAction'
+    selection_privilege:
+        CommandLine|contains:
+            - 'RunLevel Highest'
+            - 'RunLevel=Highest'
+    condition: all of selection_*
+falsepositives:
+    - Legitimate administrative scripts that create and modify scheduled tasks using PowerShell cmdlets
+level: high

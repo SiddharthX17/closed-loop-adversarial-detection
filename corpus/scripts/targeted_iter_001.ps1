@@ -10,44 +10,81 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
+# -- Cluster: singleton_9330fd1e-2d98-49a1-ba59-9467c06085f4  (1 rule(s)) ---------------------
+# Intent:    Detect system process name masquerading — renamed or copied instances of critica
+# Rules:     9330fd1e-2d98-49a1-ba59-9467c06085f4
+# Archetype: IT admin workflow
 
-# -- Cluster: singleton_2d43b208-1119-4cdb-bf44-d400a6f53d39  (1 rule(s)) ---------------------
-# Intent:    Detect adversaries using PowerShell to register and immediately modify scheduled
-# Rules:     2d43b208-1119-4cdb-bf44-d400a6f53d39
+$StagingDir = Join-Path $env:TEMP 'forensic_analysis_2024'
+if (-not (Test-Path $StagingDir)) {
+  New-Item -ItemType Directory -Path $StagingDir | Out-Null
+}
+
+# Copy system binaries to staging directory for integrity verification
+$SystemBinaries = @(
+  'C:\Windows\System32\lsass.exe',
+  'C:\Windows\System32\csrss.exe',
+  'C:\Windows\System32\services.exe'
+)
+
+foreach ($Binary in $SystemBinaries) {
+  if (Test-Path $Binary) {
+    $FileName = Split-Path -Leaf $Binary
+    $StagedPath = Join-Path $StagingDir $FileName
+    Copy-Item -Path $Binary -Destination $StagedPath -Force
+
+    # Verify file hash of staged copy against original
+    $OriginalHash = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash
+    $StagedHash = (Get-FileHash -Path $StagedPath -Algorithm SHA256).Hash
+
+    if ($OriginalHash -eq $StagedHash) {
+      Write-Host "Integrity verified for $FileName"
+    }
+  }
+}
+
+# Query process information for system binaries from staged location
+Get-Process -ErrorAction SilentlyContinue | Where-Object {
+  $_.ProcessName -match '(lsass|csrss|services)'
+} | Select-Object ProcessName, Id, StartTime | Out-Null
+
+# Clean up staging directory
+Remove-Item -Path $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_9330fd1e-2d98-49a1-ba59-9467c06085f4  (1 rule(s)) ---------------------
+# Intent:    Detect system process name masquerading — renamed or copied instances of critica
+# Rules:     9330fd1e-2d98-49a1-ba59-9467c06085f4
 # Archetype: Software installer/updater workflow
 
-$msiLogPath = Join-Path $env:TEMP -ChildPath ('msi_install_' + [System.Guid]::NewGuid().ToString().Substring(0, 8) + '.log')
-$psScriptPath = Join-Path $env:TEMP -ChildPath ('installer_task_' + [System.Guid]::NewGuid().ToString().Substring(0, 8) + '.ps1')
-
-$installerTaskScript = @'
-$taskName = "EnterpriseAppHealthCheck_" + [System.DateTime]::Now.Ticks
-$taskPath = "\EnterpriseApplications"
-
-$taskPrincipal = New-ScheduledTaskPrincipal -UserId "BUILTIN\Administrators" -RunLevel Highest
-$taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Write-EventLog -LogName Application -Source EnterpriseApp -EventId 5001 -Message 'Health check started'"`"
-$taskTrigger = New-ScheduledTaskTrigger -Daily -At 2am
-
-Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Action $taskAction -Trigger $taskTrigger -Principal $taskPrincipal -Force | Out-Null
-
-Start-Sleep -Milliseconds 300
-
-$registered = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
-if ($registered) {
-  $newAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c powershell.exe -NoProfile -Command Write-Host 'Health check pulse'"
-  Set-ScheduledTask -InputObject $registered -Action $newAction -Principal $taskPrincipal | Out-Null
-  Unregister-ScheduledTask -InputObject $registered -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+$DeploymentCache = Join-Path $env:APPDATA 'EnterpriseDeploymentAgent\bin'
+if (-not (Test-Path $DeploymentCache)) {
+  New-Item -ItemType Directory -Path $DeploymentCache -Force | Out-Null
 }
-'@
 
-Set-Content -Path $psScriptPath -Value $installerTaskScript -Encoding UTF8 -Force
+# Simulate deployment agent extracting and caching system binaries
+$BinariesToCache = @(
+  @{ Source = 'C:\Windows\System32\winlogon.exe'; Name = 'winlogon.exe' },
+  @{ Source = 'C:\Windows\System32\smss.exe'; Name = 'smss.exe' },
+  @{ Source = 'C:\Windows\System32\wininit.exe'; Name = 'wininit.exe' }
+)
 
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File $psScriptPath
+foreach ($BinaryInfo in $BinariesToCache) {
+  if (Test-Path $BinaryInfo.Source) {
+    $CachedPath = Join-Path $DeploymentCache $BinaryInfo.Name
+    Copy-Item -Path $BinaryInfo.Source -Destination $CachedPath -Force
 
-Start-Sleep -Milliseconds 500
+    # Verify cached binary is accessible for deployment dependency check
+    $Attributes = (Get-Item -Path $CachedPath).VersionInfo
+    Write-Host "Cached $($BinaryInfo.Name) from deployment source"
+  }
+}
 
-Remove-Item -Path $psScriptPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $msiLogPath -Force -ErrorAction SilentlyContinue
+# Deployment agent performs system state assessment
+get-childitem -Path $DeploymentCache -Filter '*.exe' | Measure-Object | Select-Object -ExpandProperty Count | Out-Null
+
+# Clean up deployment cache
+Remove-Item -Path $DeploymentCache -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path (Split-Path -Parent $DeploymentCache) -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

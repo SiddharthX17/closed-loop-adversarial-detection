@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 2
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,81 +10,100 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_9330fd1e-2d98-49a1-ba59-9467c06085f4  (1 rule(s)) ---------------------
-# Intent:    Detect system process name masquerading — renamed or copied instances of critica
-# Rules:     9330fd1e-2d98-49a1-ba59-9467c06085f4
+# -- Cluster: singleton_2722e9ef-e69d-48bd-9724-5b852326c475  (1 rule(s)) ---------------------
+# Intent:    Detect execution of legitimate Windows system binaries that have been renamed or
+# Rules:     2722e9ef-e69d-48bd-9724-5b852326c475
 # Archetype: IT admin workflow
 
-$StagingDir = Join-Path $env:TEMP 'forensic_analysis_2024'
-if (-not (Test-Path $StagingDir)) {
-  New-Item -ItemType Directory -Path $StagingDir | Out-Null
+$stagingDir = Join-Path $env:TEMP 'AdminTools_$(Get-Random)'
+New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+
+try {
+  # Copy cmd.exe to staging location for offline diagnostics testing
+  $cmdSource = 'C:\Windows\System32\cmd.exe'
+  $cmdStaged = Join-Path $stagingDir 'cmd.exe'
+  Copy-Item -Path $cmdSource -Destination $cmdStaged -Force
+
+  # Copy powershell.exe to staging for script validation testing
+  $psSource = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+  $psStaged = Join-Path $stagingDir 'powershell.exe'
+  Copy-Item -Path $psSource -Destination $psStaged -Force
+
+  # Copy rundll32.exe for DLL testing procedures
+  $dllSource = 'C:\Windows\System32\rundll32.exe'
+  $dllStaged = Join-Path $stagingDir 'rundll32.exe'
+  Copy-Item -Path $dllSource -Destination $dllStaged -Force
+
+  # Execute staged cmd.exe from non-standard path - simulates admin recovery scenario
+  # This generates Sysmon EID 1 with Image pointing outside System32
+  & $cmdStaged /c 'systeminfo | findstr /C:"OS" > nul'
+
+  # Execute staged powershell from non-standard location
+  # Realistic for validation of portable PowerShell copies
+  & $psStaged -NoProfile -Command '[System.Environment]::OSVersion.VersionString | Out-Null'
+
+  # Execute staged rundll32 with legitimate DLL query operation
+  # Common during DLL dependency validation by admins
+  & $dllStaged shell32.dll,ShellAbout 2>$null
+
+  # Simulate MSIExec parent context by invoking setup operation that may internally call system utilities
+  # This tests parent process detection logic
+  msiexec /? | Out-Null
+
+} finally {
+  # Clean up staging directory
+  Remove-Item -Path $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Copy system binaries to staging directory for integrity verification
-$SystemBinaries = @(
-  'C:\Windows\System32\lsass.exe',
-  'C:\Windows\System32\csrss.exe',
-  'C:\Windows\System32\services.exe'
-)
-
-foreach ($Binary in $SystemBinaries) {
-  if (Test-Path $Binary) {
-    $FileName = Split-Path -Leaf $Binary
-    $StagedPath = Join-Path $StagingDir $FileName
-    Copy-Item -Path $Binary -Destination $StagedPath -Force
-
-    # Verify file hash of staged copy against original
-    $OriginalHash = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash
-    $StagedHash = (Get-FileHash -Path $StagedPath -Algorithm SHA256).Hash
-
-    if ($OriginalHash -eq $StagedHash) {
-      Write-Host "Integrity verified for $FileName"
-    }
-  }
-}
-
-# Query process information for system binaries from staged location
-Get-Process -ErrorAction SilentlyContinue | Where-Object {
-  $_.ProcessName -match '(lsass|csrss|services)'
-} | Select-Object ProcessName, Id, StartTime | Out-Null
-
-# Clean up staging directory
-Remove-Item -Path $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_9330fd1e-2d98-49a1-ba59-9467c06085f4  (1 rule(s)) ---------------------
-# Intent:    Detect system process name masquerading — renamed or copied instances of critica
-# Rules:     9330fd1e-2d98-49a1-ba59-9467c06085f4
+# -- Cluster: singleton_2722e9ef-e69d-48bd-9724-5b852326c475  (1 rule(s)) ---------------------
+# Intent:    Detect execution of legitimate Windows system binaries that have been renamed or
+# Rules:     2722e9ef-e69d-48bd-9724-5b852326c475
 # Archetype: Software installer/updater workflow
 
-$DeploymentCache = Join-Path $env:APPDATA 'EnterpriseDeploymentAgent\bin'
-if (-not (Test-Path $DeploymentCache)) {
-  New-Item -ItemType Directory -Path $DeploymentCache -Force | Out-Null
+$pkgDir = Join-Path $env:TEMP "AppDeploy_$(Get-Random)"
+New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
+
+try {
+  # Create installer package structure
+  $binDir = Join-Path $pkgDir 'bin'
+  New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+
+  # Stage system utilities in package bin directory
+  Copy-Item 'C:\Windows\System32\rundll32.exe' -Destination (Join-Path $binDir 'rundll32.exe') -Force
+  Copy-Item 'C:\Windows\System32\regsvr32.exe' -Destination (Join-Path $binDir 'regsvr32.exe') -Force
+  Copy-Item 'C:\Windows\System32\mshta.exe' -Destination (Join-Path $binDir 'mshta.exe') -Force
+  Copy-Item 'C:\Windows\System32\cscript.exe' -Destination (Join-Path $binDir 'cscript.exe') -Force
+
+  # Create installer manifest script
+  $manifestScript = Join-Path $pkgDir 'validate.ps1'
+  $scriptContent = @'
+# Validation procedure during installation
+& $args[0] shell32.dll,ShellAbout 2>$null
+& $args[1] /s winhttp.dll 2>$null
+Write-Host 'Validation complete' -ErrorAction SilentlyContinue
+'@
+  Set-Content -Path $manifestScript -Value $scriptContent -Force
+
+  # Execute validation from installer working directory using staged utilities
+  # This simulates installation repair, feature update, or compatibility check
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $manifestScript `
+    (Join-Path $binDir 'rundll32.exe') `
+    (Join-Path $binDir 'regsvr32.exe')
+
+  # Direct execution of staged cscript for legacy COM component registration
+  # Common during system service installer procedures
+  $cscriptPath = Join-Path $binDir 'cscript.exe'
+  & $cscriptPath //? 2>$null
+
+  # Execute mshta from package location for HTML application testing
+  $mshtaPath = Join-Path $binDir 'mshta.exe'
+  & $mshtaPath about: 2>$null
+
+} finally {
+  Remove-Item -Path $pkgDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Simulate deployment agent extracting and caching system binaries
-$BinariesToCache = @(
-  @{ Source = 'C:\Windows\System32\winlogon.exe'; Name = 'winlogon.exe' },
-  @{ Source = 'C:\Windows\System32\smss.exe'; Name = 'smss.exe' },
-  @{ Source = 'C:\Windows\System32\wininit.exe'; Name = 'wininit.exe' }
-)
-
-foreach ($BinaryInfo in $BinariesToCache) {
-  if (Test-Path $BinaryInfo.Source) {
-    $CachedPath = Join-Path $DeploymentCache $BinaryInfo.Name
-    Copy-Item -Path $BinaryInfo.Source -Destination $CachedPath -Force
-
-    # Verify cached binary is accessible for deployment dependency check
-    $Attributes = (Get-Item -Path $CachedPath).VersionInfo
-    Write-Host "Cached $($BinaryInfo.Name) from deployment source"
-  }
-}
-
-# Deployment agent performs system state assessment
-get-childitem -Path $DeploymentCache -Filter '*.exe' | Measure-Object | Select-Object -ExpandProperty Count | Out-Null
-
-# Clean up deployment cache
-Remove-Item -Path $DeploymentCache -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path (Split-Path -Parent $DeploymentCache) -Force -ErrorAction SilentlyContinue
+# SKIPPED variant 'User-driven workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
 
 # ===========================================================================

@@ -493,6 +493,8 @@ class Orchestrator:
         )
         rule_match_results = engine.run()
         detection_results = _build_detection_results(rule_match_results)
+        detection_results = {
+            tid: dr for tid, dr in detection_results.items() if tid in technique_ids}
 
         covered = [tid for tid in technique_ids
                    if detection_results.get(tid)
@@ -500,7 +502,9 @@ class Orchestrator:
                    and len(detection_results[tid].matched_events) >= len(log_stream.get(tid, []))]
 
         gaps = [tid for tid in technique_ids
-                if detection_results.get(tid) and (
+                if log_stream.get(tid) and (       # only if events exist to show the defender
+                    # no rules = gap by definition
+                    not detection_results.get(tid) or
                     detection_results[tid].gap or
                     (detection_results[tid].covered and
                      len(detection_results[tid].matched_events) < len(log_stream.get(tid, [])))
@@ -531,6 +535,10 @@ class Orchestrator:
         event_coverage = {}
         for tid in technique_ids:
             dr = detection_results.get(tid)
+            if dr is None:
+                total_attack = len(log_stream.get(tid, []))
+                _dbg(f"  {tid}: 0/{total_attack} events matched — No Rules")
+                continue
             total = len(log_stream.get(tid, []))
             matched = len(dr.matched_events) if dr else 0
             event_coverage[tid] = f"{matched}/{total}"
@@ -567,7 +575,8 @@ class Orchestrator:
         validated_rule_yamls: list[str] = []
 
         for technique_id in gaps:
-            dr = detection_results[technique_id]
+            # None for no-rules techniques
+            dr = detection_results.get(technique_id)
             _dbg(f"Processing gap: {technique_id}")
 
             gap_context = _build_gap_context(
@@ -636,7 +645,7 @@ class Orchestrator:
                         rule_yaml=rule_yaml,
                         missed_events=gap_context.missed_events,
                         validation_result=validation_result,
-                        fired_rules=dr.fired_rules,
+                        fired_rules=dr.fired_rules if dr else [],
                     )
                     summary.prs_opened.append(pr_result.pr_url)
                     print(f"[orchestrator] PR opened: {pr_result.pr_url}")

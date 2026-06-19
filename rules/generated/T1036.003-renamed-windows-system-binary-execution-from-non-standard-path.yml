@@ -1,0 +1,78 @@
+title: Renamed Windows System Binary Execution from Non-Standard Path
+id: 2722e9ef-e69d-48bd-9724-5b852326c475
+status: experimental
+description: Detects execution of a binary whose filename matches a known Windows system process name but whose full image path is outside expected system directories (System32, SysWOW64, WinSxS), or where OriginalFileName differs from the executing image filename indicating a renamed legitimate utility.
+references:
+  - https://attack.mitre.org/techniques/T1036/003/
+tags:
+  - attack.t1036.003
+author: Detection Engineer
+date: 2024-01-01
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_renamed_image:
+    Image|endswith:
+      - '\svchost.exe'
+      - '\lsm.exe'
+      - '\cmd.exe'
+      - '\cscript.exe'
+      - '\wscript.exe'
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\mshta.exe'
+      - '\powershell.exe'
+      - '\conhost.exe'
+      - '\dllhost.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\services.exe'
+      - '\spoolsv.exe'
+      - '\csrss.exe'
+      - '\winlogon.exe'
+      - '\wininit.exe'
+      - '\explorer.exe'
+      - '\smss.exe'
+  filter_system_paths:
+    Image|contains:
+      - '\Windows\System32\'
+      - '\Windows\SysWOW64\'
+      - '\Windows\WinSxS\'
+  selection_originalfilename_mismatch:
+    OriginalFileName:
+      - 'cscript.exe'
+      - 'wscript.exe'
+      - 'cmd.exe'
+      - 'powershell.exe'
+      - 'rundll32.exe'
+      - 'regsvr32.exe'
+      - 'mshta.exe'
+      - 'svchost.exe'
+      - 'lsm.exe'
+      - 'conhost.exe'
+      - 'dllhost.exe'
+      - 'taskhost.exe'
+      - 'taskhostw.exe'
+      - 'services.exe'
+      - 'spoolsv.exe'
+      - 'csrss.exe'
+      - 'winlogon.exe'
+      - 'wininit.exe'
+      - 'explorer.exe'
+      - 'smss.exe'
+  filter_originalfilename_system_paths:
+    Image|contains:
+      - '\Windows\System32\'
+      - '\Windows\SysWOW64\'
+      - '\Windows\WinSxS\'
+  filter_known_installers:
+    ParentImage|endswith:
+      - '\msiexec.exe'
+      - '\TrustedInstaller.exe'
+  condition: ((selection_renamed_image and not filter_system_paths) or (selection_originalfilename_mismatch and not filter_originalfilename_system_paths)) and not filter_known_installers
+falsepositives:
+  - Legitimate third-party software that ships binaries with names matching Windows system processes
+  - Vendor installers temporarily staging binaries in user-writable directories
+  - IT deployment and software packaging tools that copy or rename system binaries
+level: high

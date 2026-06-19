@@ -29,6 +29,7 @@ def _format_data_sources(data_sources: list[str]) -> str:
         return "  (not specified)"
     return "\n".join(f"  - {ds}" for ds in data_sources[:8])
 
+
 PLANNER_OUTPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -60,8 +61,6 @@ PLANNER_OUTPUT_SCHEMA = {
         },
         "detection_opportunities": {
             "type": "array",
-            "minItems": 1,
-            "maxItems": 3,
             "items": {
                 "type": "object",
                 "additionalProperties": False,

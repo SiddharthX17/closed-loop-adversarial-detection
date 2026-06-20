@@ -13,4 +13,3 @@ techniques:
   - T1003.001 # OS Credential Dumping: LSASS Memory
 
   - T1567.003 # Exfiltration Over Web Service: Exfiltration to Text Storage Sites
-  

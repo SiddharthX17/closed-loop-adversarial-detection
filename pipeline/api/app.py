@@ -1,0 +1,251 @@
+"""
+pipeline/api/app.py
+FastAPI service for the closed-loop adversarial detection pipeline.
+
+Endpoints:
+    POST /run               — trigger a pipeline run (non-blocking, returns run_id)
+    GET  /results/{run_id}  — poll run status / fetch completed results
+    GET  /rules/pending     — list generated rules not yet merged
+    GET  /health            — service status + last run summary
+"""
+
+import json
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from pathlib import Path
+from threading import Lock
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+# NOTE: Orchestrator constructor signature must match after the orchestrator refactor.
+# Expected: Orchestrator(technique_ids: list[str] | None, max_iterations: int)
+from pipeline.orchestrator import Orchestrator
+
+app = FastAPI(
+    title="Closed-Loop Adversarial Detection Pipeline",
+    description=(
+        "Simulates attacker behaviour, generates Sysmon log events, "
+        "evaluates Sigma rules, identifies detection gaps, and generates "
+        "validated candidate rules via LLM — no human in the loop until PR review."
+    ),
+    version="1.0.0",
+)
+
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+
+# In-memory run store: run_id -> run record dict
+# Survives the request lifecycle but not a container restart.
+# Completed runs are also persisted to RUN_HISTORY_PATH.
+_runs: dict[str, dict] = {}
+_runs_lock = Lock()
+
+# One pipeline run at a time — Cloud Run single-instance, and the pipeline
+# is CPU/API-bound enough that parallelism buys nothing.
+_executor = ThreadPoolExecutor(max_workers=1)
+
+RUN_HISTORY_PATH = Path("data/run_history.json")
+GENERATED_RULES_DIR = Path("rules/generated")
+
+
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
+
+class RunRequest(BaseModel):
+    # None = use config/techniques.yaml
+    technique_ids: Optional[list[str]] = None
+    max_iterations: int = 1
+
+
+class RunResponse(BaseModel):
+    run_id: str
+    status: str
+    started_at: str
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _load_run_history() -> dict:
+    if RUN_HISTORY_PATH.exists():
+        try:
+            return json.loads(RUN_HISTORY_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_run_to_history(run_id: str, record: dict) -> None:
+    RUN_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    history = _load_run_history()
+    history[run_id] = record
+    RUN_HISTORY_PATH.write_text(json.dumps(history, indent=2, default=str))
+
+
+def _execute_pipeline(
+    run_id: str,
+    technique_ids: Optional[list[str]],
+    max_iterations: int,
+) -> None:
+    """
+    Runs in a ThreadPoolExecutor worker. Mutates _runs[run_id] on completion
+    and persists to run_history.json.
+
+    NOTE: If Orchestrator raises on construction (bad technique IDs, missing
+    config), the run is marked failed immediately — no silent hang.
+    """
+    try:
+        # VERIFY: constructor args must match orchestrator.py after refactor
+        orchestrator = Orchestrator(
+            technique_ids=technique_ids,
+            max_iterations=max_iterations,
+        )
+        result = orchestrator.run()
+
+        record_update = {
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "result": result,
+        }
+
+    except Exception as exc:  # noqa: BLE001
+        record_update = {
+            "status": "failed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "error": str(exc),
+        }
+
+    with _runs_lock:
+        _runs[run_id].update(record_update)
+
+    _save_run_to_history(run_id, _runs[run_id])
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/run", response_model=RunResponse, status_code=202)
+def trigger_run(request: RunRequest):
+    """
+    Trigger a full pipeline execution.
+
+    Returns immediately with a run_id. Poll /results/{run_id} for status.
+    Rejects if a run is already in progress (409).
+    """
+    with _runs_lock:
+        active = [r for r in _runs.values() if r["status"] == "running"]
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Pipeline already running. run_id: {active[0]['run_id']}",
+            )
+
+    run_id = str(uuid.uuid4())
+    started_at = datetime.now(timezone.utc).isoformat()
+
+    with _runs_lock:
+        _runs[run_id] = {
+            "run_id": run_id,
+            "status": "running",
+            "started_at": started_at,
+            "technique_ids": request.technique_ids,
+            "max_iterations": request.max_iterations,
+        }
+
+    _executor.submit(_execute_pipeline, run_id,
+                     request.technique_ids, request.max_iterations)
+
+    return RunResponse(run_id=run_id, status="running", started_at=started_at)
+
+
+@app.get("/results/{run_id}")
+def get_results(run_id: str):
+    """
+    Returns the full result record for a run.
+
+    Status values: "running" | "completed" | "failed"
+    Checks in-memory store first, then falls back to persisted history
+    (covers the case where the container restarted after a completed run).
+    """
+    with _runs_lock:
+        if run_id in _runs:
+            return JSONResponse(content=_runs[run_id])
+
+    history = _load_run_history()
+    if run_id in history:
+        return JSONResponse(content=history[run_id])
+
+    raise HTTPException(status_code=404, detail=f"run_id {run_id!r} not found")
+
+
+@app.get("/rules/pending")
+def list_pending_rules():
+    """
+    Lists YAML files in rules/generated/ — rules submitted for PR, not yet merged.
+
+    Note: this is a filesystem proxy. A rule stays here until manually removed
+    post-merge. Good enough for v1; a GitHub API query is the v2 improvement.
+    """
+    if not GENERATED_RULES_DIR.exists():
+        return {"pending": [], "count": 0}
+
+    rules = []
+    for f in sorted(GENERATED_RULES_DIR.glob("*.yml")):
+        # Filename convention: {technique_id}_{description}.yml
+        stem_parts = f.stem.split("_", 1)
+        rules.append({
+            "filename": f.name,
+            "technique_id": stem_parts[0],
+            "description": stem_parts[1].replace("_", " ") if len(stem_parts) > 1 else "",
+            "size_bytes": f.stat().st_size,
+            "modified_at": datetime.fromtimestamp(
+                f.stat().st_mtime, tz=timezone.utc
+            ).isoformat(),
+        })
+
+    return {"pending": rules, "count": len(rules)}
+
+
+@app.get("/health")
+def health():
+    """
+    Service status, active run, last completed run summary, generated rule count.
+    """
+    history = _load_run_history()
+
+    last_run = None
+    if history:
+        latest = max(history.values(), key=lambda r: r.get("started_at", ""))
+        last_run = {
+            "run_id": latest["run_id"],
+            "status": latest["status"],
+            "started_at": latest.get("started_at"),
+            "completed_at": latest.get("completed_at"),
+        }
+
+    generated_count = (
+        len(list(GENERATED_RULES_DIR.glob("*.yml")))
+        if GENERATED_RULES_DIR.exists()
+        else 0
+    )
+
+    with _runs_lock:
+        active_run_id = next(
+            (r["run_id"] for r in _runs.values() if r["status"] == "running"),
+            None,
+        )
+
+    return {
+        "status": "ok",
+        "active_run": active_run_id,
+        "last_run": last_run,
+        "generated_rules_count": generated_count,
+    }

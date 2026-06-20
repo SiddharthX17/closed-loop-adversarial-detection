@@ -1,0 +1,27 @@
+{
+  "iteration": 1,
+  "timestamp": "2026-06-19T19:42:45Z",
+  "techniques": [
+    {
+      "technique_id": "T1059.001",
+      "iteration": 1,
+      "covered": true,
+      "rules_evaluated": 8,
+      "rules_fired": 2,
+      "total_events": 2,
+      "matched_events": 2,
+      "missed_events": 0,
+      "precision": 0.25,
+      "recall": 1.0,
+      "fp_rate": null,
+      "fp_count": null,
+      "total_benign": null,
+      "validation_gate_failed": null
+    }
+  ],
+  "total_techniques": 1,
+  "covered_techniques": 1,
+  "coverage_rate": 1.0,
+  "mean_recall": 1.0,
+  "mean_fp_rate": 0.0
+}

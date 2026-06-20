@@ -1,0 +1,37 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Secrets — never in image
+.env
+*.tfvars
+*.tfstate
+*.tfstate.backup
+
+# Terraform
+terraform/.terraform/
+terraform/tfplan
+
+# Dev / docs
+.git/
+.github/
+tests/
+scripts/
+*.docx
+*.md
+README*
+
+# Corpus attack output — regenerated at runtime, no need to bake in
+# (benign corpus is included via corpus/benign/ — needed by noise gate)
+corpus/attack/
+
+# Run history — container-specific, starts fresh each deploy
+data/run_history.json
+
+# Atomic Red Team git metadata — just need the atomics/ files
+data/atomic-red-team/.git/

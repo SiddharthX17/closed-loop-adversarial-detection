@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   2  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,101 +10,106 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_2722e9ef-e69d-48bd-9724-5b852326c475  (1 rule(s)) ---------------------
-# Intent:    Detect execution of legitimate Windows system binaries that have been renamed or
-# Rules:     2722e9ef-e69d-48bd-9724-5b852326c475
+# -- Cluster: singleton_debd5d6f-b3b9-4525-b453-1523cf5479c5  (1 rule(s)) ---------------------
+# Intent:    Detect Windows system binaries being executed from non-canonical paths, which is
+# Rules:     debd5d6f-b3b9-4525-b453-1523cf5479c5
 # Archetype: IT admin workflow
 
-$stagingDir = Join-Path $env:TEMP 'AdminTools_$(Get-Random)'
-New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
-
+$tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName())
+[System.IO.Directory]::CreateDirectory($tempDir) | Out-Null
 try {
-  # Copy cmd.exe to staging location for offline diagnostics testing
-  $cmdSource = 'C:\Windows\System32\cmd.exe'
-  $cmdStaged = Join-Path $stagingDir 'cmd.exe'
-  Copy-Item -Path $cmdSource -Destination $cmdStaged -Force
-
-  # Copy powershell.exe to staging for script validation testing
-  $psSource = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
-  $psStaged = Join-Path $stagingDir 'powershell.exe'
-  Copy-Item -Path $psSource -Destination $psStaged -Force
-
-  # Copy rundll32.exe for DLL testing procedures
-  $dllSource = 'C:\Windows\System32\rundll32.exe'
-  $dllStaged = Join-Path $stagingDir 'rundll32.exe'
-  Copy-Item -Path $dllSource -Destination $dllStaged -Force
-
-  # Execute staged cmd.exe from non-standard path - simulates admin recovery scenario
-  # This generates Sysmon EID 1 with Image pointing outside System32
-  & $cmdStaged /c 'systeminfo | findstr /C:"OS" > nul'
-
-  # Execute staged powershell from non-standard location
-  # Realistic for validation of portable PowerShell copies
-  & $psStaged -NoProfile -Command '[System.Environment]::OSVersion.VersionString | Out-Null'
-
-  # Execute staged rundll32 with legitimate DLL query operation
-  # Common during DLL dependency validation by admins
-  & $dllStaged shell32.dll,ShellAbout 2>$null
-
-  # Simulate MSIExec parent context by invoking setup operation that may internally call system utilities
-  # This tests parent process detection logic
-  msiexec /? | Out-Null
-
+    $sysRoot = $env:SystemRoot
+    $system32 = [System.IO.Path]::Combine($sysRoot, 'System32')
+    $svcHostSrc = [System.IO.Path]::Combine($system32, 'svchost.exe')
+    $svcHostDst = [System.IO.Path]::Combine($tempDir, 'svchost.exe')
+    $lsassSrc = [System.IO.Path]::Combine($system32, 'lsass.exe')
+    $lsassDst = [System.IO.Path]::Combine($tempDir, 'lsass.exe')
+    if ([System.IO.File]::Exists($svcHostSrc)) {
+        [System.IO.File]::Copy($svcHostSrc, $svcHostDst, $true)
+        & $svcHostDst -? 2>$null | Select-Object -First 5
+    }
+    if ([System.IO.File]::Exists($lsassSrc)) {
+        [System.IO.File]::Copy($lsassSrc, $lsassDst, $true)
+        & $lsassDst -? 2>$null | Select-Object -First 5
+    }
+    $csrssSrc = [System.IO.Path]::Combine($system32, 'csrss.exe')
+    $csrssDst = [System.IO.Path]::Combine($tempDir, 'csrss.exe')
+    if ([System.IO.File]::Exists($csrssSrc)) {
+        [System.IO.File]::Copy($csrssSrc, $csrssDst, $true)
+        & $csrssDst -? 2>$null | Select-Object -First 5
+    }
 } finally {
-  # Clean up staging directory
-  Remove-Item -Path $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+    if ([System.IO.Directory]::Exists($tempDir)) {
+        [System.IO.Directory]::Delete($tempDir, $true)
+    }
 }
 
-# -- Cluster: singleton_2722e9ef-e69d-48bd-9724-5b852326c475  (1 rule(s)) ---------------------
-# Intent:    Detect execution of legitimate Windows system binaries that have been renamed or
-# Rules:     2722e9ef-e69d-48bd-9724-5b852326c475
+# -- Cluster: singleton_debd5d6f-b3b9-4525-b453-1523cf5479c5  (1 rule(s)) ---------------------
+# Intent:    Detect Windows system binaries being executed from non-canonical paths, which is
+# Rules:     debd5d6f-b3b9-4525-b453-1523cf5479c5
 # Archetype: Software installer/updater workflow
 
-$pkgDir = Join-Path $env:TEMP "AppDeploy_$(Get-Random)"
-New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
-
+$programFiles = ${env:ProgramFiles}
+$stagingDir = [System.IO.Path]::Combine($programFiles, 'DiagnosticStaging')
+[System.IO.Directory]::CreateDirectory($stagingDir) | Out-Null
 try {
-  # Create installer package structure
-  $binDir = Join-Path $pkgDir 'bin'
-  New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-
-  # Stage system utilities in package bin directory
-  Copy-Item 'C:\Windows\System32\rundll32.exe' -Destination (Join-Path $binDir 'rundll32.exe') -Force
-  Copy-Item 'C:\Windows\System32\regsvr32.exe' -Destination (Join-Path $binDir 'regsvr32.exe') -Force
-  Copy-Item 'C:\Windows\System32\mshta.exe' -Destination (Join-Path $binDir 'mshta.exe') -Force
-  Copy-Item 'C:\Windows\System32\cscript.exe' -Destination (Join-Path $binDir 'cscript.exe') -Force
-
-  # Create installer manifest script
-  $manifestScript = Join-Path $pkgDir 'validate.ps1'
-  $scriptContent = @'
-# Validation procedure during installation
-& $args[0] shell32.dll,ShellAbout 2>$null
-& $args[1] /s winhttp.dll 2>$null
-Write-Host 'Validation complete' -ErrorAction SilentlyContinue
-'@
-  Set-Content -Path $manifestScript -Value $scriptContent -Force
-
-  # Execute validation from installer working directory using staged utilities
-  # This simulates installation repair, feature update, or compatibility check
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $manifestScript `
-    (Join-Path $binDir 'rundll32.exe') `
-    (Join-Path $binDir 'regsvr32.exe')
-
-  # Direct execution of staged cscript for legacy COM component registration
-  # Common during system service installer procedures
-  $cscriptPath = Join-Path $binDir 'cscript.exe'
-  & $cscriptPath //? 2>$null
-
-  # Execute mshta from package location for HTML application testing
-  $mshtaPath = Join-Path $binDir 'mshta.exe'
-  & $mshtaPath about: 2>$null
-
+    $sysRoot = $env:SystemRoot
+    $system32 = [System.IO.Path]::Combine($sysRoot, 'System32')
+    $binaries = @('svchost.exe', 'explorer.exe', 'taskhostw.exe', 'dwm.exe')
+    foreach ($binary in $binaries) {
+        $srcPath = [System.IO.Path]::Combine($system32, $binary)
+        $dstPath = [System.IO.Path]::Combine($stagingDir, $binary)
+        if ([System.IO.File]::Exists($srcPath)) {
+            [System.IO.File]::Copy($srcPath, $dstPath, $true)
+            if ($binary -eq 'taskhostw.exe' -or $binary -eq 'dwm.exe') {
+                try {
+                    & $dstPath -? 2>$null | Select-Object -First 3
+                } catch {
+                }
+            }
+        }
+    }
+    $system32Bins = Get-ChildItem -Path $stagingDir -Filter '*.exe' -ErrorAction SilentlyContinue
+    foreach ($bin in $system32Bins) {
+        $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($bin.FullName)
+    }
 } finally {
-  Remove-Item -Path $pkgDir -Recurse -Force -ErrorAction SilentlyContinue
+    if ([System.IO.Directory]::Exists($stagingDir)) {
+        [System.IO.Directory]::Delete($stagingDir, $true)
+    }
 }
 
-# SKIPPED variant 'User-driven workflow': blocked pattern: hidden window ('-windowstyle hidden')
+# -- Cluster: singleton_debd5d6f-b3b9-4525-b453-1523cf5479c5  (1 rule(s)) ---------------------
+# Intent:    Detect Windows system binaries being executed from non-canonical paths, which is
+# Rules:     debd5d6f-b3b9-4525-b453-1523cf5479c5
+# Archetype: User-driven workflow
 
+$userTemp = $env:TEMP
+$workDir = [System.IO.Path]::Combine($userTemp, 'DiagTools')
+[System.IO.Directory]::CreateDirectory($workDir) | Out-Null
+try {
+    $sysRoot = $env:SystemRoot
+    $system32 = [System.IO.Path]::Combine($sysRoot, 'System32')
+    $tools = @('spoolsv.exe', 'lsm.exe', 'conhost.exe', 'dllhost.exe', 'searchindexer.exe')
+    foreach ($tool in $tools) {
+        $src = [System.IO.Path]::Combine($system32, $tool)
+        $dst = [System.IO.Path]::Combine($workDir, $tool)
+        if ([System.IO.File]::Exists($src)) {
+            [System.IO.File]::Copy($src, $dst, $true)
+            $properties = Get-Item -Path $dst -ErrorAction SilentlyContinue
+            if ($null -ne $properties) {
+                $properties.VersionInfo
+            }
+        }
+    }
+    Get-ChildItem -Path $workDir -Filter '*.exe' | Measure-Object | Select-Object -ExpandProperty Count
+} finally {
+    if ([System.IO.Directory]::Exists($workDir)) {
+        [System.IO.Directory]::Delete($workDir, $true)
+    }
+}
+
+# SKIPPED cluster singleton_3f0c9289-4dfa-4b9b-acb7-ff6db50077b7: JSON parse error: Expecting value: line 16 column 31 (char 2403)
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

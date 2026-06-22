@@ -3,8 +3,7 @@ Coordinates all 7 pipeline stages:
   1. Attacker Agent  → structured campaign plan
   2. Emulator        → log stream per technique
   3. Detection Layer → per-technique match results
-  4. Gap Scorer      → embedding proximity for missed events
-  4.5 Detection Planner   → technique-level detection strategy (invariants, FP profile)
+  4 Detection Planner   → technique-level detection strategy (invariants, FP profile)
   5. Defender Agent  → candidate Sigma rules for gaps
   6. Validation      → schema linter + attack gate + noise gate (inside DefenderAgent)
   7. PR Creator      → opens GitHub PRs for validated rules
@@ -32,12 +31,10 @@ from pipeline.attacker.agent import AttackerAgent, extract_emulator_inputs, Camp
 from pipeline.emulator.emulator import run_emulator
 from pipeline.detection.engine import DetectionEngine
 from pipeline.detection.result_parser import parse_results, get_gaps, get_covered
-from pipeline.embedding.scorer import EmbeddingScorer
-from pipeline.embedding.gap_scorer import score_gaps
-from pipeline.embedding.embedder import EMBEDDINGS_PATH
 from pipeline.defender.agent import DefenderAgent, GapContext, find_existing_rule_paths
 from pipeline.detection_planner.planner import DetectionPlanner
 from pipeline.github.pr_creator import PRCreator, PRResult
+from pipeline.github.rules_sync import sync_rules_from_github
 from pipeline.metrics.tracker import MetricsTracker
 from pipeline.data.stix_loader import get_loader
 from pipeline.emulator.procedure_interpreter import get_drop_stats
@@ -76,6 +73,8 @@ class IterationSummary:
     rules_validated: int
     event_coverage: dict[str, str] = field(
         default_factory=dict)  # tid → "matched/total"
+    coverage_status: dict[str, str] = field(
+        default_factory=dict)  # tid → "full" | "partial" | "missed" | "no_rules"
     prs_opened: list[str] = field(default_factory=list)  # PR URLs
 
     def to_dict(self) -> dict:
@@ -87,6 +86,7 @@ class IterationSummary:
             "rules_generated": self.rules_generated,
             "rules_validated": self.rules_validated,
             "event_coverage": self.event_coverage,
+            "coverage_status": self.coverage_status,
             "prs_opened": self.prs_opened,
         }
 
@@ -337,13 +337,6 @@ class Orchestrator:
         self._planner = DetectionPlanner()
         self._metrics = MetricsTracker()
 
-        # EmbeddingScorer — load once, reuse across iterations
-        if EMBEDDINGS_PATH.exists():
-            self._scorer = EmbeddingScorer(embeddings_path=EMBEDDINGS_PATH)
-        else:
-            _dbg("Embeddings not found — gap scoring disabled. Run embedder first.")
-            self._scorer = None
-
         # PR creator — optional, only init if opening PRs
         self._pr_creator = None
         self._anthropic_client = anthropic.Anthropic()
@@ -382,6 +375,9 @@ class Orchestrator:
         print(f"[orchestrator] Starting run: {len(technique_ids)} techniques, "
               f"{iterations} iteration(s)")
 
+        synced = sync_rules_from_github(self._rules_dir)
+        _dbg(f"Synced {synced} rule file(s) from GitHub main before run")
+
         result = OrchestrationResult(iterations_run=0)
         # fed back to attacker each iteration
         previous_results: Optional[dict] = None
@@ -415,15 +411,7 @@ class Orchestrator:
         # Final coverage snapshot
         if result.summaries:
             last = result.summaries[-1]
-            result.final_coverage = {}
-            for tid, ratio in last.event_coverage.items():
-                matched, total = map(int, ratio.split("/"))
-                if matched == total and total > 0:
-                    result.final_coverage[tid] = "full"
-                elif matched > 0:
-                    result.final_coverage[tid] = "partial"
-                else:
-                    result.final_coverage[tid] = "missed"
+            result.final_coverage = dict(last.coverage_status)
 
         # Finalise metrics
         self._metrics.finalise_iteration(
@@ -518,8 +506,12 @@ class Orchestrator:
             print(f"[orchestrator] Gaps: {gaps}")
 
         if DEBUG:
-            for tid, dr in detection_results.items():
+            for tid in technique_ids:
+                dr = detection_results.get(tid)
                 total_attack = len(log_stream.get(tid, []))
+                if dr is None:
+                    _dbg(f"  {tid}: 0/{total_attack} events matched — No Rules")
+                    continue
                 matched = len(dr.matched_events)
                 ratio = f"{matched}/{total_attack}" if total_attack > 0 else "0/0"
                 if matched == total_attack and total_attack > 0:
@@ -527,22 +519,27 @@ class Orchestrator:
                 elif matched > 0:
                     label, marker = "Partially Covered", "~"
                 else:
-                    label, marker = (
-                        "Missed" if dr.total_rules > 0 else "No Rules"), "✗"
+                    label, marker = "Missed", "✗"
                 _dbg(f"{marker} {tid}: {ratio} events matched — {label}")
 
         # Record detection metrics
         event_coverage = {}
+        coverage_status = {}
         for tid in technique_ids:
             dr = detection_results.get(tid)
-            if dr is None:
-                total_attack = len(log_stream.get(tid, []))
-                _dbg(f"  {tid}: 0/{total_attack} events matched — No Rules")
-                continue
             total = len(log_stream.get(tid, []))
             matched = len(dr.matched_events) if dr else 0
             event_coverage[tid] = f"{matched}/{total}"
+            if dr is None:
+                coverage_status[tid] = "no_rules"
+            elif matched == total and total > 0:
+                coverage_status[tid] = "full"
+            elif matched > 0:
+                coverage_status[tid] = "partial"
+            else:
+                coverage_status[tid] = "missed"
         summary.event_coverage = event_coverage
+        summary.coverage_status = coverage_status
 
         for tid, dr in detection_results.items():
             self._metrics.record_detection(
@@ -553,17 +550,6 @@ class Orchestrator:
                 matched_events=len(dr.matched_events),
                 iteration=iteration,
             )
-
-        # ── Stage 4: Gap scorer ───────────────────────────────────
-        if self._scorer and gaps:
-            _dbg("Stage 4: gap scorer")
-            gap_scores = score_gaps(
-                detection_results, self._scorer, log_stream)
-            for tid, gs in gap_scores.items():
-                if gs.top_technique:
-                    score_str = f"{gs.top_score:.4f}" if gs.top_score is not None else "none"
-                    _dbg(
-                        f"{tid}: closest technique = {gs.top_technique} ({score_str})")
 
         # ── Stage 5+6: Defender agent + Validation ────────────────
         if not gaps:
@@ -588,8 +574,8 @@ class Orchestrator:
             if not gap_context:
                 continue
 
-            # ── Stage 4.5: Detection planner ──────────────────────
-            _dbg(f"Stage 4.5: detection planner ({technique_id})")
+            # ── Stage 4: Detection planner ──────────────────────
+            _dbg(f"Stage 4: detection planner ({technique_id})")
             strategy = self._planner.run(
                 technique_id=technique_id,
                 missed_events=gap_context.missed_events,

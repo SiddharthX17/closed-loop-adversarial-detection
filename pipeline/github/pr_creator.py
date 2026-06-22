@@ -377,6 +377,55 @@ class PRCreator:
                 rule_filename=filename,
             )
 
+        # ── Cleanup: remove rejected rule file(s) from this branch ────────
+        # If a human closed (not merged) a prior PR for this technique, the
+        # rejected rule file(s) still exist on the branch. Remove them via a
+        # new commit on the SAME branch — the branch ref itself is retained,
+        # no delete+recreate — so the next attempt writes a clean file
+        # instead of silently coexisting alongside rejected content.
+        if not existing_pr:
+            closed_prs = self._repo.get_pulls(
+                state="closed",
+                head=f"{self._repo.owner.login}:{branch}",
+            )
+            rejected_pr = next((p for p in closed_prs if not p.merged), None)
+            if rejected_pr:
+                stale_files = []
+                try:
+                    contents = self._repo.get_contents(RULES_DIR, ref=branch)
+                    stale_files = contents if isinstance(
+                        contents, list) else [contents]
+                except GithubException as e:
+                    if e.status != 404:  # 404 = nothing there yet — fine
+                        if DEBUG:
+                            print(
+                                f"[pr_creator] Could not list files on "
+                                f"'{branch}' for cleanup: {e}")
+
+                # Only this technique's own files — the branch also carries
+                # whatever was already merged on main when it was created.
+                for f in stale_files:
+                    if not f.name.startswith(f"{technique_id}-"):
+                        continue
+                    try:
+                        self._repo.delete_file(
+                            path=f.path,
+                            message=f"chore: remove rejected {technique_id} rule "
+                                    f"(PR #{rejected_pr.number} closed without merge)",
+                            sha=f.sha,
+                            branch=branch,
+                        )
+                        if DEBUG:
+                            print(
+                                f"[pr_creator] Removed rejected rule file "
+                                f"'{f.path}' from branch '{branch}'"
+                            )
+                    except GithubException as e:
+                        if DEBUG:
+                            print(
+                                f"[pr_creator] Could not remove '{f.path}' "
+                                f"from '{branch}': {e}")
+
         # ── Branch lifecycle: create branch if absent, otherwise reuse existing branch────────────
         # Preserves commit history and PR continuity.
         # This moves the branch tip to current HEAD without losing commit history.

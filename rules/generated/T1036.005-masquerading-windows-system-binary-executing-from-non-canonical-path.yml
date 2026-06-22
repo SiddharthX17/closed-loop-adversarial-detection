@@ -1,0 +1,59 @@
+title: Masquerading Windows System Binary Executing From Non-Canonical Path
+id: debd5d6f-b3b9-4525-b453-1523cf5479c5
+status: experimental
+description: |
+  Detects execution of a process whose filename matches a well-known Windows system binary
+  but whose full image path is outside canonical Windows system directories. This is the
+  structural invariant of T1036.005: the attacker cannot place the binary in System32
+  without elevated privileges, so the name/path mismatch is unavoidable.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-06-22
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_system_binary_names:
+    Image|endswith:
+      - '\svchost.exe'
+      - '\lsass.exe'
+      - '\csrss.exe'
+      - '\winlogon.exe'
+      - '\services.exe'
+      - '\smss.exe'
+      - '\wininit.exe'
+      - '\explorer.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\spoolsv.exe'
+      - '\lsm.exe'
+      - '\dwm.exe'
+      - '\conhost.exe'
+      - '\dllhost.exe'
+      - '\sihost.exe'
+      - '\fontdrvhost.exe'
+      - '\RuntimeBroker.exe'
+      - '\SearchIndexer.exe'
+      - '\WmiPrvSE.exe'
+  filter_canonical_windows:
+    Image|contains:
+      - '\Windows\System32\'
+      - '\Windows\SysWOW64\'
+      - '\Windows\WinSxS\'
+      - '\Windows\explorer.exe'
+  filter_program_files:
+    Image|contains:
+      - '\Program Files\'
+      - '\Program Files (x86)\'
+  condition: selection_system_binary_names and not 1 of filter_*
+falsepositives:
+  - Vendor or third-party software shipping binaries with system binary name collisions
+    under Program Files or ProgramData (filtered above for Program Files; ProgramData
+    vendor paths may require environment-specific tuning)
+  - Legitimate administrative deployment tools placing renamed utilities in managed paths
+level: high

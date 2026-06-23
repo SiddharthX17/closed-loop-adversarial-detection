@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   2  |  Feasible: 1  |  Variants: 3
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,142 +10,119 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_c4dd5877-1471-4762-ac8e-171cc9798b01  (1 rule(s)) ---------------------
-# Intent:    Detect credential dumping via LSASS process memory extraction initiated through 
-# Rules:     c4dd5877-1471-4762-ac8e-171cc9798b01
+# -- Cluster: singleton_84c8e8c0-af53-4ec4-93e7-f6b67dd81222  (1 rule(s)) ---------------------
+# Intent:    Detect unauthorized use of script hosts (VBScript, PowerShell, CMD) to register 
+# Rules:     84c8e8c0-af53-4ec4-93e7-f6b67dd81222
 # Archetype: IT admin workflow
 
-$diagReportPath = Join-Path $env:TEMP 'system_diagnostics_20240115.log'
-$processListPath = Join-Path $env:TEMP 'process_inventory.txt'
+$taskName = 'SystemHealthCheck_Daily'
+$taskPath = '\Microsoft\Windows\System32\'
+$scriptPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts_backup.ps1'
 
-# Admin activity: Enumerate all running processes and write to report
-$processes = Get-Process | Select-Object Id, Name, CommandLine, StartTime | Format-Table -AutoSize
-Add-Content -Path $processListPath -Value "Process Inventory Report $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Add-Content -Path $processListPath -Value ($processes | Out-String)
-
-# Admin uses tasklist for secondary process verification (common in troubleshooting)
-Add-Content -Path $diagReportPath -Value "System Process Listing"
-cmd /c "tasklist /v >> `"$diagReportPath`" 2>&1"
-
-# Admin retrieves specific process details for memory diagnostics
-$lsassProcess = Get-Process -Name lsass -ErrorAction SilentlyContinue
-if ($lsassProcess) {
-    Add-Content -Path $diagReportPath -Value "LSASS Process ID: $($lsassProcess.Id)"
-    Add-Content -Path $diagReportPath -Value "Working Set: $($lsassProcess.WorkingSet) bytes"
+# Create a minimal placeholder script that would be invoked by the task
+if (-not (Test-Path $scriptPath)) {
+  New-Item -ItemType File -Path $scriptPath -Force | Out-Null
+  Add-Content -Path $scriptPath -Value '# Health check log entry' -Force
 }
 
-# Admin invokes System File Checker from temp (legitimate diagnostic tool)
-$diagToolPath = Join-Path $env:TEMP 'system_check.exe'
-if (Test-Path -Path 'C:\Windows\System32\sfc.exe') {
-    Copy-Item -Path 'C:\Windows\System32\sfc.exe' -Destination $diagToolPath -Force
-    & $diagToolPath /scannow 2>&1 | Out-Null
-    Remove-Item -Path $diagToolPath -Force -ErrorAction SilentlyContinue
-}
-
-# Cleanup
-Remove-Item -Path $processListPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $diagReportPath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_c4dd5877-1471-4762-ac8e-171cc9798b01  (1 rule(s)) ---------------------
-# Intent:    Detect credential dumping via LSASS process memory extraction initiated through 
-# Rules:     c4dd5877-1471-4762-ac8e-171cc9798b01
-# Archetype: Software installer/updater workflow
-
-$appDataTempDir = Join-Path $env:APPDATA 'Local\Temp' 'AppInstall_Staging'
-$logPath = Join-Path $appDataTempDir 'install_validation.log'
-
-# Ensure staging directory exists
-if (-not (Test-Path -Path $appDataTempDir)) {
-    New-Item -Path $appDataTempDir -ItemType Directory -Force | Out-Null
-}
-
-# Installer queries running processes to check for conflicts
-Add-Content -Path $logPath -Value "Installation Validation Log: $(Get-Date)"
-
-# Use Get-Process to enumerate running applications
-$runningApps = Get-Process | Where-Object { $_.ProcessName -match '^(svchost|lsass|csrss|services)' } | Select-Object Name, Id
-Add-Content -Path $logPath -Value "Critical System Processes: $(($runningApps | Measure-Object).Count) detected"
-
-# Installer uses Get-WmiObject for detailed system process enumeration
-$wmiProcs = Get-WmiObject -Class Win32_Process -Filter "Name='lsass.exe' OR Name='services.exe'" -ErrorAction SilentlyContinue
-if ($wmiProcs) {
-    Add-Content -Path $logPath -Value "WMI Process Query: System services verified"
-}
-
-# Installer stages verification utility to AppData
-$verifyToolPath = Join-Path $appDataTempDir 'verify_prerequisites.exe'
-if (Test-Path -Path 'C:\Windows\System32\cmd.exe') {
-    Copy-Item -Path 'C:\Windows\System32\cmd.exe' -Destination $verifyToolPath -Force -ErrorAction SilentlyContinue
-
-    # Execute verification tool from staging directory
-    & $verifyToolPath /c "echo System prerequisite verification complete" 2>&1 | Out-Null
-    Remove-Item -Path $verifyToolPath -Force -ErrorAction SilentlyContinue
-}
-
-# Cleanup staging directory
-Remove-Item -Path $appDataTempDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_c4dd5877-1471-4762-ac8e-171cc9798b01  (1 rule(s)) ---------------------
-# Intent:    Detect credential dumping via LSASS process memory extraction initiated through 
-# Rules:     c4dd5877-1471-4762-ac8e-171cc9798b01
-# Archetype: Document/file operation workflow
-
-$downloadsDir = [Environment]::GetFolderPath('UserProfile') + '\Downloads'
-$appDataLocalDir = $env:APPDATA + '\Local'
-$tempDir = $env:TEMP
-
-# Create a maintenance script in AppData to audit system processes
-$auditScriptPath = Join-Path $appDataLocalDir 'file_audit_helper.ps1'
-
-# This script will be used to enumerate processes before cleanup
-$auditScriptContent = @'
-# Legacy file audit helper - enumerates processes that may lock files
-Write-Host "Auditing file locks and process state"
-
-# Query all processes
-$allProcs = Get-Process -ErrorAction SilentlyContinue
-
-# Check for system critical processes
-foreach ($proc in $allProcs) {
-    if ($proc.Name -match 'lsass|svchost|services') {
-        Write-Host "Critical process: $($proc.Name) (PID: $($proc.Id))"
-    }
-}
-
-# Use WMI for detailed process information
 try {
-    $wmiProcs = Get-WmiObject -Class Win32_Process -Filter "Name='svchost.exe'" -ErrorAction SilentlyContinue
-    if ($wmiProcs) {
-        Write-Host "System service processes verified"
-    }
-} catch {
-    Write-Host "WMI query completed"
+  # Register task using COM Schedule.Service interface - standard admin method
+  $service = New-Object -ComObject 'Schedule.Service'
+  $service.Connect()
+  $rootFolder = $service.GetFolder('\Microsoft\Windows\System32')
+
+  $taskDef = $service.NewTask(0)
+  $taskDef.RegistrationInfo.Description = 'Daily system diagnostics and reporting'
+
+  $triggers = $taskDef.Triggers
+  $trigger = $triggers.Create(1)  # TASK_TRIGGER_DAILY
+  $trigger.StartBoundary = (Get-Date -Year 2024 -Month 1 -Day 1 -Hour 2 -Minute 0 -Second 0 -Millisecond 0).ToString('s')
+
+  $actions = $taskDef.Actions
+  $action = $actions.Create(0)  # TASK_ACTION_EXEC
+  $action.Path = 'powershell.exe'
+  $action.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$scriptPath`""
+
+  $taskDef.Principal.RunLevel = 1  # TASK_RUNLEVEL_HIGHEST
+
+  # This RegisterTask call is the detection signature - legitimate admin activity
+  $rootFolder.RegisterTaskDefinition($taskName, $taskDef, 6, $null, $null, 0) | Out-Null
+
+  Write-Host "Task $taskName registered successfully"
 }
+catch {
+  Write-Host "Task registration encountered error (may already exist): $_"
+}
+finally {
+  # Cleanup
+  $service = New-Object -ComObject 'Schedule.Service'
+  $service.Connect()
+  try {
+    $rootFolder = $service.GetFolder('\Microsoft\Windows\System32')
+    $rootFolder.DeleteTask($taskName, 0)
+  }
+  catch { }
+
+  if (Test-Path $scriptPath) {
+    Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# SKIPPED variant 'Software installer/updater workflow': blocked pattern: cmd batch syntax ('echo off')
+
+# -- Cluster: singleton_84c8e8c0-af53-4ec4-93e7-f6b67dd81222  (1 rule(s)) ---------------------
+# Intent:    Detect unauthorized use of script hosts (VBScript, PowerShell, CMD) to register 
+# Rules:     84c8e8c0-af53-4ec4-93e7-f6b67dd81222
+# Archetype: User-driven workflow
+
+$taskName = 'LocalBackupRotation'
+$vbsPath = Join-Path $env:TEMP 'backup_config.vbs'
+
+# Create a VBScript that registers a scheduled task - simulates behavior of
+# enterprise backup/monitoring tools that are distributed to users
+$vbsContent = @'
+Set objScheduler = CreateObject("Schedule.Service")
+objScheduler.Connect()
+Set objRootFolder = objScheduler.GetFolder("\")
+Set objTaskDef = objScheduler.NewTask(0)
+
+objTaskDef.RegistrationInfo.Description = "Weekly backup maintenance"
+
+Set objTriggers = objTaskDef.Triggers
+Set objTrigger = objTriggers.Create(1)
+objTrigger.StartBoundary = "2024-01-01T04:00:00"
+
+Set objActions = objTaskDef.Actions
+Set objAction = objActions.Create(0)
+objAction.Path = "cmd.exe"
+objAction.Arguments = "/c echo Backup rotation check"
+
+objRootFolder.RegisterTaskDefinition "LocalBackupRotation", objTaskDef, 6, Null, Null, 0
+WScript.Echo "Task registered"
 '@
 
-Set-Content -Path $auditScriptPath -Value $auditScriptContent -Force
+Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII -Force
 
-# Create a harmless utility file in Downloads to simulate maintenance tools
-$maintenanceToolPath = Join-Path $downloadsDir 'file_integrity_checker.exe'
-if (Test-Path -Path 'C:\Windows\System32\findstr.exe') {
-    Copy-Item -Path 'C:\Windows\System32\findstr.exe' -Destination $maintenanceToolPath -Force -ErrorAction SilentlyContinue
+try {
+  # End-user runs a utility script that internally uses VBScript
+  # This is realistic for enterprise tools distributed via app stores
+  & cscript.exe $vbsPath 2>$null | Out-Null
+
+  Start-Sleep -Milliseconds 300
+  Write-Host "Backup task configured"
+}
+catch {
+  Write-Host "Configuration error: $_"
+}
+finally {
+  # Cleanup
+  cmd.exe /c "schtasks.exe /delete /tn $taskName /f" 2>$null
+
+  if (Test-Path $vbsPath) {
+    Remove-Item -Path $vbsPath -Force -ErrorAction SilentlyContinue
+  }
 }
 
-# Execute the audit script (which enumerates processes including LSASS)
-if (Test-Path -Path $auditScriptPath) {
-    & powershell.exe -ExecutionPolicy Bypass -File $auditScriptPath 2>&1 | Out-Null
-}
-
-# Invoke the utility from Downloads
-if (Test-Path -Path $maintenanceToolPath) {
-    & $maintenanceToolPath 'dummy search pattern' 'C:\\Windows\\Temp' 2>&1 | Out-Null
-    Remove-Item -Path $maintenanceToolPath -Force -ErrorAction SilentlyContinue
-}
-
-# Cleanup
-Remove-Item -Path $auditScriptPath -Force -ErrorAction SilentlyContinue
-
-# SKIPPED cluster singleton_3e718cf2-d474-43b5-81d3-7c065d7329d6: JSON parse error: Invalid \escape: line 15 column 1150 (char 2172)
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

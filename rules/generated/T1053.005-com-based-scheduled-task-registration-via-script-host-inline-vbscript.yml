@@ -1,0 +1,41 @@
+title: COM-Based Scheduled Task Registration via Script Host Inline VBScript
+id: 84c8e8c0-af53-4ec4-93e7-f6b67dd81222
+status: experimental
+description: |
+    Detects mshta.exe or other script hosts executing inline VBScript or script content that instantiates
+    the Schedule.Service COM object and calls RegisterTask to register a scheduled task, bypassing
+    schtasks.exe-based detection. This technique is used for persistence and execution via COM-based
+    task registration without invoking the standard schtasks.exe utility.
+references:
+    - https://attack.mitre.org/techniques/T1053/005/
+    - https://lolbas-project.github.io/lolbas/Binaries/Mshta/
+author: Detection Engineer
+date: 2024-01-01
+tags:
+    - attack.execution
+    - attack.persistence
+    - attack.privilege-escalation
+    - attack.t1053.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_schedule_service:
+        CommandLine|contains|all:
+            - 'Schedule.Service'
+            - 'RegisterTask'
+    selection_script_host:
+        Image|endswith:
+            - '\mshta.exe'
+            - '\wscript.exe'
+            - '\cscript.exe'
+            - '\powershell.exe'
+            - '\pwsh.exe'
+            - '\cmd.exe'
+    filter_legitimate_schtasks:
+        Image|endswith: '\schtasks.exe'
+    condition: all of selection_* and not filter_legitimate_schtasks
+falsepositives:
+    - Administrative automation scripts that invoke Schedule.Service COM API inline via script hosts
+    - IT management tooling that passes RegisterTask inline in command-line arguments
+level: high

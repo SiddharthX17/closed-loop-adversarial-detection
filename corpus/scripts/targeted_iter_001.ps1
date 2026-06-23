@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 1  |  Variants: 3
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,106 +10,86 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_debd5d6f-b3b9-4525-b453-1523cf5479c5  (1 rule(s)) ---------------------
-# Intent:    Detect Windows system binaries being executed from non-canonical paths, which is
-# Rules:     debd5d6f-b3b9-4525-b453-1523cf5479c5
+# -- Cluster: singleton_acd1829a-c9ce-44fe-920a-9c836b34879c  (1 rule(s)) ---------------------
+# Intent:    Detect attackers attempting to extract credential hives (SAM, SYSTEM, SECURITY) 
+# Rules:     acd1829a-c9ce-44fe-920a-9c836b34879c
 # Archetype: IT admin workflow
 
-$tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName())
-[System.IO.Directory]::CreateDirectory($tempDir) | Out-Null
-try {
-    $sysRoot = $env:SystemRoot
-    $system32 = [System.IO.Path]::Combine($sysRoot, 'System32')
-    $svcHostSrc = [System.IO.Path]::Combine($system32, 'svchost.exe')
-    $svcHostDst = [System.IO.Path]::Combine($tempDir, 'svchost.exe')
-    $lsassSrc = [System.IO.Path]::Combine($system32, 'lsass.exe')
-    $lsassDst = [System.IO.Path]::Combine($tempDir, 'lsass.exe')
-    if ([System.IO.File]::Exists($svcHostSrc)) {
-        [System.IO.File]::Copy($svcHostSrc, $svcHostDst, $true)
-        & $svcHostDst -? 2>$null | Select-Object -First 5
-    }
-    if ([System.IO.File]::Exists($lsassSrc)) {
-        [System.IO.File]::Copy($lsassSrc, $lsassDst, $true)
-        & $lsassDst -? 2>$null | Select-Object -First 5
-    }
-    $csrssSrc = [System.IO.Path]::Combine($system32, 'csrss.exe')
-    $csrssDst = [System.IO.Path]::Combine($tempDir, 'csrss.exe')
-    if ([System.IO.File]::Exists($csrssSrc)) {
-        [System.IO.File]::Copy($csrssSrc, $csrssDst, $true)
-        & $csrssDst -? 2>$null | Select-Object -First 5
-    }
-} finally {
-    if ([System.IO.Directory]::Exists($tempDir)) {
-        [System.IO.Directory]::Delete($tempDir, $true)
-    }
-}
+$VssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\System32\config'
+$LogFile = Join-Path $env:TEMP 'hive_audit_20250113.log'
 
-# -- Cluster: singleton_debd5d6f-b3b9-4525-b453-1523cf5479c5  (1 rule(s)) ---------------------
-# Intent:    Detect Windows system binaries being executed from non-canonical paths, which is
-# Rules:     debd5d6f-b3b9-4525-b453-1523cf5479c5
+# Simulate forensic validation of credential hives from VSS snapshot
+Add-Content -Path $LogFile -Value "Starting credential hive integrity check from VSS snapshot"
+Add-Content -Path $LogFile -Value "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Add-Content -Path $LogFile -Value ""
+
+# Attempt to read SAM hive from VSS path using reg.exe query
+Write-Host "Attempting to query SAM hive from VSS snapshot..."
+$SamPath = "$VssPath\SAM"
+cmd /c "reg query HKLM\\SAM 2>&1" | Add-Content -Path $LogFile
+Add-Content -Path $LogFile -Value "SAM hive path queried: $SamPath"
+
+# Attempt to read SYSTEM hive from VSS path
+Write-Host "Attempting to query SYSTEM hive from VSS snapshot..."
+$SystemPath = "$VssPath\SYSTEM"
+cmd /c "reg query HKLM\\SYSTEM\\CurrentControlSet 2>&1" | Add-Content -Path $LogFile
+Add-Content -Path $LogFile -Value "SYSTEM hive path queried: $SystemPath"
+
+# Attempt to read SECURITY hive from VSS path
+Write-Host "Attempting to query SECURITY hive from VSS snapshot..."
+$SecurityPath = "$VssPath\SECURITY"
+cmd /c "reg query HKLM\\SECURITY 2>&1" | Add-Content -Path $LogFile
+Add-Content -Path $LogFile -Value "SECURITY hive path queried: $SecurityPath"
+
+Add-Content -Path $LogFile -Value ""
+Add-Content -Path $LogFile -Value "Forensic hive validation completed"
+
+# Clean up audit log
+Remove-Item -Path $LogFile -Force -ErrorAction SilentlyContinue
+Write-Host "Hive integrity audit completed and cleaned up"
+
+# -- Cluster: singleton_acd1829a-c9ce-44fe-920a-9c836b34879c  (1 rule(s)) ---------------------
+# Intent:    Detect attackers attempting to extract credential hives (SAM, SYSTEM, SECURITY) 
+# Rules:     acd1829a-c9ce-44fe-920a-9c836b34879c
 # Archetype: Software installer/updater workflow
 
-$programFiles = ${env:ProgramFiles}
-$stagingDir = [System.IO.Path]::Combine($programFiles, 'DiagnosticStaging')
-[System.IO.Directory]::CreateDirectory($stagingDir) | Out-Null
-try {
-    $sysRoot = $env:SystemRoot
-    $system32 = [System.IO.Path]::Combine($sysRoot, 'System32')
-    $binaries = @('svchost.exe', 'explorer.exe', 'taskhostw.exe', 'dwm.exe')
-    foreach ($binary in $binaries) {
-        $srcPath = [System.IO.Path]::Combine($system32, $binary)
-        $dstPath = [System.IO.Path]::Combine($stagingDir, $binary)
-        if ([System.IO.File]::Exists($srcPath)) {
-            [System.IO.File]::Copy($srcPath, $dstPath, $true)
-            if ($binary -eq 'taskhostw.exe' -or $binary -eq 'dwm.exe') {
-                try {
-                    & $dstPath -? 2>$null | Select-Object -First 3
-                } catch {
-                }
-            }
+$VssSnapshots = 1..3
+$BackupLogPath = Join-Path $env:TEMP 'system_backup_validation.log'
+$HivesToCheck = @('config\\sam', 'config\\system', 'config\\security')
+
+Add-Content -Path $BackupLogPath -Value "System State Backup Validation Tool"
+Add-Content -Path $BackupLogPath -Value "Backup Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Add-Content -Path $BackupLogPath -Value "Checking Volume Shadow Copy snapshots for system hive accessibility..."
+Add-Content -Path $BackupLogPath -Value ""
+
+foreach ($SnapshotId in $VssSnapshots) {
+    $SnapshotPath = "\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy$SnapshotId\Windows\System32"
+    Add-Content -Path $BackupLogPath -Value "Validating snapshot: HarddiskVolumeShadowCopy$SnapshotId"
+
+    foreach ($Hive in $HivesToCheck) {
+        $HivePath = Join-Path $SnapshotPath $Hive
+        Add-Content -Path $BackupLogPath -Value "  Checking hive accessibility: $Hive from harddiskvolumeshadowcopy$SnapshotId"
+
+        # Simulate tool checking if hive file is readable from VSS
+        if ($Hive -like '*sam*') {
+            cmd /c "dir \"$SnapshotPath\config\sam\" 2>&1" | Add-Content -Path $BackupLogPath
+        }
+        if ($Hive -like '*system*') {
+            cmd /c "dir \"$SnapshotPath\config\system\" 2>&1" | Add-Content -Path $BackupLogPath
+        }
+        if ($Hive -like '*security*') {
+            cmd /c "dir \"$SnapshotPath\config\security\" 2>&1" | Add-Content -Path $BackupLogPath
         }
     }
-    $system32Bins = Get-ChildItem -Path $stagingDir -Filter '*.exe' -ErrorAction SilentlyContinue
-    foreach ($bin in $system32Bins) {
-        $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($bin.FullName)
-    }
-} finally {
-    if ([System.IO.Directory]::Exists($stagingDir)) {
-        [System.IO.Directory]::Delete($stagingDir, $true)
-    }
+    Add-Content -Path $BackupLogPath -Value ""
 }
 
-# -- Cluster: singleton_debd5d6f-b3b9-4525-b453-1523cf5479c5  (1 rule(s)) ---------------------
-# Intent:    Detect Windows system binaries being executed from non-canonical paths, which is
-# Rules:     debd5d6f-b3b9-4525-b453-1523cf5479c5
-# Archetype: User-driven workflow
+Add-Content -Path $BackupLogPath -Value "Backup validation completed successfully"
 
-$userTemp = $env:TEMP
-$workDir = [System.IO.Path]::Combine($userTemp, 'DiagTools')
-[System.IO.Directory]::CreateDirectory($workDir) | Out-Null
-try {
-    $sysRoot = $env:SystemRoot
-    $system32 = [System.IO.Path]::Combine($sysRoot, 'System32')
-    $tools = @('spoolsv.exe', 'lsm.exe', 'conhost.exe', 'dllhost.exe', 'searchindexer.exe')
-    foreach ($tool in $tools) {
-        $src = [System.IO.Path]::Combine($system32, $tool)
-        $dst = [System.IO.Path]::Combine($workDir, $tool)
-        if ([System.IO.File]::Exists($src)) {
-            [System.IO.File]::Copy($src, $dst, $true)
-            $properties = Get-Item -Path $dst -ErrorAction SilentlyContinue
-            if ($null -ne $properties) {
-                $properties.VersionInfo
-            }
-        }
-    }
-    Get-ChildItem -Path $workDir -Filter '*.exe' | Measure-Object | Select-Object -ExpandProperty Count
-} finally {
-    if ([System.IO.Directory]::Exists($workDir)) {
-        [System.IO.Directory]::Delete($workDir, $true)
-    }
-}
+# Clean up validation log
+Remove-Item -Path $BackupLogPath -Force -ErrorAction SilentlyContinue
+Write-Host "System backup validation check completed"
 
-# SKIPPED cluster singleton_3f0c9289-4dfa-4b9b-acb7-ff6db50077b7: JSON parse error: Expecting value: line 16 column 31 (char 2403)
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

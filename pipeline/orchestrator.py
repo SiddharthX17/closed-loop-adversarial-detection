@@ -109,7 +109,8 @@ class OrchestrationResult:
           run_summary:    {techniques_run, gaps_found, rules_generated, rules_validated}
           iterations:     [IterationSummary.to_dict(), ...] — full per-iteration detail
         """
-        pr_urls = [url for s in self.summaries for url in s.prs_opened]
+        pr_urls = list(dict.fromkeys(
+            url for s in self.summaries for url in s.prs_opened))
         techniques_run = (
             self.summaries[-1].techniques_attempted if self.summaries else 0
         )
@@ -701,6 +702,8 @@ class Orchestrator:
                     print(f"    ✓ {tid}: Fully Covered")
                 elif status == "partial":
                     print(f"    ~ {tid}: Partially Covered")
+                elif status == "no_rules":
+                    print(f"    □ {tid}: No Rules")
                 else:
                     print(f"    ✗ {tid}: Missed")
 

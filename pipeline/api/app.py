@@ -5,7 +5,6 @@ FastAPI service for the closed-loop adversarial detection pipeline.
 Endpoints:
     POST /run               — trigger a pipeline run (non-blocking, returns run_id)
     GET  /results/{run_id}  — poll run status / fetch completed results
-    GET  /rules/pending     — list generated rules not yet merged
     GET  /health            — service status + last run summary
 """
 
@@ -184,34 +183,6 @@ def get_results(run_id: str):
         return JSONResponse(content=history[run_id])
 
     raise HTTPException(status_code=404, detail=f"run_id {run_id!r} not found")
-
-
-@app.get("/rules/pending")
-def list_pending_rules():
-    """
-    Lists YAML files in rules/generated/ — rules submitted for PR, not yet merged.
-
-    Note: this is a filesystem proxy. A rule stays here until manually removed
-    post-merge. Good enough for v1; a GitHub API query is the v2 improvement.
-    """
-    if not GENERATED_RULES_DIR.exists():
-        return {"pending": [], "count": 0}
-
-    rules = []
-    for f in sorted(GENERATED_RULES_DIR.glob("*.yml")):
-        # Filename convention: {technique_id}_{description}.yml
-        stem_parts = f.stem.split("_", 1)
-        rules.append({
-            "filename": f.name,
-            "technique_id": stem_parts[0],
-            "description": stem_parts[1].replace("_", " ") if len(stem_parts) > 1 else "",
-            "size_bytes": f.stat().st_size,
-            "modified_at": datetime.fromtimestamp(
-                f.stat().st_mtime, tz=timezone.utc
-            ).isoformat(),
-        })
-
-    return {"pending": rules, "count": len(rules)}
 
 
 @app.get("/health")

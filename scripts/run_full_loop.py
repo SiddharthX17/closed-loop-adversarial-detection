@@ -46,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 
 OPEN_PRS = os.getenv("OPEN_PRS", "0").lower() in ("1", "true")
-ITERATIONS = 2
+ITERATIONS = 1
 RULES_DIR = Path("rules")
 CORPUS_ROOT = Path("corpus/benign")
 OUTPUT_DIR = Path("corpus/attack")
@@ -81,18 +81,11 @@ def run_instrumented_loop(
     from pipeline.defender.agent import DefenderAgent
     from pipeline.github.pr_creator import PRCreator
     from pipeline.metrics.tracker import MetricsTracker
-    from pipeline.embedding.scorer import EmbeddingScorer
-    from pipeline.embedding.embedder import EMBEDDINGS_PATH
-    from pipeline.embedding.gap_scorer import score_gaps
 
     stix = get_loader()
     attacker = AttackerAgent()
     defender = DefenderAgent(corpus_root=CORPUS_ROOT)
     metrics = MetricsTracker()
-
-    scorer = None
-    if EMBEDDINGS_PATH.exists():
-        scorer = EmbeddingScorer(embeddings_path=EMBEDDINGS_PATH)
 
     pr_creator = None
     if OPEN_PRS:
@@ -197,16 +190,6 @@ def run_instrumented_loop(
                 iteration=iteration,
             )
 
-        # Stage 4: Gap scorer
-        if scorer and gaps:
-            print(f"[{iteration}] Stage 4: gap scorer")
-            gap_scores = score_gaps(detection_results, scorer, log_stream)
-            for tid, gs in gap_scores.items():
-                if gs.top_technique:
-                    score_str = f"{gs.top_score:.4f}" if gs.top_score is not None else "none"
-                    print(f"  {tid}: closest = {gs.top_technique} ({score_str}), "
-                          f"embedding similarity computed on {gs.num_events_matched}/{gs.num_events_scored} events")
-
         # Stage 5+6: Defender + Validation
         if not gaps:
             print(f"[{iteration}] No gaps -- skipping defender")
@@ -240,7 +223,7 @@ def run_instrumented_loop(
             if not gap_context:
                 continue
 
-            # Stage 4.5: Detection planner
+            # Stage 4: Detection planner
             strategy = planner.run(
                 technique_id=technique_id,
                 missed_events=gap_context.missed_events,

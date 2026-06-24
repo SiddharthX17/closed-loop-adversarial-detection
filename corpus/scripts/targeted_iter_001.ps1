@@ -10,85 +10,66 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_acd1829a-c9ce-44fe-920a-9c836b34879c  (1 rule(s)) ---------------------
-# Intent:    Detect attackers attempting to extract credential hives (SAM, SYSTEM, SECURITY) 
-# Rules:     acd1829a-c9ce-44fe-920a-9c836b34879c
+# -- Cluster: singleton_f4f5f1f2-c7c7-4290-850a-54464de8bade  (1 rule(s)) ---------------------
+# Intent:    Credential Access via VSS Shadow Copy SAM Hive Extraction - detecting attempts t
+# Rules:     f4f5f1f2-c7c7-4290-850a-54464de8bade
 # Archetype: IT admin workflow
 
-$VssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\System32\config'
-$LogFile = Join-Path $env:TEMP 'hive_audit_20250113.log'
+# Legitimate VSS snapshot inventory and registry file validation for DR planning
+# This is standard pre-recovery verification performed by IT administrators
 
-# Simulate forensic validation of credential hives from VSS snapshot
-Add-Content -Path $LogFile -Value "Starting credential hive integrity check from VSS snapshot"
-Add-Content -Path $LogFile -Value "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Add-Content -Path $LogFile -Value ""
+$VssAdminPath = 'C:\Windows\System32\vssadmin.exe'
 
-# Attempt to read SAM hive from VSS path using reg.exe query
-Write-Host "Attempting to query SAM hive from VSS snapshot..."
-$SamPath = "$VssPath\SAM"
-cmd /c "reg query HKLM\\SAM 2>&1" | Add-Content -Path $LogFile
-Add-Content -Path $LogFile -Value "SAM hive path queried: $SamPath"
-
-# Attempt to read SYSTEM hive from VSS path
-Write-Host "Attempting to query SYSTEM hive from VSS snapshot..."
-$SystemPath = "$VssPath\SYSTEM"
-cmd /c "reg query HKLM\\SYSTEM\\CurrentControlSet 2>&1" | Add-Content -Path $LogFile
-Add-Content -Path $LogFile -Value "SYSTEM hive path queried: $SystemPath"
-
-# Attempt to read SECURITY hive from VSS path
-Write-Host "Attempting to query SECURITY hive from VSS snapshot..."
-$SecurityPath = "$VssPath\SECURITY"
-cmd /c "reg query HKLM\\SECURITY 2>&1" | Add-Content -Path $LogFile
-Add-Content -Path $LogFile -Value "SECURITY hive path queried: $SecurityPath"
-
-Add-Content -Path $LogFile -Value ""
-Add-Content -Path $LogFile -Value "Forensic hive validation completed"
-
-# Clean up audit log
-Remove-Item -Path $LogFile -Force -ErrorAction SilentlyContinue
-Write-Host "Hive integrity audit completed and cleaned up"
-
-# -- Cluster: singleton_acd1829a-c9ce-44fe-920a-9c836b34879c  (1 rule(s)) ---------------------
-# Intent:    Detect attackers attempting to extract credential hives (SAM, SYSTEM, SECURITY) 
-# Rules:     acd1829a-c9ce-44fe-920a-9c836b34879c
-# Archetype: Software installer/updater workflow
-
-$VssSnapshots = 1..3
-$BackupLogPath = Join-Path $env:TEMP 'system_backup_validation.log'
-$HivesToCheck = @('config\\sam', 'config\\system', 'config\\security')
-
-Add-Content -Path $BackupLogPath -Value "System State Backup Validation Tool"
-Add-Content -Path $BackupLogPath -Value "Backup Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Add-Content -Path $BackupLogPath -Value "Checking Volume Shadow Copy snapshots for system hive accessibility..."
-Add-Content -Path $BackupLogPath -Value ""
-
-foreach ($SnapshotId in $VssSnapshots) {
-    $SnapshotPath = "\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy$SnapshotId\Windows\System32"
-    Add-Content -Path $BackupLogPath -Value "Validating snapshot: HarddiskVolumeShadowCopy$SnapshotId"
-
-    foreach ($Hive in $HivesToCheck) {
-        $HivePath = Join-Path $SnapshotPath $Hive
-        Add-Content -Path $BackupLogPath -Value "  Checking hive accessibility: $Hive from harddiskvolumeshadowcopy$SnapshotId"
-
-        # Simulate tool checking if hive file is readable from VSS
-        if ($Hive -like '*sam*') {
-            cmd /c "dir \"$SnapshotPath\config\sam\" 2>&1" | Add-Content -Path $BackupLogPath
-        }
-        if ($Hive -like '*system*') {
-            cmd /c "dir \"$SnapshotPath\config\system\" 2>&1" | Add-Content -Path $BackupLogPath
-        }
-        if ($Hive -like '*security*') {
-            cmd /c "dir \"$SnapshotPath\config\security\" 2>&1" | Add-Content -Path $BackupLogPath
-        }
-    }
-    Add-Content -Path $BackupLogPath -Value ""
+if (-not (Test-Path $VssAdminPath)) {
+    Write-Host 'VSS Admin not available on this system'
+    exit 0
 }
 
-Add-Content -Path $BackupLogPath -Value "Backup validation completed successfully"
+# Query available shadow copies (common DR validation task)
+$shadowCopies = & vssadmin list shadows 2>&1
 
-# Clean up validation log
-Remove-Item -Path $BackupLogPath -Force -ErrorAction SilentlyContinue
-Write-Host "System backup validation check completed"
+if ($shadowCopies -match 'Shadow Copy ID') {
+    # Extract the first shadow copy from results for analysis
+    $shadowId = ($shadowCopies | Where-Object { $_ -match 'Shadow Copy ID' } | Select-Object -First 1) -replace '.*\{(.+?)\}.*', '{$1}'
+
+    if ($shadowId -match '^\{[a-f0-9\-]+\}$') {
+        # Create temporary mount point for validation
+        $mountPath = Join-Path $env:TEMP ('vss_validate_{0}' -f [System.Guid]::NewGuid().ToString('n').Substring(0,8))
+
+        # Mount shadow copy for disaster recovery file verification
+        # This is standard practice to verify backup contents before recovery
+        $mountCmd = "cmd /c mklink /d `"$mountPath`" `"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\System32\config\`" 2>nul"
+        Invoke-Expression $mountCmd | Out-Null
+
+        Start-Sleep -Milliseconds 500
+
+        # Verify critical system files are present in shadow copy (legitimate validation)
+        if (Test-Path $mountPath) {
+            # Check for SAM file presence in shadow copy
+            if (Test-Path (Join-Path $mountPath 'sam')) {
+                Write-Host 'SAM hive present in shadow copy backup'
+            }
+
+            # Verify SYSTEM hive is in backup
+            if (Test-Path (Join-Path $mountPath 'system')) {
+                Write-Host 'SYSTEM hive present in shadow copy backup'
+            }
+
+            # Verify SECURITY hive is in backup
+            if (Test-Path (Join-Path $mountPath 'security')) {
+                Write-Host 'SECURITY hive present in shadow copy backup'
+            }
+
+            # Clean up mount point
+            cmd /c rmdir /s /q "$mountPath" 2>nul
+            Start-Sleep -Milliseconds 200
+        }
+    }
+}
+
+Write-Host 'VSS backup validation complete'
+
+# SKIPPED variant 'Software installer/updater workflow': blocked pattern: cmd batch syntax ('if exist ')
 
 
 # ===========================================================================

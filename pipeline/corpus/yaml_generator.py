@@ -15,7 +15,6 @@ real .ps1 file.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -29,6 +28,54 @@ _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true", "yes")
 
 _LLM_MODEL = "claude-haiku-4-5-20251001"
 _MAX_TOKENS = 4096
+
+# Structured output schema — replaces free-text JSON + find/rfind extraction.
+# The API enforces this structurally as it generates, so a successfully
+# completed call can never produce malformed/unescaped JSON. Does not
+# protect against truncation if generation hits _MAX_TOKENS mid-call —
+# that's handled as an explicit stop_reason check in _call_llm(), not by
+# the schema itself.
+_CLUSTER_INTENT_TOOL = {
+    "name": "report_cluster_intent",
+    "description": (
+        "Report feasibility and PowerShell corpus stress-test variants "
+        "for this rule cluster."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "feasible": {"type": "boolean"},
+            "infeasible_reason": {"type": "string"},
+            "behavioral_intent": {"type": "string"},
+            "sub_patterns": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "variants": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "archetype": {"type": "string"},
+                        "description": {"type": "string"},
+                        "shell": {"type": "string"},
+                        "script": {"type": "string"},
+                        "expected_eids": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                        },
+                        "covers_sub_patterns": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["archetype", "script"],
+                },
+            },
+        },
+        "required": ["feasible"],
+    },
+}
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +268,7 @@ def _validate_script(script: str, shell: str) -> tuple[bool, str]:
         ("if exist ",                     "cmd batch syntax"),
         ("goto ",                         "cmd batch syntax"),
         ("echo off",                      "cmd batch syntax"),
-        ("setlocal enabledelayedexpansion","cmd batch syntax - use PS instead"),
+        ("setlocal enabledelayedexpansion", "cmd batch syntax - use PS instead"),
     ]
 
     for pattern, reason in _blocklist:
@@ -255,24 +302,30 @@ def _call_llm(
             max_tokens=_MAX_TOKENS,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
+            tools=[_CLUSTER_INTENT_TOOL],
+            tool_choice={"type": "tool", "name": "report_cluster_intent"},
         )
 
-        text_blocks = [b for b in response.content if hasattr(b, "text")]
-        if not text_blocks:
-            raise ValueError("No text block in LLM response")
-        raw_text = text_blocks[0].text.strip()
+        if response.stop_reason == "max_tokens":
+            # Schema enforcement can't recover content that was never
+            # generated. Explicit, labeled failure
+            if _DEBUG:
+                print(
+                    f"[corpus/yaml_generator] {cluster.cluster_id}: "
+                    f"truncated — response hit max_tokens ({_MAX_TOKENS})"
+                )
+            return _failed_intent(
+                cluster,
+                f"LLM response truncated at max_tokens ({_MAX_TOKENS})",
+            )
 
-        start = raw_text.find("{")
-        end = raw_text.rfind("}")
-        if start == -1 or end == -1:
-            raise ValueError("No JSON object in LLM response")
-        parsed = json.loads(raw_text[start:end + 1])
+        tool_use_blocks = [
+            b for b in response.content if b.type == "tool_use"]
+        if not tool_use_blocks:
+            raise ValueError("No tool_use block in LLM response")
 
-    except json.JSONDecodeError as e:
-        if _DEBUG:
-            print(
-                f"[corpus/yaml_generator] JSON error {cluster.cluster_id}: {e}")
-        return _failed_intent(cluster, f"JSON parse error: {e}")
+        parsed = tool_use_blocks[0].input
+
     except Exception as e:
         if _DEBUG:
             print(

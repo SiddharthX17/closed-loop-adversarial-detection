@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 2
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,66 +10,109 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_f4f5f1f2-c7c7-4290-850a-54464de8bade  (1 rule(s)) ---------------------
-# Intent:    Credential Access via VSS Shadow Copy SAM Hive Extraction - detecting attempts t
-# Rules:     f4f5f1f2-c7c7-4290-850a-54464de8bade
+# -- Cluster: singleton_f9b133df-d434-4b17-946e-d95458dcf87c  (1 rule(s)) ---------------------
+# Intent:    Detecting attempts to access Windows credential hive files (SAM, SYSTEM, SECURIT
+# Rules:     f9b133df-d434-4b17-946e-d95458dcf87c
 # Archetype: IT admin workflow
 
-# Legitimate VSS snapshot inventory and registry file validation for DR planning
-# This is standard pre-recovery verification performed by IT administrators
-
-$VssAdminPath = 'C:\Windows\System32\vssadmin.exe'
-
-if (-not (Test-Path $VssAdminPath)) {
-    Write-Host 'VSS Admin not available on this system'
-    exit 0
+$vssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
+$backupDir = Join-Path $env:TEMP 'registry_backup_2024'
+if (-not (Test-Path $backupDir)) {
+    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 }
 
-# Query available shadow copies (common DR validation task)
-$shadowCopies = & vssadmin list shadows 2>&1
+# Simulate backup utility scanning VSS snapshots for registry files
+$registryHives = @('config\sam', 'config\system', 'config\security')
+foreach ($hive in $registryHives) {
+    $vssHivePath = Join-Path $vssPath $hive
+    $backupPath = Join-Path $backupDir ($hive.Replace('\\', '_'))
 
-if ($shadowCopies -match 'Shadow Copy ID') {
-    # Extract the first shadow copy from results for analysis
-    $shadowId = ($shadowCopies | Where-Object { $_ -match 'Shadow Copy ID' } | Select-Object -First 1) -replace '.*\{(.+?)\}.*', '{$1}'
-
-    if ($shadowId -match '^\{[a-f0-9\-]+\}$') {
-        # Create temporary mount point for validation
-        $mountPath = Join-Path $env:TEMP ('vss_validate_{0}' -f [System.Guid]::NewGuid().ToString('n').Substring(0,8))
-
-        # Mount shadow copy for disaster recovery file verification
-        # This is standard practice to verify backup contents before recovery
-        $mountCmd = "cmd /c mklink /d `"$mountPath`" `"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\System32\config\`" 2>nul"
-        Invoke-Expression $mountCmd | Out-Null
-
-        Start-Sleep -Milliseconds 500
-
-        # Verify critical system files are present in shadow copy (legitimate validation)
-        if (Test-Path $mountPath) {
-            # Check for SAM file presence in shadow copy
-            if (Test-Path (Join-Path $mountPath 'sam')) {
-                Write-Host 'SAM hive present in shadow copy backup'
-            }
-
-            # Verify SYSTEM hive is in backup
-            if (Test-Path (Join-Path $mountPath 'system')) {
-                Write-Host 'SYSTEM hive present in shadow copy backup'
-            }
-
-            # Verify SECURITY hive is in backup
-            if (Test-Path (Join-Path $mountPath 'security')) {
-                Write-Host 'SECURITY hive present in shadow copy backup'
-            }
-
-            # Clean up mount point
-            cmd /c rmdir /s /q "$mountPath" 2>nul
-            Start-Sleep -Milliseconds 200
-        }
-    }
+    # Use robocopy which is a standard Windows backup utility
+    # This command would legitimately scan VSS paths during backup operations
+    $cmd = "robocopy.exe $vssPath $backupDir /L /S 2>&1"
+    $output = cmd /c $cmd
 }
 
-Write-Host 'VSS backup validation complete'
+# Also simulate using reg.exe query against VSS paths (common in enterprise backup tools)
+Write-Host "Scanning registry hives via VSS for backup purposes"
+$regCommand = "reg.exe query HKLM\\SYSTEM\\CurrentControlSet 2>&1"
+cmd /c $regCommand | Out-Null
 
-# SKIPPED variant 'Software installer/updater workflow': blocked pattern: cmd batch syntax ('if exist ')
+# Clean up
+if (Test-Path $backupDir) {
+    Remove-Item -Path $backupDir -Recurse -Force
+}
+
+# -- Cluster: singleton_f9b133df-d434-4b17-946e-d95458dcf87c  (1 rule(s)) ---------------------
+# Intent:    Detecting attempts to access Windows credential hive files (SAM, SYSTEM, SECURIT
+# Rules:     f9b133df-d434-4b17-946e-d95458dcf87c
+# Archetype: Software installer/updater workflow
+
+$backupAppPath = Join-Path $env:ProgramFiles 'BackupSoftware'
+$backupBinPath = Join-Path $backupAppPath 'backup_engine.exe'
+
+# Create a mock backup application directory structure
+if (-not (Test-Path $backupAppPath)) {
+    New-Item -ItemType Directory -Path $backupAppPath -Force | Out-Null
+}
+
+# Create a benign executable placeholder
+@'
+echo Backup Engine v2.1.5
+exit /b 0
+'@ | Set-Content -Path (Join-Path $backupAppPath 'backup_engine.bat')
+
+# Simulate backup software accessing credential hives through VSS
+# Real backup solutions enumerate VSS snapshots and attempt to read registry hives
+$vssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
+$hives = @('config\sam', 'config\system', 'config\security')
+
+foreach ($hive in $hives) {
+    $fullPath = Join-Path $vssPath $hive
+    # Simulate the backup software command-line invocation
+    # This mimics real backup tools that reference VSS paths in their process execution
+    $backupCmd = "cmd /c echo Backing up registry hive: $fullPath"
+    Invoke-Expression $backupCmd 2>&1 | Out-Null
+}
+
+# Clean up
+if (Test-Path $backupAppPath) {
+    Remove-Item -Path $backupAppPath -Recurse -Force
+}
+
+# -- Cluster: singleton_f9b133df-d434-4b17-946e-d95458dcf87c  (1 rule(s)) ---------------------
+# Intent:    Detecting attempts to access Windows credential hive files (SAM, SYSTEM, SECURIT
+# Rules:     f9b133df-d434-4b17-946e-d95458dcf87c
+# Archetype: User-driven workflow
+
+$recoveryScriptPath = Join-Path $env:TEMP 'system_recovery_2024.ps1'
+$recoveryLogPath = Join-Path $env:TEMP 'recovery_log.txt'
+
+# Create a legitimate recovery script that accesses VSS paths
+$recoveryScript = @'
+# System Recovery Script - Backing up critical system state
+$vssPath = '\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1'
+$registryHives = @('config\\sam', 'config\\system', 'config\\security')
+
+foreach ($hive in $registryHives) {
+    $fullPath = Join-Path $vssPath $hive
+    # Log hive paths for backup manifest
+    Add-Content -Path '"$env:TEMP\\recovery_log.txt"' -Value "Processing: $fullPath"
+}
+'@
+
+Set-Content -Path $recoveryScriptPath -Value $recoveryScript
+
+# Execute the recovery script (simulating user-initiated system backup)
+& powershell.exe -ExecutionPolicy Bypass -File $recoveryScriptPath 2>&1 | Out-Null
+
+# Clean up
+if (Test-Path $recoveryScriptPath) {
+    Remove-Item -Path $recoveryScriptPath -Force
+}
+if (Test-Path $recoveryLogPath) {
+    Remove-Item -Path $recoveryLogPath -Force
+}
 
 
 # ===========================================================================

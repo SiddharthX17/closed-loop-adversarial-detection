@@ -40,9 +40,18 @@ def _git_blob_sha(content: bytes) -> str:
     Git's own blob hashing scheme — sha1("blob {len}\\0{content}").
     Lets a local file be compared directly against GitHub's reported
     .sha without any extra API call.
+
+    Normalises CRLF -> LF before hashing. Rule files are written by
+    pr_creator.py via the GitHub API directly (plain Python strings,
+    LF only) — but a local checkout on Windows with core.autocrlf
+    enabled converts them to CRLF on disk during any git operation
+    (clone, checkout, merge). Without normalising, every such file
+    permanently mismatches the remote sha and gets rewritten on every
+    run regardless of whether its content actually changed.
     """
-    header = f"blob {len(content)}\0".encode()
-    return hashlib.sha1(header + content).hexdigest()  # noqa: S324 — not crypto, just content identity
+    normalised = content.replace(b"\r\n", b"\n")
+    header = f"blob {len(normalised)}\0".encode()
+    return hashlib.sha1(header + normalised).hexdigest()  # noqa: S324 — not crypto, just content identity
 
 
 def sync_rules_from_github(

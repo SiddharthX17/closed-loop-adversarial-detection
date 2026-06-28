@@ -36,10 +36,8 @@ COPY data/mitre/ data/mitre/
 
 # Atomic Red Team — ONLY the 5 in-scope technique YAML files, not the full
 # repo. We never execute these tests, just feed the YAML procedure text to
-# the LLM, so no scripts/payloads/.git history are needed. Cuts this from
-# ~500MB+ (full clone) down to a few hundred KB.
-# VERIFY: filenames match your local clone exactly — standard ART convention
-# is atomics/{TID}/{TID}.yaml, but confirm before building.
+# the LLM, so no scripts/payloads/.git history are needed. Filenames
+# verified against actual local clone via successful build.
 COPY data/atomic-red-team/atomics/T1059.001/T1059.001.yaml data/atomic-red-team/atomics/T1059.001/T1059.001.yaml
 COPY data/atomic-red-team/atomics/T1053.005/T1053.005.yaml data/atomic-red-team/atomics/T1053.005/T1053.005.yaml
 COPY data/atomic-red-team/atomics/T1036.005/T1036.005.yaml data/atomic-red-team/atomics/T1036.005/T1036.005.yaml
@@ -55,8 +53,7 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD uvicorn pipeline.api.app:app \
-    --host 0.0.0.0 \
-    --port ${PORT} \
-    --workers 1 \
-    --timeout-keep-alive 300
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ 
+ENTRYPOINT ["/entrypoint.sh"]

@@ -48,6 +48,25 @@ resource "google_secret_manager_secret" "github_token" {
   }
 }
 
+# Two app-level auth secrets — NOT GCP IAM. Cloud Run's own IAM invoker
+# check (the public_access binding below) is enforced at the whole-service
+# level and can't be scoped per-path, so the /run vs /health+/results
+# distinction is implemented in app.py instead, via these two values.
+resource "google_secret_manager_secret" "pipeline_run_secret" {
+  secret_id = "PIPELINE_RUN_SECRET"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "pipeline_viewer_secret" {
+  secret_id = "PIPELINE_VIEWER_SECRET"
+
+  replication {
+    auto {}
+  }
+}
 # Initial secret VERSIONS are deliberately NOT created here. Populating them
 # via Terraform would write the plaintext value into terraform.tfstate
 # permanently — sensitive=true only hides it from CLI/log output, not from
@@ -67,6 +86,18 @@ resource "google_secret_manager_secret_iam_member" "anthropic_key_access" {
 
 resource "google_secret_manager_secret_iam_member" "github_token_access" {
   secret_id = google_secret_manager_secret.github_token.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.pipeline_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "run_secret_access" {
+  secret_id = google_secret_manager_secret.pipeline_run_secret.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.pipeline_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "viewer_secret_access" {
+  secret_id = google_secret_manager_secret.pipeline_viewer_secret.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.pipeline_sa.email}"
 }
@@ -123,6 +154,26 @@ resource "google_cloud_run_v2_service" "pipeline_service" {
           }
         }
       }
+
+      env {
+        name = "PIPELINE_RUN_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.pipeline_run_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "PIPELINE_VIEWER_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.pipeline_viewer_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
     }
 
     # Pipeline runs can take a while (LLM calls + defender retries).
@@ -134,14 +185,17 @@ resource "google_cloud_run_v2_service" "pipeline_service" {
   depends_on = [
     google_secret_manager_secret_iam_member.anthropic_key_access,
     google_secret_manager_secret_iam_member.github_token_access,
+    google_secret_manager_secret_iam_member.run_secret_access,
+    google_secret_manager_secret_iam_member.viewer_secret_access,
   ]
 }
 
 # -----------------------------------------------------------------------------
-# Allow unauthenticated access so /health and /run are reachable without
-# needing a GCP identity token. Fine for a portfolio demo; if you want this
-# locked down later, remove this and call the service with an identity token
-# instead (gcloud auth print-identity-token).
+# Allows the service to be reached without a GCP identity token — actual
+# access control now happens at the app layer via the two shared secrets
+# above, not GCP IAM. Removing this binding would require a Google identity
+# token on EVERY request (no path-level carve-out is possible at this layer),
+# which would also lock out /health for anyone without GCP credentials.
 # -----------------------------------------------------------------------------
 resource "google_cloud_run_v2_service_iam_member" "public_access" {
   name     = google_cloud_run_v2_service.pipeline_service.name

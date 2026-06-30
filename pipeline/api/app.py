@@ -8,7 +8,9 @@ Endpoints:
     GET  /health            — service status + last run summary
 """
 
+from pipeline.orchestrator import Orchestrator
 import json
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -16,13 +18,36 @@ from pathlib import Path
 from threading import Lock
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# ADD right after that line:
+
+# ---------------------------------------------------------------------------
+# Auth — two separate shared secrets, different trust tiers.
+# PIPELINE_RUN_SECRET gates the cost-incurring action (/run) specifically.
+# PIPELINE_VIEWER_SECRET gates read-only endpoints (/health, /results) —
+# lower stakes, safe to share more loosely.
+# ---------------------------------------------------------------------------
+
+
+def require_run_secret(x_pipeline_run_secret: str = Header(default="")) -> None:
+    expected = os.getenv("PIPELINE_RUN_SECRET", "")
+    if not expected or x_pipeline_run_secret != expected:
+        raise HTTPException(
+            status_code=401, detail="Invalid or missing run secret")
+
+
+def require_viewer_secret(x_pipeline_viewer_secret: str = Header(default="")) -> None:
+    expected = os.getenv("PIPELINE_VIEWER_SECRET", "")
+    if not expected or x_pipeline_viewer_secret != expected:
+        raise HTTPException(
+            status_code=401, detail="Invalid or missing viewer secret")
+
 
 # NOTE: Orchestrator constructor signature must match after the orchestrator refactor.
 # Expected: Orchestrator(technique_ids: list[str] | None, max_iterations: int)
-from pipeline.orchestrator import Orchestrator
 
 app = FastAPI(
     title="Closed-Loop Adversarial Detection Pipeline",
@@ -59,7 +84,7 @@ GENERATED_RULES_DIR = Path("rules/generated")
 class RunRequest(BaseModel):
     # None = use config/techniques.yaml
     technique_ids: Optional[list[str]] = None
-    max_iterations: int = 1
+    max_iterations: int = Field(default=1, ge=1, le=3)
 
 
 class RunResponse(BaseModel):
@@ -132,7 +157,7 @@ def _execute_pipeline(
 # ---------------------------------------------------------------------------
 
 @app.post("/run", response_model=RunResponse, status_code=202)
-def trigger_run(request: RunRequest):
+def get_results(run_id: str, _: None = Depends(require_viewer_secret)):
     """
     Trigger a full pipeline execution.
 
@@ -186,7 +211,7 @@ def get_results(run_id: str):
 
 
 @app.get("/health")
-def health():
+def health(_: None = Depends(require_viewer_secret)):
     """
     Service status, active run, last completed run summary, generated rule count.
     """

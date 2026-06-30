@@ -118,6 +118,20 @@ def _branch_name(technique_id: str) -> str:
     return f"rule/{technique_id}"
 
 
+def _fixture_path(filename: str) -> str:
+    """
+    Regression fixture path for a rule — named after the rule's own
+    filename stem, so the mapping between rules/ and the fixture is a
+    direct lookup, no separate index needed.
+    """
+    return f"tests/fixtures/regression/{Path(filename).stem}/attack_sample.jsonl"
+
+
+def _format_jsonl(events: list[dict]) -> str:
+    """One JSON object per line — matches corpus/attack/*.jsonl convention."""
+    return "\n".join(json.dumps(event) for event in events)
+
+
 # ---------------------------------------------------------------------------
 # PR body helpers
 # ---------------------------------------------------------------------------
@@ -283,6 +297,7 @@ class PRCreator:
         missed_events: list[dict],
         validation_result,
         fired_rules: list | None = None,
+        attack_sample: list[dict] | None = None,
     ) -> PRResult:
         """
         Create or update a GitHub PR for a validated Sigma rule.
@@ -294,6 +309,11 @@ class PRCreator:
             missed_events:     Events not caught — attached as evidence
             validation_result: ValidationResult from validation_pipeline
             fired_rules:       RuleBreakdown list from prior DetectionResult (optional)
+            attack_sample:     Events the rule passed its attack_gate against —
+                                persisted as a frozen regression fixture
+                                (tests/fixtures/regression/{filename_stem}/).
+                                Optional — if omitted, no fixture is written,
+                                everything else behaves exactly as before.
 
         Returns:
             PRResult with pr_url, pr_number, branch_name, rule_filename
@@ -487,6 +507,40 @@ class PRCreator:
                         print(f"[pr_creator] Created {rule_path}")
                 else:
                     raise
+
+            # ── Commit regression fixture (additive — only if provided) ──
+            # Mirrors the rule commit pattern exactly. Skipped entirely when
+            # content_unchanged, same reasoning as the rule itself: unchanged
+            # rule content means the evidence that validated it hasn't
+            # changed either.
+            if attack_sample:
+                fixture_path = _fixture_path(filename)
+                fixture_content = _format_jsonl(attack_sample)
+                try:
+                    existing_fixture = self._repo.get_contents(
+                        fixture_path, ref=branch)
+                    _retry(lambda: self._repo.update_file(
+                        path=fixture_path,
+                        message=f"test: {technique_id} regression fixture — automated",
+                        content=fixture_content,
+                        sha=existing_fixture.sha,
+                        branch=branch,
+                    ))
+                    if DEBUG:
+                        print(f"[pr_creator] Updated fixture {fixture_path}")
+                except GithubException as e:
+                    if e.status == 404:
+                        _retry(lambda: self._repo.create_file(
+                            path=fixture_path,
+                            message=f"test: {technique_id} regression fixture — automated",
+                            content=fixture_content,
+                            branch=branch,
+                        ))
+                        if DEBUG:
+                            print(
+                                f"[pr_creator] Created fixture {fixture_path}")
+                    else:
+                        raise
 
         # ── PR: create or update ──────────────────────────────────────────
         if existing_pr:

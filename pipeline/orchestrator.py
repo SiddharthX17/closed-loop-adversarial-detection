@@ -626,6 +626,15 @@ class Orchestrator:
                     metadata = self._stix.lookup(technique_id)
                     technique_name = metadata.technique_name if metadata else technique_id
 
+                    # attack_sample is list[LogEvent] (Pydantic objects) on
+                    # GapContext — convert to dicts for fixture persistence,
+                    # same conversion missed_events already goes through.
+                    attack_sample_dicts = [
+                        e.model_dump(exclude_none=True)
+                        if hasattr(e, "model_dump") else dict(e)
+                        for e in gap_context.attack_sample
+                    ]
+
                     pr_result = self._pr_creator.create_pr(
                         technique_id=technique_id,
                         technique_name=technique_name,
@@ -633,6 +642,7 @@ class Orchestrator:
                         missed_events=gap_context.missed_events,
                         validation_result=validation_result,
                         fired_rules=dr.fired_rules if dr else [],
+                        attack_sample=attack_sample_dicts,
                     )
                     summary.prs_opened.append(pr_result.pr_url)
                     print(f"[orchestrator] PR opened: {pr_result.pr_url}")

@@ -1,0 +1,60 @@
+name: Scheduled Pipeline Run
+
+# Manual trigger is live now. The cron schedule is intentionally commented
+# out — no automatic runs until explicitly enabled. To turn it on later,
+# uncomment the schedule block below; the cron string is the only thing
+# that needs to change to adjust frequency.
+on:
+  workflow_dispatch:
+    inputs:
+      technique_ids:
+        description: 'Comma-separated technique IDs (blank = use config/techniques.yaml default)'
+        required: false
+        type: string
+      max_iterations:
+        description: 'Max iterations (1-3)'
+        required: false
+        default: '1'
+        type: string
+  # schedule:
+  #   - cron: '0 0 */14 * *'  # every 2 weeks at midnight UTC
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    # Poll timeout — pipeline runs can take a while with defender retries.
+    # 60 min starting point per Sid's call; raise if technique count grows.
+    timeout-minutes: 60
+    steps:
+      - name: Trigger pipeline run
+        id: trigger
+        env:
+          SERVICE_URL: ${{ vars.SERVICE_URL }}
+          RUN_SECRET: ${{ secrets.PIPELINE_RUN_SECRET }}
+          TECHNIQUE_IDS: ${{ inputs.technique_ids }}
+          MAX_ITERATIONS: ${{ inputs.max_iterations || '1' }}
+        run: python scripts/trigger_pipeline_run.py trigger
+
+      - name: Poll for completion
+        id: poll
+        env:
+          SERVICE_URL: ${{ vars.SERVICE_URL }}
+          VIEWER_SECRET: ${{ secrets.PIPELINE_VIEWER_SECRET }}
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
+        run: python scripts/trigger_pipeline_run.py poll
+
+      - name: Write run summary
+        if: always()
+        env:
+          SUMMARY_JSON: ${{ steps.poll.outputs.result_json }}
+        run: python scripts/trigger_pipeline_run.py summarize >> "$GITHUB_STEP_SUMMARY"
+
+      # Explicit, separate failure step — matches the same pattern as
+      # regression.yml: summary always gets written, failure is decided
+      # afterward based on the run's actual status, not swallowed by
+      # continue-on-error higher up.
+      - name: Fail loudly if the run did not complete successfully
+        if: steps.poll.outputs.status != 'completed'
+        run: |
+          echo "Pipeline run did not complete successfully (status: ${{ steps.poll.outputs.status }})"
+          exit 1

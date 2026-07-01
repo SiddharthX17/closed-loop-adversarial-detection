@@ -43,6 +43,7 @@ COPY data/atomic-red-team/atomics/T1053.005/T1053.005.yaml data/atomic-red-team/
 COPY data/atomic-red-team/atomics/T1036.005/T1036.005.yaml data/atomic-red-team/atomics/T1036.005/T1036.005.yaml
 COPY data/atomic-red-team/atomics/T1003.001/T1003.001.yaml data/atomic-red-team/atomics/T1003.001/T1003.001.yaml
 COPY data/atomic-red-team/atomics/T1567.003/T1567.003.yaml data/atomic-red-team/atomics/T1567.003/T1567.003.yaml
+COPY data/atomic-red-team/atomics/T1003.002/T1003.002.yaml data/atomic-red-team/atomics/T1003.002/T1003.002.yaml
 
 # ---------------------------------------------------------------------------
 # Runtime

@@ -97,7 +97,9 @@ def compute_results() -> tuple[dict[str, bool], dict[str, bool]]:
     # rules_dir is required by the constructor but irrelevant to this call
     # path — run_single_rule takes rule_yaml directly and events overrides
     # whatever self.events was set to. See VERIFY note below.
-    engine = DetectionEngine(rules_dir=str(RULES_DIR), events=[])
+    # Instantiate once — run_single_rule accepts events as a parameter
+    # so it never uses self.events, but the constructor still requires it.
+    engine = DetectionEngine(rules_dir=RULES_DIR, events=[])
 
     rule_fired: dict[str, bool] = {}
     technique_coverage: dict[str, bool] = {}
@@ -112,10 +114,11 @@ def compute_results() -> tuple[dict[str, bool], dict[str, bool]]:
             continue
 
         events = load_jsonl(fixture_path)
-        # VERIFY: confirm run_single_rule's return shape and that
-        # `match_count` is the right attribute.
+        # run_single_rule returns RuleMatchResult — .fired is the bool,
+        # .matched_events is the list. No .match_count on RuleMatchResult
+        # (that's on RuleBreakdown, which computes len(matched_events)).
         result = engine.run_single_rule(rule_path.read_text(), events=events)
-        fired = getattr(result, "match_count", 0) > 0
+        fired = result.fired
 
         rule_fired[rule_path.name] = fired
         technique_coverage[technique_id] = technique_coverage.get(
@@ -127,10 +130,10 @@ def compute_results() -> tuple[dict[str, bool], dict[str, bool]]:
 def compute_fp_rate(benign_events: list[dict]) -> float:
     if not benign_events:
         return 0.0
-    engine = DetectionEngine(rules_dir=str(RULES_DIR), events=benign_events)
+    engine = DetectionEngine(rules_dir=RULES_DIR, events=benign_events)
     results = engine.run()
-    # VERIFY: same attribute-name caveat as compute_coverage above.
-    fp_count = sum(getattr(r, "match_count", 0) for r in results)
+    # RuleMatchResult.matched_events is the list — sum its lengths for total FP count.
+    fp_count = sum(len(r.matched_events) for r in results)
     return fp_count / len(benign_events)
 
 

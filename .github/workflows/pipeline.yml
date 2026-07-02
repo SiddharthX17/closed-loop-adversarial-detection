@@ -28,7 +28,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-    
+
+      - name: Verify secrets exist
+        env:
+          RUN_SECRET: ${{ secrets.PIPELINE_RUN_SECRET }}
+          VIEWER_SECRET: ${{ secrets.PIPELINE_VIEWER_SECRET }}
+        run: |
+          echo "RUN_SECRET length: ${#RUN_SECRET}"
+          echo "VIEWER_SECRET length: ${#VIEWER_SECRET}"
+            
       - name: Trigger pipeline run
         id: trigger
         env:

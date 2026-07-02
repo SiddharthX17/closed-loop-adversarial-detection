@@ -136,6 +136,11 @@ resource "google_cloud_run_v2_service" "pipeline_service" {
       }
 
       env {
+        name  = "GITHUB_REPO"
+        value = "SiddharthX17/closed-loop-adversarial-detection"
+      }
+
+      env {
         name = "ANTHROPIC_API_KEY"
         value_source {
           secret_key_ref {

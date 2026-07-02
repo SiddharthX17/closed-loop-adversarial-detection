@@ -1,4 +1,4 @@
-﻿{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-06-07T12:42:47.1911992+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-06-07 12:42:47.190"}
+{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-06-07T12:42:47.1911992+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-06-07 12:42:47.190"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-06-07T12:42:47.1579999+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-06-07 12:42:47.155"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-06-07T12:42:47.1522153+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-06-07 12:42:47.151"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-06-07T12:42:47.1413984+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-06-07 12:42:47.139"}

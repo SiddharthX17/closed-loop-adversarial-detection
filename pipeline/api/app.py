@@ -34,6 +34,13 @@ from pydantic import BaseModel, Field
 
 def require_run_secret(x_pipeline_run_secret: str = Header(default="")) -> None:
     expected = os.getenv("PIPELINE_RUN_SECRET", "")
+
+    print(
+        f"[AUTH] expected_len={len(expected)} "
+        f"received_len={len(x_pipeline_run_secret)} "
+        f"match={expected == x_pipeline_run_secret}"
+    )
+    
     if not expected or x_pipeline_run_secret != expected:
         raise HTTPException(
             status_code=401, detail="Invalid or missing run secret")

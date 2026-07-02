@@ -26,6 +26,9 @@ jobs:
     # 60 min starting point per Sid's call; raise if technique count grows.
     timeout-minutes: 60
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
       - name: Trigger pipeline run
         id: trigger
         env:

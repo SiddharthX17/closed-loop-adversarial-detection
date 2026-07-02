@@ -133,7 +133,6 @@ def main() -> None:
             technique_ids=[technique_id],
             evasion_hints=None,
             evasion_hints_v2=None,
-            # emulation_history={},
             output_dir=None,
         )
         raw_events = log_stream.get(technique_id, [])

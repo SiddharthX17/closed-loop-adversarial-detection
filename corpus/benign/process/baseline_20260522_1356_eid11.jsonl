@@ -1,4 +1,4 @@
-﻿{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-05-22T13:56:18.9255180+00:00","Image":"C:\\actions-runner\\cached\\2.334.0\\bin\\Runner.Worker.exe","TargetFilename":"2026-05-22 13:56:18.924"}
+{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-05-22T13:56:18.9255180+00:00","Image":"C:\\actions-runner\\cached\\2.334.0\\bin\\Runner.Worker.exe","TargetFilename":"2026-05-22 13:56:18.924"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-05-22T13:56:17.3172406+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-05-22 13:56:17.315"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-05-22T13:56:17.2414985+00:00","Image":"C:\\actions-runner\\cached\\2.334.0\\bin\\Runner.Worker.exe","TargetFilename":"2026-05-22 13:56:17.240"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-05-22T13:56:15.6124445+00:00","Image":"C:\\Windows\\system32\\svchost.exe","TargetFilename":"2026-05-22 13:56:15.611"}

@@ -1,3 +1,18 @@
-# Shell scripts must keep LF line endings — they execute inside the Linux
-# container via /bin/sh, and CRLF breaks shebang parsing at container startup.
-*.sh text eol=lf
+# TO:
+# Force LF line endings for ALL text files — this repo runs inside Linux
+# containers and Windows CRLF/BOM corruption has been a recurring issue.
+# This is the nuclear option: every text file gets LF on checkout, regardless
+# of core.autocrlf setting on the developer's machine.
+* text=auto eol=lf
+
+# Explicit overrides for key types — belt and suspenders
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.sh   text eol=lf
+*.tf   text eol=lf
+*.hcl  text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.jsonl text eol=lf

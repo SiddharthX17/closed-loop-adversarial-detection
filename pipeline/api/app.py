@@ -157,7 +157,7 @@ def _execute_pipeline(
 # ---------------------------------------------------------------------------
 
 @app.post("/run", response_model=RunResponse, status_code=202)
-def get_results(run_id: str, _: None = Depends(require_viewer_secret)):
+def trigger_run(request: RunRequest, _: None = Depends(require_run_secret)):
     """
     Trigger a full pipeline execution.
 
@@ -191,7 +191,7 @@ def get_results(run_id: str, _: None = Depends(require_viewer_secret)):
 
 
 @app.get("/results/{run_id}")
-def get_results(run_id: str):
+def get_results(run_id: str, _: None = Depends(require_viewer_secret)):
     """
     Returns the full result record for a run.
 

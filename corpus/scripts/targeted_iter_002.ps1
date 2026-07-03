@@ -10,118 +10,121 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_84c8e8c0-af53-4ec4-93e7-f6b67dd81222  (1 rule(s)) ---------------------
-# Intent:    Detect unauthorized use of script hosts (VBScript, PowerShell, CMD) to register 
-# Rules:     84c8e8c0-af53-4ec4-93e7-f6b67dd81222
+# -- Cluster: singleton_d9dc84e1-b34d-407a-8fb4-e5811294eec6  (1 rule(s)) ---------------------
+# Intent:    Detect disguised esentutl.exe execution (a legitimate database utility) that has
+# Rules:     d9dc84e1-b34d-407a-8fb4-e5811294eec6
 # Archetype: IT admin workflow
 
-$taskName = 'SystemHealthCheck_Daily'
-$taskPath = '\Microsoft\Windows\System32\'
-$scriptPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts_backup.ps1'
+$ErrorActionPreference = 'SilentlyContinue'
+$tempDbPath = Join-Path $env:TEMP 'ad_maint_backup'
+if (Test-Path $tempDbPath) { Remove-Item -Path $tempDbPath -Recurse -Force }
+New-Item -Path $tempDbPath -ItemType Directory -Force | Out-Null
 
-# Create a minimal placeholder script that would be invoked by the task
-if (-not (Test-Path $scriptPath)) {
-  New-Item -ItemType File -Path $scriptPath -Force | Out-Null
-  Add-Content -Path $scriptPath -Value '# Health check log entry' -Force
+$esentutlPath = 'C:\Windows\System32\esentutl.exe'
+
+if (Test-Path $esentutlPath) {
+  Write-Host 'Running database integrity check on maintenance copy...'
+  & $esentutlPath /g 'C:\Windows\System32\ntds.dit' /8 /v | Out-Null
+
+  Write-Host 'Performing recovery mode analysis...'
+  & $esentutlPath /r NTDS /d 'C:\Windows\System32' | Out-Null
+
+  Write-Host 'Exporting database statistics...'
+  & $esentutlPath /d 'C:\Windows\System32\ntds.dit' | Out-Null
 }
 
-try {
-  # Register task using COM Schedule.Service interface - standard admin method
-  $service = New-Object -ComObject 'Schedule.Service'
-  $service.Connect()
-  $rootFolder = $service.GetFolder('\Microsoft\Windows\System32')
-
-  $taskDef = $service.NewTask(0)
-  $taskDef.RegistrationInfo.Description = 'Daily system diagnostics and reporting'
-
-  $triggers = $taskDef.Triggers
-  $trigger = $triggers.Create(1)  # TASK_TRIGGER_DAILY
-  $trigger.StartBoundary = (Get-Date -Year 2024 -Month 1 -Day 1 -Hour 2 -Minute 0 -Second 0 -Millisecond 0).ToString('s')
-
-  $actions = $taskDef.Actions
-  $action = $actions.Create(0)  # TASK_ACTION_EXEC
-  $action.Path = 'powershell.exe'
-  $action.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$scriptPath`""
-
-  $taskDef.Principal.RunLevel = 1  # TASK_RUNLEVEL_HIGHEST
-
-  # This RegisterTask call is the detection signature - legitimate admin activity
-  $rootFolder.RegisterTaskDefinition($taskName, $taskDef, 6, $null, $null, 0) | Out-Null
-
-  Write-Host "Task $taskName registered successfully"
+if (Test-Path $tempDbPath) {
+  Remove-Item -Path $tempDbPath -Recurse -Force
 }
-catch {
-  Write-Host "Task registration encountered error (may already exist): $_"
-}
-finally {
-  # Cleanup
-  $service = New-Object -ComObject 'Schedule.Service'
-  $service.Connect()
-  try {
-    $rootFolder = $service.GetFolder('\Microsoft\Windows\System32')
-    $rootFolder.DeleteTask($taskName, 0)
-  }
-  catch { }
+Write-Host 'Database maintenance completed'
 
-  if (Test-Path $scriptPath) {
-    Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
-  }
-}
+# -- Cluster: singleton_d9dc84e1-b34d-407a-8fb4-e5811294eec6  (1 rule(s)) ---------------------
+# Intent:    Detect disguised esentutl.exe execution (a legitimate database utility) that has
+# Rules:     d9dc84e1-b34d-407a-8fb4-e5811294eec6
+# Archetype: Software installer/updater workflow
 
-# SKIPPED variant 'Software installer/updater workflow': blocked pattern: cmd batch syntax ('echo off')
+$ErrorActionPreference = 'SilentlyContinue'
+$auditLogPath = Join-Path $env:TEMP 'system_audit_log.txt'
 
-# -- Cluster: singleton_84c8e8c0-af53-4ec4-93e7-f6b67dd81222  (1 rule(s)) ---------------------
-# Intent:    Detect unauthorized use of script hosts (VBScript, PowerShell, CMD) to register 
-# Rules:     84c8e8c0-af53-4ec4-93e7-f6b67dd81222
-# Archetype: User-driven workflow
+Write-Host 'Beginning system tool inventory audit...'
 
-$taskName = 'LocalBackupRotation'
-$vbsPath = Join-Path $env:TEMP 'backup_config.vbs'
+$toolsToAudit = @(
+  'C:\Windows\System32\esentutl.exe',
+  'C:\Windows\System32\ntdsutil.exe',
+  'C:\Windows\System32\dsamain.exe',
+  'C:\Windows\System32\csvde.exe'
+)
 
-# Create a VBScript that registers a scheduled task - simulates behavior of
-# enterprise backup/monitoring tools that are distributed to users
-$vbsContent = @'
-Set objScheduler = CreateObject("Schedule.Service")
-objScheduler.Connect()
-Set objRootFolder = objScheduler.GetFolder("\")
-Set objTaskDef = objScheduler.NewTask(0)
+foreach ($tool in $toolsToAudit) {
+  if (Test-Path $tool) {
+    $fileInfo = Get-Item -Path $tool
+    Write-Host "Found: $($fileInfo.Name) at $tool"
 
-objTaskDef.RegistrationInfo.Description = "Weekly backup maintenance"
+    $versionInfo = (Get-Command $tool -ErrorAction SilentlyContinue).Version
+    if ($versionInfo) {
+      Write-Host "  Version: $versionInfo"
+    }
 
-Set objTriggers = objTaskDef.Triggers
-Set objTrigger = objTriggers.Create(1)
-objTrigger.StartBoundary = "2024-01-01T04:00:00"
+    $prodVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($tool).ProductVersion
+    Write-Host "  Product: $prodVersion"
 
-Set objActions = objTaskDef.Actions
-Set objAction = objActions.Create(0)
-objAction.Path = "cmd.exe"
-objAction.Arguments = "/c echo Backup rotation check"
-
-objRootFolder.RegisterTaskDefinition "LocalBackupRotation", objTaskDef, 6, Null, Null, 0
-WScript.Echo "Task registered"
-'@
-
-Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII -Force
-
-try {
-  # End-user runs a utility script that internally uses VBScript
-  # This is realistic for enterprise tools distributed via app stores
-  & cscript.exe $vbsPath 2>$null | Out-Null
-
-  Start-Sleep -Milliseconds 300
-  Write-Host "Backup task configured"
-}
-catch {
-  Write-Host "Configuration error: $_"
-}
-finally {
-  # Cleanup
-  cmd.exe /c "schtasks.exe /delete /tn $taskName /f" 2>$null
-
-  if (Test-Path $vbsPath) {
-    Remove-Item -Path $vbsPath -Force -ErrorAction SilentlyContinue
+    if ($tool -match 'esentutl') {
+      Write-Host 'Running diagnostic on esentutl...'
+      & $tool /? 2>&1 | Select-Object -First 3 | Out-Null
+    }
   }
 }
+
+if (Test-Path $auditLogPath) {
+  Remove-Item -Path $auditLogPath -Force
+}
+Write-Host 'Tool inventory audit completed'
+
+# -- Cluster: singleton_d9dc84e1-b34d-407a-8fb4-e5811294eec6  (1 rule(s)) ---------------------
+# Intent:    Detect disguised esentutl.exe execution (a legitimate database utility) that has
+# Rules:     d9dc84e1-b34d-407a-8fb4-e5811294eec6
+# Archetype: Document/file operation workflow
+
+$ErrorActionPreference = 'SilentlyContinue'
+$reportPath = Join-Path $env:TEMP 'db_compliance_report'
+if (Test-Path $reportPath) { Remove-Item -Path $reportPath -Recurse -Force }
+New-Item -Path $reportPath -ItemType Directory -Force | Out-Null
+
+$esentutlPath = 'C:\Windows\System32\esentutl.exe'
+$ntdsPath = 'C:\Windows\System32\ntds.dit'
+
+if (Test-Path $esentutlPath) {
+  Write-Host 'Extracting database metadata for compliance documentation...'
+
+  $metadataFile = Join-Path $reportPath 'ntds_metadata.txt'
+  & $esentutlPath /m $ntdsPath 2>&1 | Out-File -FilePath $metadataFile -Encoding UTF8
+
+  Write-Host 'Generating database statistics report...'
+  $statsFile = Join-Path $reportPath 'ntds_statistics.txt'
+  & $esentutlPath /d $ntdsPath 2>&1 | Out-File -FilePath $statsFile -Encoding UTF8
+
+  Write-Host 'Validating database integrity...'
+  $validationFile = Join-Path $reportPath 'integrity_check.txt'
+  & $esentutlPath /g $ntdsPath /8 /v 2>&1 | Out-File -FilePath $validationFile -Encoding UTF8
+
+  if ((Get-Item $metadataFile -ErrorAction SilentlyContinue).Length -gt 0) {
+    Write-Host "Metadata report generated: $(Get-Item $metadataFile).Length bytes"
+  }
+
+  Write-Host 'Archiving compliance documentation...'
+  $archivePath = Join-Path $env:TEMP 'compliance_archive.zip'
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::CreateFromDirectory($reportPath, $archivePath, $true)
+  Write-Host "Archive created: $archivePath"
+}
+
+if (Test-Path $reportPath) {
+  Remove-Item -Path $reportPath -Recurse -Force
+}
+if (Test-Path $archivePath) {
+  Remove-Item -Path $archivePath -Force
+}
+Write-Host 'Database documentation export completed'
 
 
 # ===========================================================================

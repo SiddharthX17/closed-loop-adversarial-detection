@@ -115,7 +115,7 @@ def compute_results() -> tuple[dict[str, bool], dict[str, bool]]:
         if technique_id is None:
             continue
 
-        events = load_jsonl(fixture_path)
+        events = [{k.lower(): v for k, v in e.items()} for e in load_jsonl(fixture_path)]
         # run_single_rule returns RuleMatchResult — .fired is the bool,
         # .matched_events is the list. No .match_count on RuleMatchResult
         # (that's on RuleBreakdown, which computes len(matched_events)).
@@ -132,9 +132,13 @@ def compute_results() -> tuple[dict[str, bool], dict[str, bool]]:
 def compute_fp_rate(benign_events: list[dict]) -> float:
     if not benign_events:
         return 0.0
-    engine = DetectionEngine(rules_dir=RULES_DIR, events=benign_events)
+    # Normalize all keys to lowercase before hitting the engine — benign corpus
+    # mixes Sysmon-native casing (User, Image) from GH Actions collection with
+    # LogEvent-normalized lowercase keys. SQLite sees user + User as duplicate
+    # column names and refuses to CREATE TABLE. Fix at source, not in engine.
+    normalized = [{k.lower(): v for k, v in e.items()} for e in benign_events]
+    engine = DetectionEngine(rules_dir=RULES_DIR, events=normalized)
     results = engine.run()
-    # RuleMatchResult.matched_events is the list — sum its lengths for total FP count.
     fp_count = sum(len(r.matched_events) for r in results)
     return fp_count / len(benign_events)
 

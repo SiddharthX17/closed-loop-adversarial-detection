@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,72 +10,101 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_86404854-1773-4a92-87b4-ac08c7a9c07d  (1 rule(s)) ---------------------
-# Intent:    Detects shell interpreters (cmd.exe, powershell.exe, etc.) initiating outbound H
-# Rules:     86404854-1773-4a92-87b4-ac08c7a9c07d
+# -- Cluster: singleton_82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0  (1 rule(s)) ---------------------
+# Intent:    Attackers accessing credential hives (SAM, SYSTEM, SECURITY, NTDS.dit) through V
+# Rules:     82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0
+# Archetype: IT admin workflow
+
+$vssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
+$registryFiles = @('config\sam', 'config\system', 'config\security')
+
+# Create a temporary directory for this backup verification task
+$tempBackupDir = Join-Path $env:TEMP "backup_verification_$(Get-Random)"
+[void](New-Item -ItemType Directory -Path $tempBackupDir -ErrorAction SilentlyContinue)
+
+try {
+    # Verify backup accessibility by checking file existence through VSS path
+    # This is a legitimate disaster recovery procedure
+    foreach ($file in $registryFiles) {
+        $vssFullPath = Join-Path $vssPath $file
+        # Attempt to read file metadata without extracting credentials
+        $testPath = Test-Path -LiteralPath $vssFullPath -ErrorAction SilentlyContinue
+
+        # Use certutil to validate backup integrity (legitimate admin tool)
+        if ($testPath) {
+            Write-Output "Backup file accessible: $vssFullPath"
+        }
+    }
+
+    # Also verify NTDS.dit accessibility for domain controller recovery scenarios
+    $ntdsVssPath = Join-Path $vssPath 'ntds.dit'
+    $ntdsExists = Test-Path -LiteralPath $ntdsVssPath -ErrorAction SilentlyContinue
+    if ($ntdsExists) {
+        Write-Output "NTDS backup found: $ntdsVssPath"
+    }
+
+    # Document the backup verification in a local report
+    $reportPath = Join-Path $tempBackupDir 'vss_verification.txt'
+    "Backup Verification Report\nTimestamp: $(Get-Date)\nPath checked: $vssPath\nFiles verified: $($registryFiles -join ', ')" | Out-File -FilePath $reportPath
+
+} finally {
+    # Cleanup
+    Remove-Item -Path $tempBackupDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0  (1 rule(s)) ---------------------
+# Intent:    Attackers accessing credential hives (SAM, SYSTEM, SECURITY, NTDS.dit) through V
+# Rules:     82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0
 # Archetype: Software installer/updater workflow
 
-# Simulate package manager downloading installer manifest from GitHub
-# This is legitimate behavior for Chocolatey updating its package cache
+# Enterprise backup software performing pre-restore validation
+# This legitimately checks VSS snapshots contain required system files
 
-$ChocoPath = 'C:\ProgramData\chocolatey'
-if (-not (Test-Path $ChocoPath)) {
-    New-Item -ItemType Directory -Path $ChocoPath -Force | Out-Null
-}
-
-# Simulate Chocolatey invoking PowerShell to fetch package metadata from GitHub
-# Real Chocolatey installations do this during package resolution
-$manifestUrl = 'https://raw.githubusercontent.com/chocolatey/chocolatey-coreteam-packages/master/packages'
-$tempManifest = Join-Path $env:TEMP 'choco_manifest.xml'
+$backupToolDir = Join-Path $env:TEMP "enterprise_backup_tool_$(Get-Random)"
+[void](New-Item -ItemType Directory -Path $backupToolDir -ErrorAction SilentlyContinue)
 
 try {
-    # Use PowerShell to invoke web request, simulating package manager behavior
-    # This triggers Sysmon NetworkConnect event: powershell.exe -> HTTPS -> raw.githubusercontent.com:443
-    $result = Invoke-WebRequest -Uri "$manifestUrl" -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
-    if ($result) {
-        $result.Content | Out-File -FilePath $tempManifest -Force
+    # Query available shadow copies for recovery planning
+    $shadowCopies = @(1..3)  # Simulate checking multiple VSS snapshots
+
+    foreach ($copyIndex in $shadowCopies) {
+        $vssDevicePath = "\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy$copyIndex"
+
+        # Validate presence of critical registry hives in each snapshot
+        $criticalHives = @(
+            'config\sam',
+            'config\system',
+            'config\security'
+        )
+
+        foreach ($hive in $criticalHives) {
+            $fullPath = Join-Path $vssDevicePath $hive
+            # Check if hive exists in this shadow copy
+            $exists = Test-Path -LiteralPath $fullPath -ErrorAction SilentlyContinue
+            if ($exists) {
+                # Log the finding for recovery validation
+                Add-Content -Path (Join-Path $backupToolDir 'recovery_plan.log') -Value "[$(Get-Date)] Found $hive in shadow copy $copyIndex"
+            }
+        }
+
+        # Also check for NTDS for domain-joined systems
+        $ntdsPath = Join-Path $vssDevicePath 'ntds.dit'
+        $ntdsExists = Test-Path -LiteralPath $ntdsPath -ErrorAction SilentlyContinue
+        if ($ntdsExists) {
+            Add-Content -Path (Join-Path $backupToolDir 'recovery_plan.log') -Value "[$(Get-Date)] Domain services data found in shadow copy $copyIndex"
+        }
     }
-} catch {
-    # Silently continue if GitHub is unreachable; the event is what matters
+
+    # Simulate backup tool creating a recovery manifest
+    if (Test-Path (Join-Path $backupToolDir 'recovery_plan.log')) {
+        $manifest = Get-Content (Join-Path $backupToolDir 'recovery_plan.log') | Measure-Object -Line
+        Write-Output "Recovery manifest ready: $($manifest.Lines) items catalogued"
+    }
+
+} finally {
+    # Cleanup all temporary files
+    Remove-Item -Path $backupToolDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-
-# Cleanup
-if (Test-Path $tempManifest) {
-    Remove-Item -Path $tempManifest -Force
-}
-
-Write-Output 'Package manager manifest check completed.'
-
-# SKIPPED variant 'IT admin workflow': blocked pattern: payload download ('downloadfile(')
-
-# -- Cluster: singleton_86404854-1773-4a92-87b4-ac08c7a9c07d  (1 rule(s)) ---------------------
-# Intent:    Detects shell interpreters (cmd.exe, powershell.exe, etc.) initiating outbound H
-# Rules:     86404854-1773-4a92-87b4-ac08c7a9c07d
-# Archetype: User-driven workflow
-
-# Simulate user or automation fetching a file via command shell from transfer service
-# This is realistic for temporary file sharing and log collection workflows
-
-$transferUrl = 'https://transfer.sh/test.txt'
-$downloadPath = Join-Path $env:TEMP 'downloaded_data.txt'
-
-try {
-    # Invoke cmd.exe with curl to fetch file from transfer.sh
-    # Triggers: cmd.exe -> HTTPS -> transfer.sh:443 (or powershell making the connection)
-    # Use PowerShell to simulate the download since curl requires additional setup
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $transferUrl -OutFile $downloadPath -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
-} catch {
-    # Expected to fail; URL is not real
-    # The important part is the NetworkConnect event is triggered
-}
-
-# Cleanup
-if (Test-Path $downloadPath) {
-    Remove-Item -Path $downloadPath -Force
-}
-
-Write-Output 'File transfer operation completed.'
 
 
 # ===========================================================================

@@ -67,7 +67,7 @@ def extract_technique_id(rule_path: Path) -> str | None:
 def load_jsonl(path: Path) -> list[dict]:
     # utf-8-sig automatically strips BOM if present, no-ops if absent.
     # Belt-and-suspenders against corpus files committed with Windows BOM.
-    return [json.loads(line) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
+    return [json.loads(line.lstrip('\ufeff')) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
 
 
 def load_benign_events() -> list[dict]:

@@ -42,7 +42,9 @@ jobs:
         continue-on-error: true
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python scripts/run_regression_check.py --mode=check --output=regression_report.md
+        run: |
+          python scripts/run_regression_check.py --mode=check --output=regression_report.md || \
+          echo "## Regression Check Results\n\nScript failed — check step logs above." > regression_report.md
 
       - name: Post results as PR comment
         uses: peter-evans/create-or-update-comment@v4

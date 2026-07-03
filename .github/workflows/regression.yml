@@ -40,6 +40,8 @@ jobs:
       - name: Run regression check
         id: regression
         continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_regression_check.py --mode=check --output=regression_report.md
 
       - name: Post results as PR comment
@@ -66,6 +68,8 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Recompute and write new baseline
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_regression_check.py --mode=update-baseline
 
       - name: Commit updated baseline

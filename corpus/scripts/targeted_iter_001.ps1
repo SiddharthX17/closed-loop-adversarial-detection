@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 2
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,100 +10,119 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0  (1 rule(s)) ---------------------
-# Intent:    Attackers accessing credential hives (SAM, SYSTEM, SECURITY, NTDS.dit) through V
-# Rules:     82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0
+# -- Cluster: singleton_fe254b53-1878-4972-98fe-8576cccf15f3  (1 rule(s)) ---------------------
+# Intent:    Detect execution of masqueraded Windows system binaries (svchost, lsass, explore
+# Rules:     fe254b53-1878-4972-98fe-8576cccf15f3
 # Archetype: IT admin workflow
 
-$vssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
-$registryFiles = @('config\sam', 'config\system', 'config\security')
-
-# Create a temporary directory for this backup verification task
-$tempBackupDir = Join-Path $env:TEMP "backup_verification_$(Get-Random)"
-[void](New-Item -ItemType Directory -Path $tempBackupDir -ErrorAction SilentlyContinue)
+# Create temporary working directory for maintenance staging
+$tempDir = Join-Path $env:TEMP "sysadmin_staging_$(Get-Random)"
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 try {
-    # Verify backup accessibility by checking file existence through VSS path
-    # This is a legitimate disaster recovery procedure
-    foreach ($file in $registryFiles) {
-        $vssFullPath = Join-Path $vssPath $file
-        # Attempt to read file metadata without extracting credentials
-        $testPath = Test-Path -LiteralPath $vssFullPath -ErrorAction SilentlyContinue
+    # Copy system binaries to staging directory for offline diagnostic verification
+    # This is a realistic admin maintenance pattern - staging tools before deployment
+    Copy-Item -Path "C:\Windows\System32\svchost.exe" -Destination $tempDir -Force
+    Copy-Item -Path "C:\Windows\System32\lsass.exe" -Destination $tempDir -Force
+    Copy-Item -Path "C:\Windows\System32\services.exe" -Destination $tempDir -Force
+    Copy-Item -Path "C:\Windows\System32\explorer.exe" -Destination $tempDir -Force
 
-        # Use certutil to validate backup integrity (legitimate admin tool)
-        if ($testPath) {
-            Write-Output "Backup file accessible: $vssFullPath"
-        }
-    }
+    # Validate each binary signature and version (realistic admin verification step)
+    Write-Host "Verifying diagnostic tools in staging environment..."
 
-    # Also verify NTDS.dit accessibility for domain controller recovery scenarios
-    $ntdsVssPath = Join-Path $vssPath 'ntds.dit'
-    $ntdsExists = Test-Path -LiteralPath $ntdsVssPath -ErrorAction SilentlyContinue
-    if ($ntdsExists) {
-        Write-Output "NTDS backup found: $ntdsVssPath"
-    }
+    # Execute staged svchost for service enumeration
+    & (Join-Path $tempDir "svchost.exe") -?
 
-    # Document the backup verification in a local report
-    $reportPath = Join-Path $tempBackupDir 'vss_verification.txt'
-    "Backup Verification Report\nTimestamp: $(Get-Date)\nPath checked: $vssPath\nFiles verified: $($registryFiles -join ', ')" | Out-File -FilePath $reportPath
+    # Execute staged lsass for diagnostic purposes (non-interactive)
+    Start-Process -FilePath (Join-Path $tempDir "lsass.exe") -ArgumentList "-?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
 
+    # Execute staged services for service check
+    & (Join-Path $tempDir "services.exe") -?
+
+    # Execute staged explorer for file system verification
+    Start-Process -FilePath (Join-Path $tempDir "explorer.exe") -ArgumentList "/?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+
+    Write-Host "Diagnostic verification completed successfully"
 } finally {
-    # Cleanup
-    Remove-Item -Path $tempBackupDir -Recurse -Force -ErrorAction SilentlyContinue
+    # Clean up temporary staging directory
+    Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0  (1 rule(s)) ---------------------
-# Intent:    Attackers accessing credential hives (SAM, SYSTEM, SECURITY, NTDS.dit) through V
-# Rules:     82c9d4ca-e5a4-4325-9c2e-9a51dc3c24a0
+# -- Cluster: singleton_fe254b53-1878-4972-98fe-8576cccf15f3  (1 rule(s)) ---------------------
+# Intent:    Detect execution of masqueraded Windows system binaries (svchost, lsass, explore
+# Rules:     fe254b53-1878-4972-98fe-8576cccf15f3
 # Archetype: Software installer/updater workflow
 
-# Enterprise backup software performing pre-restore validation
-# This legitimately checks VSS snapshots contain required system files
-
-$backupToolDir = Join-Path $env:TEMP "enterprise_backup_tool_$(Get-Random)"
-[void](New-Item -ItemType Directory -Path $backupToolDir -ErrorAction SilentlyContinue)
+# Software installer creates temporary extraction directory
+$installStaging = Join-Path $env:TEMP "installer_temp_$(Get-Random)"
+New-Item -ItemType Directory -Path $installStaging -Force | Out-Null
 
 try {
-    # Query available shadow copies for recovery planning
-    $shadowCopies = @(1..3)  # Simulate checking multiple VSS snapshots
+    Write-Host "Beginning application installation..."
 
-    foreach ($copyIndex in $shadowCopies) {
-        $vssDevicePath = "\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy$copyIndex"
+    # Simulate installer extraction of system utilities
+    # Many legitimate installers include regsvr32, rundll32, or msiexec for component registration
+    Copy-Item -Path "C:\Windows\System32\regsvr32.exe" -Destination $installStaging -Force
+    Copy-Item -Path "C:\Windows\System32\rundll32.exe" -Destination $installStaging -Force
+    Copy-Item -Path "C:\Windows\System32\msiexec.exe" -Destination $installStaging -Force
+    Copy-Item -Path "C:\Windows\System32\dllhost.exe" -Destination $installStaging -Force
 
-        # Validate presence of critical registry hives in each snapshot
-        $criticalHives = @(
-            'config\sam',
-            'config\system',
-            'config\security'
-        )
+    # Installer executes regsvr32 from staging to register COM components
+    Write-Host "Registering application components..."
+    & (Join-Path $installStaging "regsvr32.exe") "/? " 2>$null | Out-Null
 
-        foreach ($hive in $criticalHives) {
-            $fullPath = Join-Path $vssDevicePath $hive
-            # Check if hive exists in this shadow copy
-            $exists = Test-Path -LiteralPath $fullPath -ErrorAction SilentlyContinue
-            if ($exists) {
-                # Log the finding for recovery validation
-                Add-Content -Path (Join-Path $backupToolDir 'recovery_plan.log') -Value "[$(Get-Date)] Found $hive in shadow copy $copyIndex"
-            }
-        }
+    # Installer uses rundll32 from staging for component initialization
+    & (Join-Path $installStaging "rundll32.exe") "/? " 2>$null | Out-Null
 
-        # Also check for NTDS for domain-joined systems
-        $ntdsPath = Join-Path $vssDevicePath 'ntds.dit'
-        $ntdsExists = Test-Path -LiteralPath $ntdsPath -ErrorAction SilentlyContinue
-        if ($ntdsExists) {
-            Add-Content -Path (Join-Path $backupToolDir 'recovery_plan.log') -Value "[$(Get-Date)] Domain services data found in shadow copy $copyIndex"
-        }
-    }
+    # Installer executes dllhost from staging for COM hosting
+    Start-Process -FilePath (Join-Path $installStaging "dllhost.exe") -ArgumentList "-?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
 
-    # Simulate backup tool creating a recovery manifest
-    if (Test-Path (Join-Path $backupToolDir 'recovery_plan.log')) {
-        $manifest = Get-Content (Join-Path $backupToolDir 'recovery_plan.log') | Measure-Object -Line
-        Write-Output "Recovery manifest ready: $($manifest.Lines) items catalogued"
-    }
+    # Installer queries MSI database using msiexec from staging
+    & (Join-Path $installStaging "msiexec.exe") "/?" 2>$null | Out-Null
 
+    Write-Host "Application installation completed"
 } finally {
-    # Cleanup all temporary files
-    Remove-Item -Path $backupToolDir -Recurse -Force -ErrorAction SilentlyContinue
+    # Clean up staging directory
+    Remove-Item -Path $installStaging -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_fe254b53-1878-4972-98fe-8576cccf15f3  (1 rule(s)) ---------------------
+# Intent:    Detect execution of masqueraded Windows system binaries (svchost, lsass, explore
+# Rules:     fe254b53-1878-4972-98fe-8576cccf15f3
+# Archetype: Document/file operation workflow
+
+# User application creates working directory for document processing
+$appWorkDir = Join-Path $env:APPDATA "AppTempWork_$(Get-Random)"
+New-Item -ItemType Directory -Path $appWorkDir -Force | Out-Null
+
+try {
+    Write-Host "Initializing document processing application..."
+
+    # Application extracts system utilities for file handling and shell operations
+    Copy-Item -Path "C:\Windows\System32\notepad.exe" -Destination $appWorkDir -Force
+    Copy-Item -Path "C:\Windows\System32\calc.exe" -Destination $appWorkDir -Force
+    Copy-Item -Path "C:\Windows\System32\conhost.exe" -Destination $appWorkDir -Force
+    Copy-Item -Path "C:\Windows\System32\taskhostw.exe" -Destination $appWorkDir -Force
+
+    # Application verifies shell utilities are functional
+    Write-Host "Validating system integration tools..."
+
+    # Run notepad for document verification
+    Start-Process -FilePath (Join-Path $appWorkDir "notepad.exe") -ArgumentList "/?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+
+    # Run calc for validation check
+    Start-Process -FilePath (Join-Path $appWorkDir "calc.exe") -ArgumentList "/?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+
+    # Run conhost for console operations verification
+    & (Join-Path $appWorkDir "conhost.exe") 2>$null | Out-Null
+
+    # Run taskhostw for task scheduling operations
+    Start-Process -FilePath (Join-Path $appWorkDir "taskhostw.exe") -ArgumentList "-?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+
+    Write-Host "Document processing application ready"
+} finally {
+    # Clean up working directory
+    Remove-Item -Path $appWorkDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 

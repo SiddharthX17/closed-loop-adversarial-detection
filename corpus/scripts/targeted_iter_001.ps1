@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   2  |  Feasible: 2  |  Variants: 6
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,109 +10,227 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_f9b133df-d434-4b17-946e-d95458dcf87c  (1 rule(s)) ---------------------
-# Intent:    Detecting attempts to access Windows credential hive files (SAM, SYSTEM, SECURIT
-# Rules:     f9b133df-d434-4b17-946e-d95458dcf87c
-# Archetype: IT admin workflow
-
-$vssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
-$backupDir = Join-Path $env:TEMP 'registry_backup_2024'
-if (-not (Test-Path $backupDir)) {
-    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-}
-
-# Simulate backup utility scanning VSS snapshots for registry files
-$registryHives = @('config\sam', 'config\system', 'config\security')
-foreach ($hive in $registryHives) {
-    $vssHivePath = Join-Path $vssPath $hive
-    $backupPath = Join-Path $backupDir ($hive.Replace('\\', '_'))
-
-    # Use robocopy which is a standard Windows backup utility
-    # This command would legitimately scan VSS paths during backup operations
-    $cmd = "robocopy.exe $vssPath $backupDir /L /S 2>&1"
-    $output = cmd /c $cmd
-}
-
-# Also simulate using reg.exe query against VSS paths (common in enterprise backup tools)
-Write-Host "Scanning registry hives via VSS for backup purposes"
-$regCommand = "reg.exe query HKLM\\SYSTEM\\CurrentControlSet 2>&1"
-cmd /c $regCommand | Out-Null
-
-# Clean up
-if (Test-Path $backupDir) {
-    Remove-Item -Path $backupDir -Recurse -Force
-}
-
-# -- Cluster: singleton_f9b133df-d434-4b17-946e-d95458dcf87c  (1 rule(s)) ---------------------
-# Intent:    Detecting attempts to access Windows credential hive files (SAM, SYSTEM, SECURIT
-# Rules:     f9b133df-d434-4b17-946e-d95458dcf87c
+# -- Cluster: singleton_c646b758-dfb0-4315-9d43-4d28db791bc3  (1 rule(s)) ---------------------
+# Intent:    Detect execution of critical Windows system processes (e.g., lsass.exe, svchost.
+# Rules:     c646b758-dfb0-4315-9d43-4d28db791bc3
 # Archetype: Software installer/updater workflow
 
-$backupAppPath = Join-Path $env:ProgramFiles 'BackupSoftware'
-$backupBinPath = Join-Path $backupAppPath 'backup_engine.exe'
+$tempDir = Join-Path $env:TEMP "installer_$(Get-Random)"
+[void](New-Item -ItemType Directory -Path $tempDir -Force)
 
-# Create a mock backup application directory structure
-if (-not (Test-Path $backupAppPath)) {
-    New-Item -ItemType Directory -Path $backupAppPath -Force | Out-Null
+try {
+    # Simulate installer verification: extract svchost.exe to temp for hash validation
+    $sourceFile = 'C:\Windows\System32\svchost.exe'
+    $tempCopy = Join-Path $tempDir 'svchost.exe'
+    Copy-Item -Path $sourceFile -Destination $tempCopy -Force
+
+    # Verify the binary signature
+    $signature = Get-AuthenticodeSignature -FilePath $tempCopy
+    if ($signature.Status -ne 'Valid') {
+        Write-Host 'Binary validation failed'
+    }
+
+    # Compare version info with canonical location
+    $tempVersion = (Get-Item $tempCopy).VersionInfo.FileVersion
+    $sysVersion = (Get-Item $sourceFile).VersionInfo.FileVersion
+
+    if ($tempVersion -eq $sysVersion) {
+        Write-Host 'Version match confirmed'
+    }
+
+    # Simulate extraction workflow for csrss.exe as well
+    $csrssSource = 'C:\Windows\System32\csrss.exe'
+    $csrssCopy = Join-Path $tempDir 'csrss.exe'
+    Copy-Item -Path $csrssSource -Destination $csrssCopy -Force
+
+    # Quick metadata inspection
+    $metadata = Get-Item $csrssCopy | Select-Object Name, Length, CreationTime
+
+    # Simulate smss.exe copy for staged deployment verification
+    $smssSource = 'C:\Windows\System32\smss.exe'
+    $smssCopy = Join-Path $tempDir 'smss.exe'
+    Copy-Item -Path $smssSource -Destination $smssCopy -Force
+
+    # Validate all extracted binaries are present
+    $extractedFiles = Get-ChildItem -Path $tempDir -Filter '*.exe'
+    Write-Host "Extracted $($extractedFiles.Count) system binaries for validation"
+
+} finally {
+    # Clean up temporary files
+    if (Test-Path -Path $tempDir) {
+        Remove-Item -Path $tempDir -Recurse -Force
+    }
 }
 
-# Create a benign executable placeholder
-@'
-echo Backup Engine v2.1.5
-exit /b 0
-'@ | Set-Content -Path (Join-Path $backupAppPath 'backup_engine.bat')
+# -- Cluster: singleton_c646b758-dfb0-4315-9d43-4d28db791bc3  (1 rule(s)) ---------------------
+# Intent:    Detect execution of critical Windows system processes (e.g., lsass.exe, svchost.
+# Rules:     c646b758-dfb0-4315-9d43-4d28db791bc3
+# Archetype: IT admin workflow
 
-# Simulate backup software accessing credential hives through VSS
-# Real backup solutions enumerate VSS snapshots and attempt to read registry hives
-$vssPath = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
-$hives = @('config\sam', 'config\system', 'config\security')
+$recoveryDir = Join-Path $env:TEMP "recovery_media_$(Get-Random)"
+[void](New-Item -ItemType Directory -Path $recoveryDir -Force)
 
-foreach ($hive in $hives) {
-    $fullPath = Join-Path $vssPath $hive
-    # Simulate the backup software command-line invocation
-    # This mimics real backup tools that reference VSS paths in their process execution
-    $backupCmd = "cmd /c echo Backing up registry hive: $fullPath"
-    Invoke-Expression $backupCmd 2>&1 | Out-Null
+try {
+    Write-Host "Preparing recovery media staging directory: $recoveryDir"
+
+    # Administrator prepares offline recovery toolkit
+    # Copy critical system processes needed for recovery boot
+    $systemProcs = @('lsass.exe', 'winlogon.exe', 'services.exe', 'svchost.exe', 'dwm.exe', 'explorer.exe')
+
+    foreach ($proc in $systemProcs) {
+        $srcPath = Join-Path 'C:\Windows\System32' $proc
+        if (Test-Path -Path $srcPath) {
+            $destPath = Join-Path $recoveryDir $proc
+            Copy-Item -Path $srcPath -Destination $destPath -Force
+            Write-Host "Staged $proc for recovery"
+        }
+    }
+
+    # Create inventory manifest of staged binaries
+    $manifest = New-Object System.Collections.ArrayList
+    Get-ChildItem -Path $recoveryDir -Filter '*.exe' | ForEach-Object {
+        $manifestEntry = @{
+            Name = $_.Name
+            Size = $_.Length
+            Hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
+        }
+        [void]$manifest.Add($manifestEntry)
+    }
+
+    Write-Host "Recovery toolkit prepared with $($manifest.Count) binaries"
+
+    # Verify all expected binaries are present
+    $stagedCount = (Get-ChildItem -Path $recoveryDir -Filter '*.exe').Count
+    if ($stagedCount -ge 3) {
+        Write-Host "Recovery media validation passed"
+    }
+
+} finally {
+    # Clean up recovery staging directory
+    if (Test-Path -Path $recoveryDir) {
+        Remove-Item -Path $recoveryDir -Recurse -Force
+        Write-Host "Recovery staging directory cleaned"
+    }
 }
 
-# Clean up
-if (Test-Path $backupAppPath) {
-    Remove-Item -Path $backupAppPath -Recurse -Force
+# -- Cluster: singleton_c646b758-dfb0-4315-9d43-4d28db791bc3  (1 rule(s)) ---------------------
+# Intent:    Detect execution of critical Windows system processes (e.g., lsass.exe, svchost.
+# Rules:     c646b758-dfb0-4315-9d43-4d28db791bc3
+# Archetype: Document/file operation workflow
+
+$scanDir = Join-Path $env:TEMP "integrity_scan_$(Get-Random)"
+[void](New-Item -ItemType Directory -Path $scanDir -Force)
+
+try {
+    Write-Host "Initiating system file integrity scan"
+
+    # Security utility extracts binaries for signature and dependency analysis
+    $criticalProcs = @(
+        'lsm.exe', 'msdtc.exe', 'searchindexer.exe',
+        'wmiprvse.exe', 'audiodg.exe', 'runtimebroker.exe',
+        'fontdrvhost.exe', 'spoolsv.exe'
+    )
+
+    $scanResults = @{}
+
+    foreach ($proc in $criticalProcs) {
+        $srcPath = Join-Path 'C:\Windows\System32' $proc
+        if (Test-Path -Path $srcPath) {
+            $copyPath = Join-Path $scanDir $proc
+            Copy-Item -Path $srcPath -Destination $copyPath -Force
+
+            # Analyze extracted binary
+            $fileInfo = Get-Item -Path $copyPath
+            $sigInfo = Get-AuthenticodeSignature -FilePath $copyPath
+
+            $scanResults[$proc] = @{
+                Size = $fileInfo.Length
+                SignatureValid = ($sigInfo.Status -eq 'Valid')
+                Issuer = $sigInfo.SignerCertificate.Issuer
+            }
+        }
+    }
+
+    # Generate scan report
+    $reportPath = Join-Path $scanDir 'scan_report.txt'
+    $reportContent = "System File Integrity Scan Report`n"
+    $reportContent += "Timestamp: $(Get-Date)`n"
+    $reportContent += "Files Scanned: $($scanResults.Count)`n"
+    $reportContent += "Signed Files: $(($scanResults.Values | Where-Object { $_.SignatureValid }).Count)`n"
+
+    Set-Content -Path $reportPath -Value $reportContent
+
+    Write-Host "Scan complete: Analyzed $($scanResults.Count) system binaries"
+
+    # Verify integrity report was created
+    if (Test-Path -Path $reportPath) {
+        $reportSize = (Get-Item -Path $reportPath).Length
+        Write-Host "Integrity report generated: $reportSize bytes"
+    }
+
+} finally {
+    # Clean up scan working directory
+    if (Test-Path -Path $scanDir) {
+        Remove-Item -Path $scanDir -Recurse -Force
+        Write-Host "Scan directory cleaned"
+    }
 }
 
-# -- Cluster: singleton_f9b133df-d434-4b17-946e-d95458dcf87c  (1 rule(s)) ---------------------
-# Intent:    Detecting attempts to access Windows credential hive files (SAM, SYSTEM, SECURIT
-# Rules:     f9b133df-d434-4b17-946e-d95458dcf87c
-# Archetype: User-driven workflow
+# -- Cluster: singleton_1dee9b81-389f-4a47-9112-702c7c89ec01  (1 rule(s)) ---------------------
+# Intent:    Theft of SAM hive credentials by accessing the hive through Volume Shadow Copy d
+# Rules:     1dee9b81-389f-4a47-9112-702c7c89ec01
+# Archetype: IT admin workflow
 
-$recoveryScriptPath = Join-Path $env:TEMP 'system_recovery_2024.ps1'
-$recoveryLogPath = Join-Path $env:TEMP 'recovery_log.txt'
-
-# Create a legitimate recovery script that accesses VSS paths
-$recoveryScript = @'
-# System Recovery Script - Backing up critical system state
-$vssPath = '\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1'
-$registryHives = @('config\\sam', 'config\\system', 'config\\security')
-
-foreach ($hive in $registryHives) {
-    $fullPath = Join-Path $vssPath $hive
-    # Log hive paths for backup manifest
-    Add-Content -Path '"$env:TEMP\\recovery_log.txt"' -Value "Processing: $fullPath"
+$VSSShadows = Get-WmiObject Win32_ShadowCopy | Select-Object -First 3
+foreach ($Shadow in $VSSShadows) {
+    $Device = $Shadow.DeviceName
+    Write-Host "Verifying SAM hive in shadow copy: $Device"
+    $SAMPath = Join-Path -Path $Device -ChildPath "\Windows\System32\config\sam"
+    if (Test-Path $SAMPath) {
+        Write-Host "SAM hive found at $SAMPath - backup integrity confirmed"
+    }
 }
-'@
+Write-Host "Backup verification completed"
 
-Set-Content -Path $recoveryScriptPath -Value $recoveryScript
+# -- Cluster: singleton_1dee9b81-389f-4a47-9112-702c7c89ec01  (1 rule(s)) ---------------------
+# Intent:    Theft of SAM hive credentials by accessing the hive through Volume Shadow Copy d
+# Rules:     1dee9b81-389f-4a47-9112-702c7c89ec01
+# Archetype: Software installer/updater workflow
 
-# Execute the recovery script (simulating user-initiated system backup)
-& powershell.exe -ExecutionPolicy Bypass -File $recoveryScriptPath 2>&1 | Out-Null
-
-# Clean up
-if (Test-Path $recoveryScriptPath) {
-    Remove-Item -Path $recoveryScriptPath -Force
+$BackupLog = "$env:TEMP\shadow_inventory_$(Get-Random).log"
+$Shadows = Get-WmiObject Win32_ShadowCopy
+if ($Shadows) {
+    foreach ($Shadow in $Shadows) {
+        $DevName = $Shadow.DeviceName
+        $SAMPath = $DevName + "\Windows\System32\config\sam"
+        Add-Content -Path $BackupLog -Value "Device: $DevName - SAM Path: $SAMPath"
+    }
+    Write-Host "Inventory logged to $BackupLog"
+    Remove-Item -Path $BackupLog -Force
+} else {
+    Write-Host "No shadow copies available"
 }
-if (Test-Path $recoveryLogPath) {
-    Remove-Item -Path $recoveryLogPath -Force
+
+# -- Cluster: singleton_1dee9b81-389f-4a47-9112-702c7c89ec01  (1 rule(s)) ---------------------
+# Intent:    Theft of SAM hive credentials by accessing the hive through Volume Shadow Copy d
+# Rules:     1dee9b81-389f-4a47-9112-702c7c89ec01
+# Archetype: Document/file operation workflow
+
+$ReportFile = "$env:TEMP\compliance_report_$(Get-Date -Format yyyyMMdd).txt"
+Set-Content -Path $ReportFile -Value "Shadow Copy System File Coverage Report`n"
+Add-Content -Path $ReportFile -Value "Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n`n"
+$ShadowCopies = Get-WmiObject Win32_ShadowCopy
+if ($ShadowCopies) {
+    foreach ($Copy in $ShadowCopies) {
+        $Device = $Copy.DeviceName
+        $SystemFilePath = "$Device\Windows\System32\config\sam"
+        $Status = "Present"
+        Add-Content -Path $ReportFile -Value "Shadow: $Device`nSAM Location: $SystemFilePath`nStatus: $Status`n"
+    }
 }
+Write-Host "Report saved to $ReportFile"
+Start-Sleep -Seconds 1
+Remove-Item -Path $ReportFile -Force
 
 
 # ===========================================================================

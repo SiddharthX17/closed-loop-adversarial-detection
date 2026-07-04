@@ -79,3 +79,4 @@ jobs:
         with:
           commit_message: "chore: auto-update coverage baseline [skip ci]"
           file_pattern: data/coverage_baseline.json
+          token: ${{ secrets.BASELINE_PAT }}

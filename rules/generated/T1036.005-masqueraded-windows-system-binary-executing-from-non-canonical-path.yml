@@ -1,0 +1,180 @@
+title: Masqueraded Windows System Binary Executing From Non-Canonical Path
+id: fe254b53-1878-4972-98fe-8576cccf15f3
+status: experimental
+description: |
+  Detects execution of a process whose filename matches a known Windows system binary
+  but whose full image path places it outside the canonical system directory for that binary.
+  This is the structural invariant of T1036.005 — the name matches a legitimate system binary
+  but the location differs, allowing cursory inspection to miss the masquerade.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+  - https://tria.ge/240731-jh4crsycnb/behavioral2
+author: Detection Engineer
+date: 2026-07-03
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  # Match known system binary names executing from outside their canonical paths
+  selection_svchost:
+    Image|endswith: '\svchost.exe'
+  filter_svchost:
+    Image:
+      - 'C:\Windows\System32\svchost.exe'
+      - 'C:\Windows\SysWOW64\svchost.exe'
+
+  selection_lsass:
+    Image|endswith: '\lsass.exe'
+  filter_lsass:
+    Image:
+      - 'C:\Windows\System32\lsass.exe'
+      - 'C:\Windows\SysWOW64\lsass.exe'
+
+  selection_services:
+    Image|endswith: '\services.exe'
+  filter_services:
+    Image:
+      - 'C:\Windows\System32\services.exe'
+      - 'C:\Windows\SysWOW64\services.exe'
+
+  selection_explorer:
+    Image|endswith: '\explorer.exe'
+  filter_explorer:
+    Image:
+      - 'C:\Windows\explorer.exe'
+      - 'C:\Windows\SysWOW64\explorer.exe'
+
+  selection_csrss:
+    Image|endswith: '\csrss.exe'
+  filter_csrss:
+    Image:
+      - 'C:\Windows\System32\csrss.exe'
+      - 'C:\Windows\SysWOW64\csrss.exe'
+
+  selection_winlogon:
+    Image|endswith: '\winlogon.exe'
+  filter_winlogon:
+    Image:
+      - 'C:\Windows\System32\winlogon.exe'
+      - 'C:\Windows\SysWOW64\winlogon.exe'
+
+  selection_wininit:
+    Image|endswith: '\wininit.exe'
+  filter_wininit:
+    Image:
+      - 'C:\Windows\System32\wininit.exe'
+      - 'C:\Windows\SysWOW64\wininit.exe'
+
+  selection_smss:
+    Image|endswith: '\smss.exe'
+  filter_smss:
+    Image:
+      - 'C:\Windows\System32\smss.exe'
+      - 'C:\Windows\SysWOW64\smss.exe'
+
+  selection_spoolsv:
+    Image|endswith: '\spoolsv.exe'
+  filter_spoolsv:
+    Image:
+      - 'C:\Windows\System32\spoolsv.exe'
+      - 'C:\Windows\SysWOW64\spoolsv.exe'
+
+  selection_taskhost:
+    Image|endswith: '\taskhost.exe'
+  filter_taskhost:
+    Image:
+      - 'C:\Windows\System32\taskhost.exe'
+      - 'C:\Windows\SysWOW64\taskhost.exe'
+
+  selection_taskhostw:
+    Image|endswith: '\taskhostw.exe'
+  filter_taskhostw:
+    Image:
+      - 'C:\Windows\System32\taskhostw.exe'
+      - 'C:\Windows\SysWOW64\taskhostw.exe'
+
+  selection_dllhost:
+    Image|endswith: '\dllhost.exe'
+  filter_dllhost:
+    Image:
+      - 'C:\Windows\System32\dllhost.exe'
+      - 'C:\Windows\SysWOW64\dllhost.exe'
+
+  selection_conhost:
+    Image|endswith: '\conhost.exe'
+  filter_conhost:
+    Image:
+      - 'C:\Windows\System32\conhost.exe'
+      - 'C:\Windows\SysWOW64\conhost.exe'
+
+  selection_msiexec:
+    Image|endswith: '\msiexec.exe'
+  filter_msiexec:
+    Image|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+      - 'C:\Windows\WinSxS\'
+
+  selection_regsvr32:
+    Image|endswith: '\regsvr32.exe'
+  filter_regsvr32:
+    Image:
+      - 'C:\Windows\System32\regsvr32.exe'
+      - 'C:\Windows\SysWOW64\regsvr32.exe'
+
+  selection_rundll32:
+    Image|endswith: '\rundll32.exe'
+  filter_rundll32:
+    Image:
+      - 'C:\Windows\System32\rundll32.exe'
+      - 'C:\Windows\SysWOW64\rundll32.exe'
+
+  selection_notepad:
+    Image|endswith: '\notepad.exe'
+  filter_notepad:
+    Image:
+      - 'C:\Windows\System32\notepad.exe'
+      - 'C:\Windows\SysWOW64\notepad.exe'
+      - 'C:\Windows\notepad.exe'
+
+  selection_calc:
+    Image|endswith: '\calc.exe'
+  filter_calc:
+    Image:
+      - 'C:\Windows\System32\calc.exe'
+      - 'C:\Windows\SysWOW64\calc.exe'
+      - 'C:\Windows\WinSxS\'
+
+  # Filter known legitimate vendor paths that may ship same-named binaries
+  filter_winsxs:
+    Image|contains: '\WinSxS\'
+
+  condition: >
+    (selection_svchost and not filter_svchost and not filter_winsxs) or
+    (selection_lsass and not filter_lsass and not filter_winsxs) or
+    (selection_services and not filter_services and not filter_winsxs) or
+    (selection_explorer and not filter_explorer and not filter_winsxs) or
+    (selection_csrss and not filter_csrss and not filter_winsxs) or
+    (selection_winlogon and not filter_winlogon and not filter_winsxs) or
+    (selection_wininit and not filter_wininit and not filter_winsxs) or
+    (selection_smss and not filter_smss and not filter_winsxs) or
+    (selection_spoolsv and not filter_spoolsv and not filter_winsxs) or
+    (selection_taskhost and not filter_taskhost and not filter_winsxs) or
+    (selection_taskhostw and not filter_taskhostw and not filter_winsxs) or
+    (selection_dllhost and not filter_dllhost and not filter_winsxs) or
+    (selection_conhost and not filter_conhost and not filter_winsxs) or
+    (selection_msiexec and not filter_msiexec) or
+    (selection_regsvr32 and not filter_regsvr32 and not filter_winsxs) or
+    (selection_rundll32 and not filter_rundll32 and not filter_winsxs) or
+    (selection_notepad and not filter_notepad and not filter_winsxs) or
+    (selection_calc and not filter_calc and not filter_winsxs)
+falsepositives:
+  - Legitimate vendor software that ships binaries with names colliding with Windows system binaries
+    (e.g., some AV or monitoring agents). Add vendor-specific path allowlists as needed.
+  - Developer workflows compiling and running test binaries with system-like names in build directories.
+    Filter by CurrentDirectory matching known development workspace paths if needed.
+level: high

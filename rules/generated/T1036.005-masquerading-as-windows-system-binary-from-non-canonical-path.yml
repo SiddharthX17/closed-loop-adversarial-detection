@@ -1,0 +1,58 @@
+title: Masquerading as Windows System Binary from Non-Canonical Path
+id: b82b7036-af4f-4267-9656-854b7bcd3e1b
+status: experimental
+description: |
+  Detects execution of a process whose filename matches a well-known Windows system binary
+  but whose full image path is outside the canonical system directory for that binary.
+  This is the structural invariant of T1036.005: the attacker names their malicious binary
+  after a legitimate system process to evade name-based detection, but cannot place it in
+  the protected system directory without elevated privileges or additional exploitation.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-07-04
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_system_binary_names:
+    Image|endswith:
+      - '\lsass.exe'
+      - '\svchost.exe'
+      - '\csrss.exe'
+      - '\winlogon.exe'
+      - '\services.exe'
+      - '\smss.exe'
+      - '\wininit.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\explorer.exe'
+      - '\spoolsv.exe'
+      - '\SearchIndexer.exe'
+      - '\lsm.exe'
+      - '\dwm.exe'
+      - '\conhost.exe'
+      - '\dllhost.exe'
+      - '\sihost.exe'
+      - '\fontdrvhost.exe'
+  filter_canonical_windows:
+    Image|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+      - 'C:\Windows\explorer.exe'
+      - 'C:\Windows\WinSxS\'
+  filter_program_files:
+    Image|startswith:
+      - 'C:\Program Files\'
+      - 'C:\Program Files (x86)\'
+  condition: selection_system_binary_names and not 1 of filter_*
+falsepositives:
+  - Legitimate software vendors shipping binaries with system binary names in Program Files
+    directories (filtered by default). Extremely rare in practice.
+  - Portable application bundles that coincidentally share a system binary name — review
+    by publisher signature and path context.
+level: high

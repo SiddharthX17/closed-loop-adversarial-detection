@@ -10,119 +10,142 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_fe254b53-1878-4972-98fe-8576cccf15f3  (1 rule(s)) ---------------------
-# Intent:    Detect execution of masqueraded Windows system binaries (svchost, lsass, explore
-# Rules:     fe254b53-1878-4972-98fe-8576cccf15f3
-# Archetype: IT admin workflow
-
-# Create temporary working directory for maintenance staging
-$tempDir = Join-Path $env:TEMP "sysadmin_staging_$(Get-Random)"
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-try {
-    # Copy system binaries to staging directory for offline diagnostic verification
-    # This is a realistic admin maintenance pattern - staging tools before deployment
-    Copy-Item -Path "C:\Windows\System32\svchost.exe" -Destination $tempDir -Force
-    Copy-Item -Path "C:\Windows\System32\lsass.exe" -Destination $tempDir -Force
-    Copy-Item -Path "C:\Windows\System32\services.exe" -Destination $tempDir -Force
-    Copy-Item -Path "C:\Windows\System32\explorer.exe" -Destination $tempDir -Force
-
-    # Validate each binary signature and version (realistic admin verification step)
-    Write-Host "Verifying diagnostic tools in staging environment..."
-
-    # Execute staged svchost for service enumeration
-    & (Join-Path $tempDir "svchost.exe") -?
-
-    # Execute staged lsass for diagnostic purposes (non-interactive)
-    Start-Process -FilePath (Join-Path $tempDir "lsass.exe") -ArgumentList "-?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
-
-    # Execute staged services for service check
-    & (Join-Path $tempDir "services.exe") -?
-
-    # Execute staged explorer for file system verification
-    Start-Process -FilePath (Join-Path $tempDir "explorer.exe") -ArgumentList "/?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
-
-    Write-Host "Diagnostic verification completed successfully"
-} finally {
-    # Clean up temporary staging directory
-    Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_fe254b53-1878-4972-98fe-8576cccf15f3  (1 rule(s)) ---------------------
-# Intent:    Detect execution of masqueraded Windows system binaries (svchost, lsass, explore
-# Rules:     fe254b53-1878-4972-98fe-8576cccf15f3
+# -- Cluster: singleton_b82b7036-af4f-4267-9656-854b7bcd3e1b  (1 rule(s)) ---------------------
+# Intent:    Detect masquerading of Windows critical system binaries (lsass, svchost, csrss, 
+# Rules:     b82b7036-af4f-4267-9656-854b7bcd3e1b
 # Archetype: Software installer/updater workflow
 
-# Software installer creates temporary extraction directory
-$installStaging = Join-Path $env:TEMP "installer_temp_$(Get-Random)"
-New-Item -ItemType Directory -Path $installStaging -Force | Out-Null
+$installerDir = Join-Path $env:TEMP "ComplianceCheck_$(Get-Random)"
+New-Item -ItemType Directory -Path $installerDir -Force | Out-Null
 
-try {
-    Write-Host "Beginning application installation..."
+Try {
+  # Create a copy of explorer.exe in the installer directory to simulate
+  # a legitimate vendor bundling system binaries for version verification
+  $explorerSource = "C:\Windows\explorer.exe"
+  $explorerDest = Join-Path $installerDir "explorer.exe"
+  Copy-Item -Path $explorerSource -Destination $explorerDest -Force
 
-    # Simulate installer extraction of system utilities
-    # Many legitimate installers include regsvr32, rundll32, or msiexec for component registration
-    Copy-Item -Path "C:\Windows\System32\regsvr32.exe" -Destination $installStaging -Force
-    Copy-Item -Path "C:\Windows\System32\rundll32.exe" -Destination $installStaging -Force
-    Copy-Item -Path "C:\Windows\System32\msiexec.exe" -Destination $installStaging -Force
-    Copy-Item -Path "C:\Windows\System32\dllhost.exe" -Destination $installStaging -Force
+  # Simulate installer performing a system library integrity check
+  # by invoking explorer.exe from the non-canonical path
+  & $explorerDest /root
 
-    # Installer executes regsvr32 from staging to register COM components
-    Write-Host "Registering application components..."
-    & (Join-Path $installStaging "regsvr32.exe") "/? " 2>$null | Out-Null
+  # Pause briefly to ensure Sysmon captures the event
+  Start-Sleep -Milliseconds 500
 
-    # Installer uses rundll32 from staging for component initialization
-    & (Join-Path $installStaging "rundll32.exe") "/? " 2>$null | Out-Null
+  # Similarly, copy and execute svchost from non-canonical path
+  # to simulate service dependency verification during installation
+  $svchostSource = "C:\Windows\System32\svchost.exe"
+  $svchostDest = Join-Path $installerDir "svchost.exe"
+  Copy-Item -Path $svchostSource -Destination $svchostDest -Force
 
-    # Installer executes dllhost from staging for COM hosting
-    Start-Process -FilePath (Join-Path $installStaging "dllhost.exe") -ArgumentList "-?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+  # Execute with minimal arguments to verify presence
+  & $svchostDest -v 2>$null
 
-    # Installer queries MSI database using msiexec from staging
-    & (Join-Path $installStaging "msiexec.exe") "/?" 2>$null | Out-Null
+  Start-Sleep -Milliseconds 500
 
-    Write-Host "Application installation completed"
-} finally {
-    # Clean up staging directory
-    Remove-Item -Path $installStaging -Recurse -Force -ErrorAction SilentlyContinue
+  # Copy conhost for terminal emulation verification
+  $conhostSource = "C:\Windows\System32\conhost.exe"
+  $conhostDest = Join-Path $installerDir "conhost.exe"
+  Copy-Item -Path $conhostSource -Destination $conhostDest -Force
+
+  & $conhostDest --headless --width 80 --height 24 2>$null
+
+} Finally {
+  # Clean up the installer staging directory
+  Remove-Item -Path $installerDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_fe254b53-1878-4972-98fe-8576cccf15f3  (1 rule(s)) ---------------------
-# Intent:    Detect execution of masqueraded Windows system binaries (svchost, lsass, explore
-# Rules:     fe254b53-1878-4972-98fe-8576cccf15f3
-# Archetype: Document/file operation workflow
+# -- Cluster: singleton_b82b7036-af4f-4267-9656-854b7bcd3e1b  (1 rule(s)) ---------------------
+# Intent:    Detect masquerading of Windows critical system binaries (lsass, svchost, csrss, 
+# Rules:     b82b7036-af4f-4267-9656-854b7bcd3e1b
+# Archetype: IT admin workflow
 
-# User application creates working directory for document processing
-$appWorkDir = Join-Path $env:APPDATA "AppTempWork_$(Get-Random)"
-New-Item -ItemType Directory -Path $appWorkDir -Force | Out-Null
+$auditDir = Join-Path $env:TEMP "SysAudit_$(Get-Random)"
+New-Item -ItemType Directory -Path $auditDir -Force | Out-Null
 
-try {
-    Write-Host "Initializing document processing application..."
+Try {
+  # Simulate configuration management audit by copying critical
+  # system binaries to a staging location for checksumming and version verification
+  $systemBinaries = @(
+    "C:\Windows\System32\lsass.exe",
+    "C:\Windows\System32\csrss.exe",
+    "C:\Windows\System32\smss.exe",
+    "C:\Windows\System32\dwm.exe",
+    "C:\Windows\System32\lsm.exe"
+  )
 
-    # Application extracts system utilities for file handling and shell operations
-    Copy-Item -Path "C:\Windows\System32\notepad.exe" -Destination $appWorkDir -Force
-    Copy-Item -Path "C:\Windows\System32\calc.exe" -Destination $appWorkDir -Force
-    Copy-Item -Path "C:\Windows\System32\conhost.exe" -Destination $appWorkDir -Force
-    Copy-Item -Path "C:\Windows\System32\taskhostw.exe" -Destination $appWorkDir -Force
+  foreach ($binary in $systemBinaries) {
+    if (Test-Path $binary) {
+      $destPath = Join-Path $auditDir (Split-Path -Leaf $binary)
+      Copy-Item -Path $binary -Destination $destPath -Force
+    }
+  }
 
-    # Application verifies shell utilities are functional
-    Write-Host "Validating system integration tools..."
+  # Admin executes binaries from the audit staging directory
+  # to verify system integrity and collect diagnostic metadata
+  $csrssAudit = Join-Path $auditDir "csrss.exe"
+  $lsassAudit = Join-Path $auditDir "lsass.exe"
 
-    # Run notepad for document verification
-    Start-Process -FilePath (Join-Path $appWorkDir "notepad.exe") -ArgumentList "/?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+  # These will immediately fail due to missing required arguments,
+  # but Sysmon will log the process creation from non-canonical path
+  & $csrssAudit --debug 2>$null
+  Start-Sleep -Milliseconds 300
 
-    # Run calc for validation check
-    Start-Process -FilePath (Join-Path $appWorkDir "calc.exe") -ArgumentList "/?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+  & $lsassAudit --version 2>$null
+  Start-Sleep -Milliseconds 300
 
-    # Run conhost for console operations verification
-    & (Join-Path $appWorkDir "conhost.exe") 2>$null | Out-Null
+  # Verify binaries were properly copied for audit trail
+  $dwmAudit = Join-Path $auditDir "dwm.exe"
+  & $dwmAudit /? 2>$null
+  Start-Sleep -Milliseconds 300
 
-    # Run taskhostw for task scheduling operations
-    Start-Process -FilePath (Join-Path $appWorkDir "taskhostw.exe") -ArgumentList "-?" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+} Finally {
+  # Remove audit staging directory and all copied binaries
+  Remove-Item -Path $auditDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 
-    Write-Host "Document processing application ready"
-} finally {
-    # Clean up working directory
-    Remove-Item -Path $appWorkDir -Recurse -Force -ErrorAction SilentlyContinue
+# -- Cluster: singleton_b82b7036-af4f-4267-9656-854b7bcd3e1b  (1 rule(s)) ---------------------
+# Intent:    Detect masquerading of Windows critical system binaries (lsass, svchost, csrss, 
+# Rules:     b82b7036-af4f-4267-9656-854b7bcd3e1b
+# Archetype: User-driven workflow
+
+$toolkitDir = Join-Path $env:TEMP "PortableToolkit_$(Get-Random)"
+New-Item -ItemType Directory -Path $toolkitDir -Force | Out-Null
+
+Try {
+  # Simulate a portable application that bundles Windows system tools
+  # for cross-platform diagnostic and environment capability detection
+  $programFilesDir = Join-Path $toolkitDir "bin"
+  New-Item -ItemType Directory -Path $programFilesDir -Force | Out-Null
+
+  # Copy explorer and taskhostw as bundled utilities
+  Copy-Item -Path "C:\Windows\explorer.exe" -Destination (Join-Path $programFilesDir "explorer.exe") -Force
+  Copy-Item -Path "C:\Windows\System32\taskhostw.exe" -Destination (Join-Path $programFilesDir "taskhostw.exe") -Force
+  Copy-Item -Path "C:\Windows\System32\taskhost.exe" -Destination (Join-Path $programFilesDir "taskhost.exe") -Force
+  Copy-Item -Path "C:\Windows\System32\spoolsv.exe" -Destination (Join-Path $programFilesDir "spoolsv.exe") -Force
+
+  # Run environment detection sequence
+  # These invocations represent the portable app checking system capabilities
+  $explorerPath = Join-Path $programFilesDir "explorer.exe"
+  & $explorerPath /e,/root 2>$null
+  Start-Sleep -Milliseconds 250
+
+  $taskhostwPath = Join-Path $programFilesDir "taskhostw.exe"
+  & $taskhostwPath 2>$null
+  Start-Sleep -Milliseconds 250
+
+  $spoolsvPath = Join-Path $programFilesDir "spoolsv.exe"
+  & $spoolsvPath 2>$null
+  Start-Sleep -Milliseconds 250
+
+  # Simulate the toolkit checking for Windows Subsystem components
+  $taskhostPath = Join-Path $programFilesDir "taskhost.exe"
+  & $taskhostPath /? 2>$null
+  Start-Sleep -Milliseconds 250
+
+} Finally {
+  # Clean up the portable toolkit directory
+  Remove-Item -Path $toolkitDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 

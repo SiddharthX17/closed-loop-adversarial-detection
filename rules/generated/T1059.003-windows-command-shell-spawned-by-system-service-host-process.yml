@@ -13,8 +13,8 @@ logsource:
   product: windows
 detection:
   selection_child:
-    - Image|endswith: '\cmd.exe'
-    - OriginalFileName: 'Cmd.Exe'
+    - Image|endswith: 'check regression' #'\cmd.exe'
+    - OriginalFileName: 'check regression' #'Cmd.Exe'
   selection_parent:
     ParentImage|endswith:
       - '\svchost.exe'
@@ -25,9 +25,8 @@ detection:
   filter_known_good_svchost_schedule:
     ParentImage|endswith: '\svchost.exe'
     ParentCommandLine|contains:
-      - 'check regression'
-      #- '-k Schedule'
-      #- '-k schedule'
+      - '-k Schedule'
+      - '-k schedule'
   condition: (selection_child and selection_parent) and not filter_known_good_svchost_schedule
 falsepositives:
   - Third-party services that legitimately shell out via cmd.exe from a service context

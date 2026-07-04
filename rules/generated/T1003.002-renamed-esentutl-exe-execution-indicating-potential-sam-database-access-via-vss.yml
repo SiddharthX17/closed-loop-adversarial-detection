@@ -20,7 +20,7 @@ logsource:
   product: windows
 detection:
   selection_renamed_esentutl:
-    OriginalFileName: 'esentutl.exe'
+    OriginalFileName: 'regress' #'esentutl.exe'
   filter_legitimate_path:
     Image|endswith: '\esentutl.exe'
   condition: selection_renamed_esentutl and not filter_legitimate_path

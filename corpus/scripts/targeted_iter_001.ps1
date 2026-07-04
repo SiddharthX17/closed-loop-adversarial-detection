@@ -10,142 +10,108 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_b82b7036-af4f-4267-9656-854b7bcd3e1b  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of Windows critical system binaries (lsass, svchost, csrss, 
-# Rules:     b82b7036-af4f-4267-9656-854b7bcd3e1b
+# -- Cluster: singleton_90670a15-971c-463a-9341-64e8d18bd9b0  (1 rule(s)) ---------------------
+# Intent:    Detect cmd.exe executing inline scripts (.vbs, .js, .hta) with redirected output
+# Rules:     90670a15-971c-463a-9341-64e8d18bd9b0
 # Archetype: Software installer/updater workflow
 
-$installerDir = Join-Path $env:TEMP "ComplianceCheck_$(Get-Random)"
-New-Item -ItemType Directory -Path $installerDir -Force | Out-Null
-
-Try {
-  # Create a copy of explorer.exe in the installer directory to simulate
-  # a legitimate vendor bundling system binaries for version verification
-  $explorerSource = "C:\Windows\explorer.exe"
-  $explorerDest = Join-Path $installerDir "explorer.exe"
-  Copy-Item -Path $explorerSource -Destination $explorerDest -Force
-
-  # Simulate installer performing a system library integrity check
-  # by invoking explorer.exe from the non-canonical path
-  & $explorerDest /root
-
-  # Pause briefly to ensure Sysmon captures the event
+$tempDir = [System.IO.Path]::GetTempPath()
+$scriptPath = Join-Path $tempDir "postinstall_config.vbs"
+$vbsContent = @"
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+strPath = objFSO.GetSpecialFolder(2) & "\\test_config.txt"
+Set objFile = objFSO.CreateTextFile(strPath, True)
+objFile.WriteLine("Configuration timestamp: " & Now)
+objFile.Close
+WScript.Echo "Configuration completed"
+"@
+$vbsContent | Set-Content -Path $scriptPath -Force
+try {
+  # Simulate a post-install script execution pattern that would be triggered by an MSI installer
+  cmd /c "cscript.exe $scriptPath > $tempDir\\install_log.txt"
   Start-Sleep -Milliseconds 500
-
-  # Similarly, copy and execute svchost from non-canonical path
-  # to simulate service dependency verification during installation
-  $svchostSource = "C:\Windows\System32\svchost.exe"
-  $svchostDest = Join-Path $installerDir "svchost.exe"
-  Copy-Item -Path $svchostSource -Destination $svchostDest -Force
-
-  # Execute with minimal arguments to verify presence
-  & $svchostDest -v 2>$null
-
-  Start-Sleep -Milliseconds 500
-
-  # Copy conhost for terminal emulation verification
-  $conhostSource = "C:\Windows\System32\conhost.exe"
-  $conhostDest = Join-Path $installerDir "conhost.exe"
-  Copy-Item -Path $conhostSource -Destination $conhostDest -Force
-
-  & $conhostDest --headless --width 80 --height 24 2>$null
-
-} Finally {
-  # Clean up the installer staging directory
-  Remove-Item -Path $installerDir -Recurse -Force -ErrorAction SilentlyContinue
+  # Verify the inline script executed
+  if (Test-Path -Path "$tempDir\\test_config.txt") {
+    Write-Host "Post-install configuration completed"
+  }
+}
+finally {
+  # Cleanup generated files
+  if (Test-Path -Path $scriptPath) { Remove-Item -Path $scriptPath -Force }
+  if (Test-Path -Path "$tempDir\\install_log.txt") { Remove-Item -Path "$tempDir\\install_log.txt" -Force }
+  if (Test-Path -Path "$tempDir\\test_config.txt") { Remove-Item -Path "$tempDir\\test_config.txt" -Force }
 }
 
-# -- Cluster: singleton_b82b7036-af4f-4267-9656-854b7bcd3e1b  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of Windows critical system binaries (lsass, svchost, csrss, 
-# Rules:     b82b7036-af4f-4267-9656-854b7bcd3e1b
+# -- Cluster: singleton_90670a15-971c-463a-9341-64e8d18bd9b0  (1 rule(s)) ---------------------
+# Intent:    Detect cmd.exe executing inline scripts (.vbs, .js, .hta) with redirected output
+# Rules:     90670a15-971c-463a-9341-64e8d18bd9b0
 # Archetype: IT admin workflow
 
-$auditDir = Join-Path $env:TEMP "SysAudit_$(Get-Random)"
-New-Item -ItemType Directory -Path $auditDir -Force | Out-Null
-
-Try {
-  # Simulate configuration management audit by copying critical
-  # system binaries to a staging location for checksumming and version verification
-  $systemBinaries = @(
-    "C:\Windows\System32\lsass.exe",
-    "C:\Windows\System32\csrss.exe",
-    "C:\Windows\System32\smss.exe",
-    "C:\Windows\System32\dwm.exe",
-    "C:\Windows\System32\lsm.exe"
-  )
-
-  foreach ($binary in $systemBinaries) {
-    if (Test-Path $binary) {
-      $destPath = Join-Path $auditDir (Split-Path -Leaf $binary)
-      Copy-Item -Path $binary -Destination $destPath -Force
-    }
-  }
-
-  # Admin executes binaries from the audit staging directory
-  # to verify system integrity and collect diagnostic metadata
-  $csrssAudit = Join-Path $auditDir "csrss.exe"
-  $lsassAudit = Join-Path $auditDir "lsass.exe"
-
-  # These will immediately fail due to missing required arguments,
-  # but Sysmon will log the process creation from non-canonical path
-  & $csrssAudit --debug 2>$null
-  Start-Sleep -Milliseconds 300
-
-  & $lsassAudit --version 2>$null
-  Start-Sleep -Milliseconds 300
-
-  # Verify binaries were properly copied for audit trail
-  $dwmAudit = Join-Path $auditDir "dwm.exe"
-  & $dwmAudit /? 2>$null
-  Start-Sleep -Milliseconds 300
-
-} Finally {
-  # Remove audit staging directory and all copied binaries
-  Remove-Item -Path $auditDir -Recurse -Force -ErrorAction SilentlyContinue
+$tempDir = [System.IO.Path]::GetTempPath()
+$htaPath = Join-Path $tempDir "system_remediation.hta"
+$htaContent = @"
+<html>
+<head>
+<title>System Remediation</title>
+<hta:application applicationname="RemediationApp" version="1.0" border="thin"/>
+</head>
+<body>
+<script language="VBScript">
+Sub Window_onLoad
+  MsgBox "Remediation task initiated"
+  WScript.Quit(0)
+End Sub
+</script>
+</body>
+</html>
+"@
+$htaContent | Set-Content -Path $htaPath -Force
+try {
+  # Execute HTA via mshta through cmd.exe with output redirection
+  $logPath = Join-Path $tempDir "remediation_results.txt"
+  cmd /c "mshta.exe $htaPath > $logPath 2>&1"
+  Start-Sleep -Milliseconds 1000
+  Write-Host "Remediation workflow executed"
+}
+finally {
+  # Cleanup
+  if (Test-Path -Path $htaPath) { Remove-Item -Path $htaPath -Force }
+  $logPath = Join-Path $tempDir "remediation_results.txt"
+  if (Test-Path -Path $logPath) { Remove-Item -Path $logPath -Force }
 }
 
-# -- Cluster: singleton_b82b7036-af4f-4267-9656-854b7bcd3e1b  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of Windows critical system binaries (lsass, svchost, csrss, 
-# Rules:     b82b7036-af4f-4267-9656-854b7bcd3e1b
+# -- Cluster: singleton_90670a15-971c-463a-9341-64e8d18bd9b0  (1 rule(s)) ---------------------
+# Intent:    Detect cmd.exe executing inline scripts (.vbs, .js, .hta) with redirected output
+# Rules:     90670a15-971c-463a-9341-64e8d18bd9b0
 # Archetype: User-driven workflow
 
-$toolkitDir = Join-Path $env:TEMP "PortableToolkit_$(Get-Random)"
-New-Item -ItemType Directory -Path $toolkitDir -Force | Out-Null
-
-Try {
-  # Simulate a portable application that bundles Windows system tools
-  # for cross-platform diagnostic and environment capability detection
-  $programFilesDir = Join-Path $toolkitDir "bin"
-  New-Item -ItemType Directory -Path $programFilesDir -Force | Out-Null
-
-  # Copy explorer and taskhostw as bundled utilities
-  Copy-Item -Path "C:\Windows\explorer.exe" -Destination (Join-Path $programFilesDir "explorer.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\taskhostw.exe" -Destination (Join-Path $programFilesDir "taskhostw.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\taskhost.exe" -Destination (Join-Path $programFilesDir "taskhost.exe") -Force
-  Copy-Item -Path "C:\Windows\System32\spoolsv.exe" -Destination (Join-Path $programFilesDir "spoolsv.exe") -Force
-
-  # Run environment detection sequence
-  # These invocations represent the portable app checking system capabilities
-  $explorerPath = Join-Path $programFilesDir "explorer.exe"
-  & $explorerPath /e,/root 2>$null
-  Start-Sleep -Milliseconds 250
-
-  $taskhostwPath = Join-Path $programFilesDir "taskhostw.exe"
-  & $taskhostwPath 2>$null
-  Start-Sleep -Milliseconds 250
-
-  $spoolsvPath = Join-Path $programFilesDir "spoolsv.exe"
-  & $spoolsvPath 2>$null
-  Start-Sleep -Milliseconds 250
-
-  # Simulate the toolkit checking for Windows Subsystem components
-  $taskhostPath = Join-Path $programFilesDir "taskhost.exe"
-  & $taskhostPath /? 2>$null
-  Start-Sleep -Milliseconds 250
-
-} Finally {
-  # Clean up the portable toolkit directory
-  Remove-Item -Path $toolkitDir -Recurse -Force -ErrorAction SilentlyContinue
+$tempDir = [System.IO.Path]::GetTempPath()
+$jsPath = Join-Path $tempDir "data_processor.js"
+$jsContent = @"
+var objFSO = new ActiveXObject("Scripting.FileSystemObject");
+var strPath = objFSO.GetSpecialFolder(2) + "\\processed_data.txt";
+var objFile = objFSO.CreateTextFile(strPath, true);
+objFile.WriteLine("Processed: " + new Date().toLocaleString());
+objFile.Close();
+WScript.Echo("Data processing completed");
+"@
+$jsContent | Set-Content -Path $jsPath -Force -Encoding ASCII
+try {
+  # Execute JavaScript via cscript through cmd.exe
+  $logPath = Join-Path $tempDir "processing_log.txt"
+  cmd /c "cscript.exe $jsPath > $logPath"
+  Start-Sleep -Milliseconds 500
+  # Verify execution
+  if (Test-Path -Path "$tempDir\\processed_data.txt") {
+    Write-Host "JavaScript utility task completed successfully"
+  }
+}
+finally {
+  # Cleanup
+  if (Test-Path -Path $jsPath) { Remove-Item -Path $jsPath -Force }
+  $logPath = Join-Path $tempDir "processing_log.txt"
+  if (Test-Path -Path $logPath) { Remove-Item -Path $logPath -Force }
+  if (Test-Path -Path "$tempDir\\processed_data.txt") { Remove-Item -Path "$tempDir\\processed_data.txt" -Force }
 }
 
 

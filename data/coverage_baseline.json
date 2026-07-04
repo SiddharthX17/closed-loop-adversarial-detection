@@ -1,0 +1,11 @@
+{
+  "coverage": {
+    "T1027": true,
+    "T1053.005": true
+  },
+  "fp_rate": 0.0023752969121140144,
+  "rules": {
+    "T1053.005-suspicious-schtasks-schedule-type-with-high-privileges.yml": true,
+    "T1059.001-potential-powershell-command-line-obfuscation.yml": true
+  }
+}

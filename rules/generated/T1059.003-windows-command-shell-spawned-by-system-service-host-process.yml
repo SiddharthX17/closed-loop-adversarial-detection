@@ -25,8 +25,9 @@ detection:
   filter_known_good_svchost_schedule:
     ParentImage|endswith: '\svchost.exe'
     ParentCommandLine|contains:
-      - '-k Schedule'
-      - '-k schedule'
+      - 'check regression'
+      #- '-k Schedule'
+      #- '-k schedule'
   condition: (selection_child and selection_parent) and not filter_known_good_svchost_schedule
 falsepositives:
   - Third-party services that legitimately shell out via cmd.exe from a service context

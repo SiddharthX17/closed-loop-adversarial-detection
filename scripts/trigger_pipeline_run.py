@@ -122,13 +122,33 @@ def cmd_summarize() -> None:
         lines.append(
             f"\n**Timed out waiting for completion** (limit: {MAX_POLL_SECONDS // 60} min)")
     elif result.get("status") == "completed":
-        # NOTE: orchestrator's exact result shape has had minor format
-        # drift across iterations keep this section to the top-level keys
-        # confirmed stable (coverage/pr_urls/run_summary/iterations).
         inner = result.get("result", {})
-        lines.append(f"\n**PRs opened:** {len(inner.get('pr_urls', []))}")
-        for url in inner.get("pr_urls", []):
-            lines.append(f"  - {url}")
+        summary = inner.get("run_summary", {})
+
+        lines.append(
+            f"\n**Techniques run:** {summary.get('techniques_run', '?')}")
+        lines.append(f"**Gaps found:** {summary.get('gaps_found', '?')}")
+        lines.append(
+            f"**Rules generated:** {summary.get('rules_generated', '?')}")
+        lines.append(
+            f"**Rules validated:** {summary.get('rules_validated', '?')}")
+
+        coverage = inner.get("coverage", {})
+        if coverage:
+            lines.append("\n| Technique | Coverage |")
+            lines.append("|---|---|")
+            icons = {"full": "✅", "partial": "⚠️",
+                     "missed": "❌", "no_rules": "⬜"}
+            for tid, status in sorted(coverage.items()):
+                lines.append(f"| {tid} | {icons.get(status, '?')} {status} |")
+
+        pr_urls = inner.get("pr_urls", [])
+        if pr_urls:
+            lines.append(f"\n**PRs opened ({len(pr_urls)}):**")
+            for url in pr_urls:
+                lines.append(f"  - {url}")
+        else:
+            lines.append("\n**PRs opened:** 0")
 
     print("\n".join(lines))
 

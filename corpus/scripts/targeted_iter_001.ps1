@@ -10,108 +10,131 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_90670a15-971c-463a-9341-64e8d18bd9b0  (1 rule(s)) ---------------------
-# Intent:    Detect cmd.exe executing inline scripts (.vbs, .js, .hta) with redirected output
-# Rules:     90670a15-971c-463a-9341-64e8d18bd9b0
+# -- Cluster: singleton_e8c37bfc-1a51-4e06-9c89-7d7175b0926b  (1 rule(s)) ---------------------
+# Intent:    Detects cmd.exe invoking echo with output redirection to create and execute VBSc
+# Rules:     e8c37bfc-1a51-4e06-9c89-7d7175b0926b
 # Archetype: Software installer/updater workflow
 
-$tempDir = [System.IO.Path]::GetTempPath()
-$scriptPath = Join-Path $tempDir "postinstall_config.vbs"
-$vbsContent = @"
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Simulate msiexec context by creating a temporary MSI execution context
+# This demonstrates how an installer would generate and run VBScript configuration
+$tempDir = $env:TEMP
+$vbsPath = Join-Path $tempDir 'setup_config.vbs'
+$logPath = Join-Path $tempDir 'setup_config.log'
+
+# Create a legitimate VBScript for application configuration
+# (This would normally be embedded in the installer package)
+$vbsContent = @'
 Set objFSO = CreateObject("Scripting.FileSystemObject")
-strPath = objFSO.GetSpecialFolder(2) & "\\test_config.txt"
-Set objFile = objFSO.CreateTextFile(strPath, True)
-objFile.WriteLine("Configuration timestamp: " & Now)
-objFile.Close
-WScript.Echo "Configuration completed"
-"@
-$vbsContent | Set-Content -Path $scriptPath -Force
-try {
-  # Simulate a post-install script execution pattern that would be triggered by an MSI installer
-  cmd /c "cscript.exe $scriptPath > $tempDir\\install_log.txt"
-  Start-Sleep -Milliseconds 500
-  # Verify the inline script executed
-  if (Test-Path -Path "$tempDir\\test_config.txt") {
-    Write-Host "Post-install configuration completed"
-  }
+Set objReg = CreateObject("WScript.Shell")
+
+' Record configuration timestamp
+strLog = Now & " - Configuration executed" & vbCrLf
+objFSO.CreateTextFile("{logPath}").Write strLog
+objReg.LogEvent 4, "Application configuration completed"
+'@
+
+# Write VBScript using cmd.exe with echo and redirection (matches detection pattern)
+# This is the actual installer workflow — cmd.exe is invoked by msiexec context
+cmd /c "echo Set objFSO = CreateObject(^"Scripting.FileSystemObject^"^)  > $vbsPath"
+cmd /c "echo Set objReg = CreateObject(^"WScript.Shell^"^)  >> $vbsPath"
+cmd /c "echo strLog = Now ^& \" - Configuration executed\" ^& vbCrLf  >> $vbsPath"
+cmd /c "echo objFSO.CreateTextFile(\"$logPath\").Write strLog  >> $vbsPath"
+
+# Execute the generated VBScript (legitimate post-install configuration)
+cscript.exe $vbsPath
+
+# Verify execution and clean up
+if (Test-Path $vbsPath) {
+    Remove-Item $vbsPath -Force
 }
-finally {
-  # Cleanup generated files
-  if (Test-Path -Path $scriptPath) { Remove-Item -Path $scriptPath -Force }
-  if (Test-Path -Path "$tempDir\\install_log.txt") { Remove-Item -Path "$tempDir\\install_log.txt" -Force }
-  if (Test-Path -Path "$tempDir\\test_config.txt") { Remove-Item -Path "$tempDir\\test_config.txt" -Force }
+if (Test-Path $logPath) {
+    Remove-Item $logPath -Force
 }
 
-# -- Cluster: singleton_90670a15-971c-463a-9341-64e8d18bd9b0  (1 rule(s)) ---------------------
-# Intent:    Detect cmd.exe executing inline scripts (.vbs, .js, .hta) with redirected output
-# Rules:     90670a15-971c-463a-9341-64e8d18bd9b0
+# -- Cluster: singleton_e8c37bfc-1a51-4e06-9c89-7d7175b0926b  (1 rule(s)) ---------------------
+# Intent:    Detects cmd.exe invoking echo with output redirection to create and execute VBSc
+# Rules:     e8c37bfc-1a51-4e06-9c89-7d7175b0926b
 # Archetype: IT admin workflow
 
-$tempDir = [System.IO.Path]::GetTempPath()
-$htaPath = Join-Path $tempDir "system_remediation.hta"
-$htaContent = @"
-<html>
-<head>
-<title>System Remediation</title>
-<hta:application applicationname="RemediationApp" version="1.0" border="thin"/>
-</head>
-<body>
-<script language="VBScript">
-Sub Window_onLoad
-  MsgBox "Remediation task initiated"
-  WScript.Quit(0)
-End Sub
-</script>
-</body>
-</html>
-"@
-$htaContent | Set-Content -Path $htaPath -Force
-try {
-  # Execute HTA via mshta through cmd.exe with output redirection
-  $logPath = Join-Path $tempDir "remediation_results.txt"
-  cmd /c "mshta.exe $htaPath > $logPath 2>&1"
-  Start-Sleep -Milliseconds 1000
-  Write-Host "Remediation workflow executed"
-}
-finally {
-  # Cleanup
-  if (Test-Path -Path $htaPath) { Remove-Item -Path $htaPath -Force }
-  $logPath = Join-Path $tempDir "remediation_results.txt"
-  if (Test-Path -Path $logPath) { Remove-Item -Path $logPath -Force }
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Simulate admin maintenance context (current directory is Program Files)
+# Generate VBScript for system diagnostic using cmd.exe echo redirection
+$workDir = Join-Path $env:ProgramFiles 'Diagnostic'
+if (-not (Test-Path $workDir)) {
+    New-Item -ItemType Directory -Path $workDir -Force | Out-Null
 }
 
-# -- Cluster: singleton_90670a15-971c-463a-9341-64e8d18bd9b0  (1 rule(s)) ---------------------
-# Intent:    Detect cmd.exe executing inline scripts (.vbs, .js, .hta) with redirected output
-# Rules:     90670a15-971c-463a-9341-64e8d18bd9b0
+Set-Location $workDir
+
+$vbsPath = Join-Path $workDir 'system_check.vbs'
+$reportPath = Join-Path $workDir 'diagnostic_report.txt'
+
+# Generate VBScript for system verification using cmd.exe echo and redirection
+# This pattern matches the detection rule: cmd /c echo > .vbs with installer context
+cmd /c "echo ' System diagnostic script  > $vbsPath"
+cmd /c "echo Set objWMI = GetObject(^"winmgmts:^"^)  >> $vbsPath"
+cmd /c "echo Set colItems = objWMI.ExecQuery(^"Select * from Win32_ComputerSystem^"^)  >> $vbsPath"
+cmd /c "echo For Each objItem in colItems  >> $vbsPath"
+cmd /c "echo   strOutput = objItem.Name ^& vbTab ^& objItem.SystemType  >> $vbsPath"
+cmd /c "echo Next  >> $vbsPath"
+
+# Execute the diagnostic VBScript
+cscript.exe $vbsPath > $reportPath 2>&1
+
+# Clean up generated files
+if (Test-Path $vbsPath) {
+    Remove-Item $vbsPath -Force
+}
+if (Test-Path $reportPath) {
+    Remove-Item $reportPath -Force
+}
+
+# Return to previous location
+Set-Location $env:TEMP
+if (Test-Path $workDir) {
+    Remove-Item $workDir -Force -Recurse
+}
+
+# -- Cluster: singleton_e8c37bfc-1a51-4e06-9c89-7d7175b0926b  (1 rule(s)) ---------------------
+# Intent:    Detects cmd.exe invoking echo with output redirection to create and execute VBSc
+# Rules:     e8c37bfc-1a51-4e06-9c89-7d7175b0926b
 # Archetype: User-driven workflow
 
-$tempDir = [System.IO.Path]::GetTempPath()
-$jsPath = Join-Path $tempDir "data_processor.js"
-$jsContent = @"
-var objFSO = new ActiveXObject("Scripting.FileSystemObject");
-var strPath = objFSO.GetSpecialFolder(2) + "\\processed_data.txt";
-var objFile = objFSO.CreateTextFile(strPath, true);
-objFile.WriteLine("Processed: " + new Date().toLocaleString());
-objFile.Close();
-WScript.Echo("Data processing completed");
-"@
-$jsContent | Set-Content -Path $jsPath -Force -Encoding ASCII
-try {
-  # Execute JavaScript via cscript through cmd.exe
-  $logPath = Join-Path $tempDir "processing_log.txt"
-  cmd /c "cscript.exe $jsPath > $logPath"
-  Start-Sleep -Milliseconds 500
-  # Verify execution
-  if (Test-Path -Path "$tempDir\\processed_data.txt") {
-    Write-Host "JavaScript utility task completed successfully"
-  }
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Simulate user-initiated application setup from Downloads
+# Many legacy applications generate VBScript helpers during first-run initialization
+$downloadsPath = [Environment]::GetFolderPath('UserProfile') + '\Downloads'
+$setupWorkDir = Join-Path $downloadsPath 'AppSetup'
+
+if (-not (Test-Path $setupWorkDir)) {
+    New-Item -ItemType Directory -Path $setupWorkDir -Force | Out-Null
 }
-finally {
-  # Cleanup
-  if (Test-Path -Path $jsPath) { Remove-Item -Path $jsPath -Force }
-  $logPath = Join-Path $tempDir "processing_log.txt"
-  if (Test-Path -Path $logPath) { Remove-Item -Path $logPath -Force }
-  if (Test-Path -Path "$tempDir\\processed_data.txt") { Remove-Item -Path "$tempDir\\processed_data.txt" -Force }
+
+$vbsPath = Join-Path $setupWorkDir 'init_environment.vbs'
+
+# Generate VBScript using cmd.exe echo redirection (matches detection pattern)
+# This script configures application paths and environment variables
+cmd /c "echo ' Initialize application environment  > $vbsPath"
+cmd /c "echo Dim objShell, strAppPath, strAppData  >> $vbsPath"
+cmd /c "echo Set objShell = CreateObject(^"WScript.Shell^"^)  >> $vbsPath"
+cmd /c "echo strAppPath = objShell.ExpandEnvironmentStrings(^"^%APPDATA^%\\MyApplication^"^)  >> $vbsPath"
+cmd /c "echo If Not objShell.FileSystemObject.FolderExists(strAppPath) Then  >> $vbsPath"
+cmd /c "echo   objShell.FileSystemObject.CreateFolder strAppPath  >> $vbsPath"
+cmd /c "echo End If  >> $vbsPath"
+
+# Execute the initialization script
+cscript.exe $vbsPath
+
+# Clean up
+if (Test-Path $vbsPath) {
+    Remove-Item $vbsPath -Force
+}
+if (Test-Path $setupWorkDir) {
+    Remove-Item $setupWorkDir -Force -Recurse
 }
 
 

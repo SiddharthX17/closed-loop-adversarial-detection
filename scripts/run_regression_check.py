@@ -39,7 +39,7 @@ from pathlib import Path
 
 import yaml
 
-from pipeline.detection.engine import DetectionEngine
+from pipeline.detection.engine import BASELINE_COLUMNS, DetectionEngine
 
 RULES_DIR = Path("rules")
 FIXTURES_DIR = Path("tests/fixtures/regression")
@@ -52,6 +52,23 @@ FP_REGRESSION_DELTA = 0.01
 
 TECHNIQUE_TAG_PATTERN = re.compile(
     r"attack\.(t\d{4}(?:\.\d{3})?)", re.IGNORECASE)
+
+# Build a case-insensitive lookup so event keys can be mapped to exactly
+# the casing BASELINE_COLUMNS uses. This prevents _infer_columns from seeing
+# both "Channel" (from BASELINE_COLUMNS) and "channel" (from a lowercased
+# event) as distinct strings — SQLite treats them as duplicate column names.
+_BASELINE_KEY_MAP: dict[str, str] = {
+    col.lower(): col for col in BASELINE_COLUMNS}
+
+
+def _normalize_event(event: dict) -> dict:
+    """
+    Normalize event keys to match BASELINE_COLUMNS casing where a match exists.
+    Keys not in BASELINE_COLUMNS are lowercased as a fallback.
+    Result: _infer_columns never sees two strings that SQLite would treat as
+    the same column name.
+    """
+    return {_BASELINE_KEY_MAP.get(k.lower(), k.lower()): v for k, v in event.items()}
 
 
 def extract_technique_id(rule_path: Path) -> str | None:
@@ -115,7 +132,7 @@ def compute_results() -> tuple[dict[str, bool], dict[str, bool]]:
         if technique_id is None:
             continue
 
-        events = [{k.lower(): v for k, v in e.items()} for e in load_jsonl(fixture_path)]
+        events = [_normalize_event(e) for e in load_jsonl(fixture_path)]
         # run_single_rule returns RuleMatchResult — .fired is the bool,
         # .matched_events is the list. No .match_count on RuleMatchResult
         # (that's on RuleBreakdown, which computes len(matched_events)).
@@ -136,7 +153,7 @@ def compute_fp_rate(benign_events: list[dict]) -> float:
     # mixes Sysmon-native casing (User, Image) from GH Actions collection with
     # LogEvent-normalized lowercase keys. SQLite sees user + User as duplicate
     # column names and refuses to CREATE TABLE. Fix at source, not in engine.
-    normalized = [{k.lower(): v for k, v in e.items()} for e in benign_events]
+    normalized = [_normalize_event(e) for e in benign_events]
     engine = DetectionEngine(rules_dir=RULES_DIR, events=normalized)
     results = engine.run()
     fp_count = sum(len(r.matched_events) for r in results)

@@ -123,7 +123,7 @@ def compute_results() -> tuple[dict[str, bool], dict[str, bool]]:
     rule_fired: dict[str, bool] = {}
     technique_coverage: dict[str, bool] = {}
 
-    for rule_path in sorted(RULES_DIR.glob("*.yml")):
+    for rule_path in sorted(RULES_DIR.rglob("*.yml")):
         fixture_path = FIXTURES_DIR / rule_path.stem / "attack_sample.jsonl"
         if not fixture_path.exists():
             continue

@@ -1,0 +1,44 @@
+title: CMD.EXE Echo-Redirect VBScript Creation and Execution Chain
+id: e8c37bfc-1a51-4e06-9c89-7d7175b0926b
+status: experimental
+description: Detects cmd.exe using echo-redirect to create a VBScript file in a user-writable directory and immediately executing it within the same command chain, a pattern indicative of inline VBScript dropper execution via Windows Command Shell.
+references:
+  - https://attack.mitre.org/techniques/T1059/003/
+author: Detection Engineer
+date: 2026-07-04
+tags:
+  - attack.t1059.003
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_base:
+    Image|endswith: '\cmd.exe'
+    CommandLine|contains|all:
+      - '/c'
+      - 'echo'
+      - '>'
+      - '.vbs'
+  selection_chain:
+    CommandLine|contains:
+      - '&'
+  selection_writable:
+    CommandLine|contains:
+      - 'AppData'
+      - 'Temp'
+      - 'Downloads'
+      - 'Public'
+  filter_installer_parents:
+    ParentImage|contains:
+      - '\msiexec.exe'
+      - '\setup.exe'
+      - '\install'
+  filter_program_files:
+    CurrentDirectory|contains:
+      - '\Program Files\'
+      - '\Program Files (x86)\'
+  condition: selection_base and selection_chain and selection_writable and not filter_installer_parents and not filter_program_files
+falsepositives:
+  - Legitimate software installers that write temporary VBScript files via cmd.exe echo-redirect
+  - Enterprise deployment tools using cmd.exe to stage script files in user-writable directories
+level: high

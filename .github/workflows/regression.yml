@@ -45,8 +45,14 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          python scripts/run_regression_check.py --mode=check --output=regression_report.md || \
-          printf "## Regression Check Results\n\nScript failed — check step logs above." > regression_report.md
+          set +e
+          python scripts/run_regression_check.py --mode=check --output=regression_report.md
+          EXIT_CODE=$?
+          set -e
+          if [ ! -f regression_report.md ]; then
+            printf "## Regression Check Results\n\nScript failed — check step logs above.\n" > regression_report.md
+          fi
+          exit $EXIT_CODE
 
       - name: Post results as PR comment
         uses: peter-evans/create-or-update-comment@v4
@@ -55,7 +61,7 @@ jobs:
           body-path: regression_report.md
 
       - name: Fail job if a regression was detected
-        if: steps.regression.outcome == 'failure'
+        if: always() && steps.regression.outcome == 'failure'
         run: exit 1
 
   update-baseline:

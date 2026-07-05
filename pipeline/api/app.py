@@ -40,7 +40,7 @@ def require_run_secret(x_pipeline_run_secret: str = Header(default="")) -> None:
         f"received_len={len(x_pipeline_run_secret)} "
         f"match={expected == x_pipeline_run_secret}"
     )
-    
+
     if not expected or x_pipeline_run_secret != expected:
         raise HTTPException(
             status_code=401, detail="Invalid or missing run secret")
@@ -81,7 +81,7 @@ _runs_lock = Lock()
 _executor = ThreadPoolExecutor(max_workers=1)
 
 RUN_HISTORY_PATH = Path("data/run_history.json")
-GENERATED_RULES_DIR = Path("rules/generated")
+RULES_DIR = Path("rules")
 
 
 # ---------------------------------------------------------------------------
@@ -220,25 +220,12 @@ def get_results(run_id: str, _: None = Depends(require_viewer_secret)):
 @app.get("/health")
 def health(_: None = Depends(require_viewer_secret)):
     """
-    Service status, active run, last completed run summary, generated rule count.
+    Service status, active run, generated rule count.
     """
-    history = _load_run_history()
-
-    last_run = None
-    if history:
-        latest = max(history.values(), key=lambda r: r.get("started_at", ""))
-        last_run = {
-            "run_id": latest["run_id"],
-            "status": latest["status"],
-            "started_at": latest.get("started_at"),
-            "completed_at": latest.get("completed_at"),
-        }
-
-    generated_count = (
-        len(list(GENERATED_RULES_DIR.glob("*.yml")))
-        if GENERATED_RULES_DIR.exists()
-        else 0
-    )
+    # Count from local rules/ dir — reflects state post-rules_sync.
+    # Before first run: shows baked-in image count.
+    # After any run: current synced count from GitHub main.
+    rules_count = len(list(RULES_DIR.rglob("*.yml")))
 
     with _runs_lock:
         active_run_id = next(
@@ -249,6 +236,5 @@ def health(_: None = Depends(require_viewer_secret)):
     return {
         "status": "ok",
         "active_run": active_run_id,
-        "last_run": last_run,
-        "generated_rules_count": generated_count,
+        "rules_count": rules_count,
     }

@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   2  |  Feasible: 2  |  Variants: 5
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,159 +10,115 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_8340bf12-c5eb-46d9-8b8f-513b08177301  (1 rule(s)) ---------------------
-# Intent:    Detect adversaries using PowerShell to register scheduled tasks with download cr
-# Rules:     8340bf12-c5eb-46d9-8b8f-513b08177301
-# Archetype: IT admin workflow
-
-$taskName = 'SystemHealthCheck'
-$taskDescription = 'Weekly system diagnostic and health verification'
-
-# Create task action that downloads health check script from internal server
-$taskAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $uri = [System.Uri]\"http://10.0.0.50:8080/maintenance/healthcheck.ps1\"; $client = New-Object System.Net.WebClient; $scriptContent = $client.DownloadString($uri); Invoke-Expression $scriptContent"'
-
-# Define task trigger for weekly execution
-$taskTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 3am
-
-# Set task settings for background execution
-$taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable
-
-# Create principal for SYSTEM context
-$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest -LogonType ServiceAccount
-
-# Register the scheduled task
-Register-ScheduledTask -TaskName $taskName -Description $taskDescription -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -Principal $principal -Force | Out-Null
-
-# Verify task was registered
-Get-ScheduledTask -TaskName $taskName | Format-List TaskName, Description, State
-
-# Clean up
-Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-
-# SKIPPED variant 'Software installer/updater workflow': blocked pattern: payload download ('downloadfile(')
-
-# -- Cluster: singleton_d312847c-2db1-4e03-aaa4-e33e0ae030e2  (1 rule(s)) ---------------------
-# Intent:    Detects cmd.exe launching script interpreters (wscript.exe/cscript.exe) with dir
-# Rules:     d312847c-2db1-4e03-aaa4-e33e0ae030e2
-# Archetype: IT admin workflow
-
-# Simulating legitimate SCCM-based script execution workflow
-# An organization uses System Center Configuration Manager (SCCM) to remotely
-# deploy and execute compliance audit scripts on managed systems.
-
-$vbsScript = @'
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objShell = CreateObject("WScript.Shell")
-strComputer = "."
-Set objWMIService = GetObject("winmgmts:" & strComputer & "\\root\\cimv2")
-Set colItems = objWMIService.ExecQuery("SELECT * FROM Win32_OperatingSystem", , 48)
-For Each objItem in colItems
-    WScript.Echo "System Audit: " & objItem.Caption
-Next
-'
-
-# Create a legitimate-looking audit script in a real SCCM-style staging directory
-$stagingPath = [System.IO.Path]::Combine($env:ProgramData, 'Microsoft', 'SystemCenter')
-if (-not (Test-Path $stagingPath)) {
-    New-Item -ItemType Directory -Path $stagingPath -Force | Out-Null
-}
-
-$scriptPath = [System.IO.Path]::Combine($stagingPath, 'audit_config.vbs')
-Set-Content -Path $scriptPath -Value $vbsScript -Encoding ASCII
-
-try {
-    # Simulate SCCM remote execution: launching via cmd.exe with /c flag
-    # This is how ConfigMgr and similar tools invoke scripts across systems
-    # The command navigates to the script directory and executes it
-    cmd /c "cd /d `"$stagingPath`" && cscript.exe audit_config.vbs" | Out-Null
-    Start-Sleep -Milliseconds 500
-} finally {
-    # Clean up the created script
-    if (Test-Path $scriptPath) {
-        Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
-    }
-    if ((Get-ChildItem $stagingPath -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0) {
-        Remove-Item -Path $stagingPath -Force -ErrorAction SilentlyContinue
-    }
-}
-
-# -- Cluster: singleton_d312847c-2db1-4e03-aaa4-e33e0ae030e2  (1 rule(s)) ---------------------
-# Intent:    Detects cmd.exe launching script interpreters (wscript.exe/cscript.exe) with dir
-# Rules:     d312847c-2db1-4e03-aaa4-e33e0ae030e2
+# -- Cluster: singleton_c11d1cdf-ad73-41a0-a0f7-1d2a65ca571c  (1 rule(s)) ---------------------
+# Intent:    Attackers executing arbitrary scripts or code through Windows Script Host interp
+# Rules:     c11d1cdf-ad73-41a0-a0f7-1d2a65ca571c
 # Archetype: Software installer/updater workflow
 
-# Simulating legitimate software installer post-install configuration workflow
-# Enterprise applications often execute VBScript-based configuration/validation
-# scripts from temporary directories as part of their installation or update process.
+# Simulate a legitimate MSI-based application installation that uses VBScript custom actions
+# Real installers (e.g., Adobe, Kaspersky, compliance tools) commonly embed and execute scripts
 
-$vbsConfig = @'
-' Installation verification script
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-strLogPath = objFSO.BuildPath(objFSO.GetSpecialFolder(2), "install_verify.log")
-Set objFile = objFSO.CreateTextFile(strLogPath, True)
-objFile.WriteLine "Configuration verification completed at " & Now
-objFile.Close
-'
+$tempDir = $env:TEMP
+$scriptName = 'install_action_$(Get-Random).vbs'
+$scriptPath = Join-Path $tempDir $scriptName
 
-# Create a staging directory in user's temp location (realistic for installers)
-$tempStaging = [System.IO.Path]::Combine($env:TEMP, 'AppSetup_' + (Get-Random))
-New-Item -ItemType Directory -Path $tempStaging -Force | Out-Null
+# Create a benign VBScript that an installer might run (e.g., registry verification)
+$vbsContent = @'
+Dim objShell, result
+Set objShell = CreateObject("WScript.Shell")
+result = objShell.Run("cmd /c echo Installation verification complete", 0, true)
+WScript.Quit 0
+'@
 
-$vbsPath = [System.IO.Path]::Combine($tempStaging, 'verify_config.vbs')
-Set-Content -Path $vbsPath -Value $vbsConfig -Encoding ASCII
+$vbsContent | Out-File -FilePath $scriptPath -Encoding ASCII -Force
 
 try {
-    # Installer executes configuration verification via cmd /c
-    # This pattern is common in MSI and other enterprise installer frameworks
-    cmd /c "cd \ && cd /d `"$tempStaging`" && wscript.exe verify_config.vbs" | Out-Null
-    Start-Sleep -Milliseconds 300
+    # Simulate the parent process being msiexec (what a real installer would do)
+    # Execute the script through cscript.exe as an installer custom action would
+    & cscript.exe $scriptPath //E:VBScript //B 2>&1 | Out-Null
+
+    # Also demonstrate wscript.exe execution (alternative installer path)
+    & wscript.exe $scriptPath //E:VBScript 2>&1 | Out-Null
 } finally {
-    # Clean up installer artifacts
-    if (Test-Path $tempStaging) {
-        Remove-Item -Path $tempStaging -Recurse -Force -ErrorAction SilentlyContinue
-    }
+    Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_d312847c-2db1-4e03-aaa4-e33e0ae030e2  (1 rule(s)) ---------------------
-# Intent:    Detects cmd.exe launching script interpreters (wscript.exe/cscript.exe) with dir
-# Rules:     d312847c-2db1-4e03-aaa4-e33e0ae030e2
+Write-Host 'Installation verification completed'
+
+# -- Cluster: singleton_c11d1cdf-ad73-41a0-a0f7-1d2a65ca571c  (1 rule(s)) ---------------------
+# Intent:    Attackers executing arbitrary scripts or code through Windows Script Host interp
+# Rules:     c11d1cdf-ad73-41a0-a0f7-1d2a65ca571c
+# Archetype: IT admin workflow
+
+# Simulate a legitimate administrative automation tool using mshta.exe
+# Enterprise management tools (SCCM, ConfigMgr, policy enforcers) use this pattern
+
+$tempDir = $env:TEMP
+$htmlFile = Join-Path $tempDir "admin_check_$(Get-Random).hta"
+
+# Create a benign HTA that performs system compliance checking
+$htaContent = @'
+<html>
+<head>
+<title>System Compliance Check</title>
+<script language="VBScript">
+Sub Window_OnLoad
+    Dim objShell, regPath
+    Set objShell = CreateObject("WScript.Shell")
+    regPath = "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion"
+    objShell.RegRead regPath
+    window.close()
+End Sub
+</script>
+</head>
+<body>
+Compliance check executing...
+</body>
+</html>
+'@
+
+$htaContent | Out-File -FilePath $htmlFile -Encoding ASCII -Force
+
+try {
+    # Execute via mshta as a legitimate admin tool would
+    # mshta with vbscript: protocol is standard for HTA execution
+    Start-Process -FilePath "mshta.exe" -ArgumentList $htmlFile -Wait -NoNewWindow -ErrorAction SilentlyContinue
+} finally {
+    Remove-Item -Path $htmlFile -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host 'Administrative compliance check completed'
+
+# -- Cluster: singleton_c11d1cdf-ad73-41a0-a0f7-1d2a65ca571c  (1 rule(s)) ---------------------
+# Intent:    Attackers executing arbitrary scripts or code through Windows Script Host interp
+# Rules:     c11d1cdf-ad73-41a0-a0f7-1d2a65ca571c
 # Archetype: User-driven workflow
 
-# Simulating legitimate user-driven automation workflow
-# Users in many organizations receive or download business process automation
-# scripts (data export, file organization, backup preparation) and execute them.
+# Simulate user-triggered script execution from a standard user directory
+# Real scenario: user downloads a configuration utility or opens a file that triggers script execution
 
-$vbsProcess = @'
-' File processing automation script
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objShell = CreateObject("WScript.Shell")
-' Collect file list from user documents
-strPath = objShell.SpecialFolders("MyDocuments")
-Set objFolder = objFSO.GetFolder(strPath)
-strReport = "File Inventory: " & objFolder.Files.Count & " files found"
-WScript.Echo strReport
-'
+# Use Desktop or Documents (user-writable paths the rule monitors)
+$userDocsPath = [System.Environment]::GetFolderPath('MyDocuments')
+$configScript = Join-Path $userDocsPath "config_$(Get-Random).js"
 
-# Simulate user downloading a script to their Downloads folder
-$downloadsPath = [System.IO.Path]::Combine($env:USERPROFILE, 'Downloads')
-if (-not (Test-Path $downloadsPath)) {
-    New-Item -ItemType Directory -Path $downloadsPath -Force | Out-Null
-}
+# Create a benign JavaScript file (like a configuration utility might use)
+$jsContent = @'
+var shell = new ActiveXObject("WScript.Shell");
+var result = shell.Run("cmd /c echo System configuration initialized", 0, true);
+WScript.Quit(0);
+'@
 
-$scriptPath = [System.IO.Path]::Combine($downloadsPath, 'file_report.vbs')
-Set-Content -Path $scriptPath -Value $vbsProcess -Encoding ASCII
+$jsContent | Out-File -FilePath $configScript -Encoding ASCII -Force
 
 try {
-    # User executes downloaded script via command line
-    # (common for batch operations, data processing, file utilities)
-    cmd /c "cd /d `"$downloadsPath`" && cscript.exe file_report.vbs" | Out-Null
-    Start-Sleep -Milliseconds 300
+    # Simulate user opening this file - mshta or wscript could be the handler
+    # Real applications sometimes use mshta to execute embedded JavaScript
+    Start-Process -FilePath "wscript.exe" -ArgumentList $configScript -Wait -NoNewWindow -ErrorAction SilentlyContinue
 } finally {
-    # Clean up downloaded script after execution
-    if (Test-Path $scriptPath) {
-        Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
-    }
+    Remove-Item -Path $configScript -Force -ErrorAction SilentlyContinue
 }
+
+Write-Host 'Document processing completed'
 
 
 # ===========================================================================

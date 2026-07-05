@@ -13,8 +13,8 @@ logsource:
   product: windows
 detection:
   selection_child:
-    - Image|endswith: 'check regression' #'\cmd.exe'
-    - OriginalFileName: 'check regression' #'Cmd.Exe'
+    - Image|endswith: '\cmd.exe'
+    - OriginalFileName: 'Cmd.Exe'
   selection_parent:
     ParentImage|endswith:
       - '\svchost.exe'

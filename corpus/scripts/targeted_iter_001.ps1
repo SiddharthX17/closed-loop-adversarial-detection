@@ -10,198 +10,155 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_dca366c1-0109-4973-9caf-3d39eb0d1043  (1 rule(s)) ---------------------
-# Intent:    MSHTA spawning scripting interpreters (wscript.exe or cscript.exe) via inline VB
-# Rules:     dca366c1-0109-4973-9caf-3d39eb0d1043
-# Archetype: IT admin workflow
-
-# Create a benign HTA application that demonstrates legitimate VBScript+WScript.Shell usage
-$htaDir = Join-Path $env:TEMP 'admin_utilities'
-if (-not (Test-Path $htaDir)) { New-Item -ItemType Directory -Path $htaDir | Out-Null }
-
-$htaPath = Join-Path $htaDir 'maintenance_tool.hta'
-$vbsPath = Join-Path $htaDir 'system_check.vbs'
-$reportPath = Join-Path $htaDir 'system_report.txt'
-
-# Create a simple VBScript that performs a system reporting task
-$vbsContent = @'
-Set objShell = CreateObject("WScript.Shell")
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-
-strReportPath = "' + $reportPath + '"
-Set objFile = objFSO.CreateTextFile(strReportPath, True)
-objFile.WriteLine "System Maintenance Report Generated: " & Now
-objFile.WriteLine "This is a legitimate system administration utility."
-objFile.Close
-objShell.Run "cmd /c exit 0", 0
-'@
-
-$vbsContent | Out-File -FilePath $vbsPath -Encoding ASCII
-
-# Create an HTA file that invokes the VBScript via WScript.Shell.Run
-$htaContent = @'
-<html>
-<head>
-<title>System Maintenance Utility</title>
-</head>
-<body>
-System Maintenance in progress...
-</body>
-<script language="VBScript">
-Set objShell = CreateObject("WScript.Shell")
-objShell.Run "cscript.exe ' + $vbsPath + '", 0
-</script>
-</html>
-'@
-
-$htaContent | Out-File -FilePath $htaPath -Encoding ASCII
-
-# Execute the HTA file using mshta.exe
-mshta.exe $htaPath
-
-# Wait for execution to complete
-Start-Sleep -Seconds 2
-
-# Verify the expected behavior occurred
-if (Test-Path $reportPath) {
-    Get-Content $reportPath | Out-Null
-}
-
-# Clean up all created files and directory
-Remove-Item -Path $htaDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_dca366c1-0109-4973-9caf-3d39eb0d1043  (1 rule(s)) ---------------------
-# Intent:    MSHTA spawning scripting interpreters (wscript.exe or cscript.exe) via inline VB
-# Rules:     dca366c1-0109-4973-9caf-3d39eb0d1043
+# -- Cluster: singleton_e348161b-e3f5-44f0-b9bf-8ac826964728  (1 rule(s)) ---------------------
+# Intent:    Detects command shell spawning scripting hosts (wscript, cscript, mshta) with in
+# Rules:     e348161b-e3f5-44f0-b9bf-8ac826964728
 # Archetype: Software installer/updater workflow
 
-# Simulate a legitimate software configuration utility using HTA with VBScript execution
-$configDir = Join-Path $env:TEMP 'config_utility'
-if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir | Out-Null }
+$tempDir = $env:TEMP
+$scriptName = 'install_config_{0}.vbs' -f [System.IO.Path]::GetRandomFileName()
+$scriptPath = Join-Path $tempDir $scriptName
 
-$htaPath = Join-Path $configDir 'setup_wizard.hta'
-$configVbs = Join-Path $configDir 'apply_settings.vbs'
-$configFile = Join-Path $configDir 'app_config.ini'
-
-# Create a VBScript that performs configuration tasks
-$vbsScript = @'
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objShell = CreateObject("WScript.Shell")
-
-strConfigPath = "' + $configFile + '"
-Set objConfigFile = objFSO.CreateTextFile(strConfigPath, True)
-objConfigFile.WriteLine "[Settings]"
-objConfigFile.WriteLine "Version=2.0"
-objConfigFile.WriteLine "LastConfigured=" & Now
-objConfigFile.WriteLine "Status=Applied"
-objConfigFile.Close
-
-objShell.Run "cmd /c exit 0", 0
-'@
-
-$vbsScript | Out-File -FilePath $configVbs -Encoding ASCII
-
-# Create HTA that calls WScript.Shell.Run with wscript.exe
-$htaContent = @'
-<html>
-<head>
-<title>Application Configuration Utility</title>
-<hta:application id="ConfigApp" windowState="normal" />
-</head>
-<body>
-<h3>Applying Configuration Settings...</h3>
-</body>
-<script language="VBScript">
+# Simulate MSI installer spawning cmd to generate VBScript
+$vbsCode = @'
 Dim objShell
 Set objShell = CreateObject("WScript.Shell")
-objShell.Run "wscript.exe ' + $configVbs + '", 0
-</script>
-</html>
+objShell.RegWrite "HKLM\SOFTWARE\TestApp\installed", 1, "REG_DWORD"
+Set objShell = Nothing
 '@
 
-$htaContent | Out-File -FilePath $htaPath -Encoding ASCII
+Try {
+    # Write VBScript content via cmd.exe echo (realistic for installer scenarios)
+    cmd /c "echo. $($vbsCode | ForEach-Object { $_ }) > `"$scriptPath`""
 
-# Execute the HTA using mshta.exe, which will spawn wscript.exe
-mshta.exe $htaPath
+    # Verify file was created
+    if (Test-Path $scriptPath) {
+        Write-Host "VBScript created successfully"
+    }
 
-# Allow time for subprocess completion
-Start-Sleep -Seconds 2
+    # Execute the VBScript using cscript.exe (child process of cmd from the installer context)
+    cscript.exe $scriptPath //Nologo
 
-# Verify configuration file was created
-if (Test-Path $configFile) {
-    Get-Content $configFile | Out-Null
+    # Simulate what real installers do: check result and clean up
+    Start-Sleep -Milliseconds 500
+}
+Catch {
+    Write-Host "Script execution error: $_"
+}
+Finally {
+    # Clean up the temporary script
+    if (Test-Path $scriptPath) {
+        Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+
+    # Clean up registry entry created by script
+    if (Test-Path 'HKLM:\SOFTWARE\TestApp') {
+        Remove-Item 'HKLM:\SOFTWARE\TestApp' -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Clean up all created files and directory
-Remove-Item -Path $configDir -Recurse -Force -ErrorAction SilentlyContinue
+# -- Cluster: singleton_e348161b-e3f5-44f0-b9bf-8ac826964728  (1 rule(s)) ---------------------
+# Intent:    Detects command shell spawning scripting hosts (wscript, cscript, mshta) with in
+# Rules:     e348161b-e3f5-44f0-b9bf-8ac826964728
+# Archetype: IT admin workflow
 
-# -- Cluster: singleton_dca366c1-0109-4973-9caf-3d39eb0d1043  (1 rule(s)) ---------------------
-# Intent:    MSHTA spawning scripting interpreters (wscript.exe or cscript.exe) via inline VB
-# Rules:     dca366c1-0109-4973-9caf-3d39eb0d1043
-# Archetype: User-driven workflow
+$tempDir = $env:TEMP
+$jsName = 'wmi_query_{0}.js' -f [System.IO.Path]::GetRandomFileName()
+$jsPath = Join-Path $tempDir $jsName
 
-# Create a realistic user-facing HTA utility (e.g., IT inventory tool)
-$toolDir = Join-Path $env:TEMP 'user_tools'
-if (-not (Test-Path $toolDir)) { New-Item -ItemType Directory -Path $toolDir | Out-Null }
-
-$htaPath = Join-Path $toolDir 'inventory_tool.hta'
-$processorScript = Join-Path $toolDir 'inventory_processor.vbs'
-$outputFile = Join-Path $toolDir 'inventory_report.txt'
-
-# Create VBScript that processes inventory data
-$processorContent = @'
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objShell = CreateObject("WScript.Shell")
-
-strOutputPath = "' + $outputFile + '"
-Set objOutput = objFSO.CreateTextFile(strOutputPath, True)
-objOutput.WriteLine "Computer Inventory Report"
-objOutput.WriteLine "Timestamp: " & Now
-objOutput.WriteLine "OS: Windows"
-objOutput.WriteLine "Status: Processed"
-objOutput.Close
-
-objShell.Run "cmd /c tasklist /FO CSV > nul", 0
+# JavaScript WMI query for system information gathering (legitimate admin task)
+$jsCode = @'
+var locator = new ActiveXObject("WbemScripting.SWbemLocator");
+var service = locator.ConnectServer(".", "root\\cimv2");
+var processes = service.ExecQuery("Select Name from Win32_Process");
+WScript.Echo("Process count retrieved via WMI");
 '@
 
-$processorContent | Out-File -FilePath $processorScript -Encoding ASCII
+Try {
+    # Write JavaScript inline using cmd echo - common pattern in batch automation
+    $cmd = "echo. $($jsCode | ForEach-Object { $_ }) > `"$jsPath`""
+    cmd /c $cmd
 
-# Create the main HTA application with UI
-$htaContent = @'
-<html>
-<head>
-<title>System Inventory Tool</title>
-<hta:application id="InventoryTool" windowState="normal" width="600" height="400" />
-</head>
-<body>
-<h2>System Inventory Analysis</h2>
-<p>Gathering system information...</p>
-</body>
-<script language="VBScript">
-Sub Window_OnLoad
-    Dim objShell
-    Set objShell = CreateObject("WScript.Shell")
-    objShell.Run "cscript.exe ' + $processorScript + '", 0
-End Sub
-</script>
-</html>
-'@
+    if (Test-Path $jsPath) {
+        Write-Host "JavaScript WMI script created"
+    }
 
-$htaContent | Out-File -FilePath $htaPath -Encoding ASCII
+    # Execute via cscript.exe (admin performing WMI query)
+    cscript.exe $jsPath //Nologo
 
-# User opens the HTA application
-mshta.exe $htaPath
-
-# Wait for processing
-Start-Sleep -Seconds 2
-
-# Verify output was generated
-if (Test-Path $outputFile) {
-    Get-Content $outputFile | Out-Null
+    Start-Sleep -Milliseconds 300
+}
+Catch {
+    Write-Host "WMI script error: $_"
+}
+Finally {
+    # Clean up temporary JavaScript file
+    if (Test-Path $jsPath) {
+        Remove-Item $jsPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Clean up the tool directory
-Remove-Item -Path $toolDir -Recurse -Force -ErrorAction SilentlyContinue
+# -- Cluster: singleton_e348161b-e3f5-44f0-b9bf-8ac826964728  (1 rule(s)) ---------------------
+# Intent:    Detects command shell spawning scripting hosts (wscript, cscript, mshta) with in
+# Rules:     e348161b-e3f5-44f0-b9bf-8ac826964728
+# Archetype: Document/file operation workflow
+
+$tempDir = $env:TEMP
+$htaName = 'docprocess_{0}.hta' -f [System.IO.Path]::GetRandomFileName()
+$htaPath = Join-Path $tempDir $htaName
+$vbsName = 'converter_{0}.vbs' -f [System.IO.Path]::GetRandomFileName()
+$vbsPath = Join-Path $tempDir $vbsName
+
+# HTA content that calls CreateObject and spawns cmd to run VBScript
+$htaCode = @'
+<HTML>
+<HEAD>
+<TITLE>Document Processor</TITLE>
+<HTA:APPLICATION ID="docapp" VERSION="1.0" />
+</HEAD>
+<BODY>
+<SCRIPT language="VBScript">
+Dim shell
+Set shell = CreateObject("WScript.Shell")
+shell.Run "cmd /c echo Dim fso | Set fso = CreateObject(""Scripting.FileSystemObject""^) >> $vbsPath && cscript.exe $vbsPath"
+Set shell = Nothing
+</SCRIPT>
+</BODY>
+</HTML>
+'@
+
+$vbsCode = @'
+Dim fso
+Set fso = CreateObject("Scripting.FileSystemObject")
+WScript.Echo("File operations initialized")
+Set fso = Nothing
+'@
+
+Try {
+    # Create the HTA file
+    $htaCode | Out-File -FilePath $htaPath -Encoding ASCII
+
+    if (Test-Path $htaPath) {
+        Write-Host "HTA document processor created"
+    }
+
+    # HTA execution (mshta.exe invokes the HTA which contains createobject)
+    # The HTA internally runs: cmd /c [echo ... vbs code] && cscript
+    mshta.exe $htaPath
+
+    Start-Sleep -Milliseconds 500
+}
+Catch {
+    Write-Host "HTA processing error: $_"
+}
+Finally {
+    # Clean up temporary files
+    @($htaPath, $vbsPath) | ForEach-Object {
+        if (Test-Path $_) {
+            Remove-Item $_ -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
 
 
 # ===========================================================================

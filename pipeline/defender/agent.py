@@ -27,7 +27,7 @@ load_dotenv()
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-sonnet-5"
 MAX_RETRIES = 2
 MAX_RETRIES_GATE_FAILURE = 3
 RULES_DIR = Path("rules")
@@ -112,7 +112,6 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
         response = client.messages.create(
             model=MODEL,
             max_tokens=4096,
-            temperature=0,
             system=[
                 {
                     "type": "text",
@@ -121,6 +120,7 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
                 }
             ],
             messages=[{"role": "user", "content": user_message}],
+            thinking={"type": "disabled"},
         )
 
         if DEBUG:
@@ -132,7 +132,18 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
                 print(
                     f"[defender] Cache HIT: {usage.cache_read_input_tokens} tokens")
 
-        raw = response.content[0].text.strip()
+        text_block = next(
+            (b for b in response.content if b.type == "text"), None
+        )
+        if text_block is None:
+            if DEBUG:
+                print(
+                    f"[defender] No text block in response "
+                    f"(stop_reason={response.stop_reason})"
+                )
+            return None
+
+        raw = text_block.text.strip()
 
         # Strip markdown fences — LLM sometimes wraps YAML in ```yaml
         if raw.startswith("```"):

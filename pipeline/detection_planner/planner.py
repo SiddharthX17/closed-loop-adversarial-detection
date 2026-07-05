@@ -41,7 +41,7 @@ load_dotenv()
 
 DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-sonnet-5"
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +187,6 @@ class DetectionPlanner:
             response = self._client.messages.create(
                 model=MODEL,
                 max_tokens=6144,
-                temperature=0,
                 system=[
                     {
                         "type": "text",
@@ -196,11 +195,10 @@ class DetectionPlanner:
                     }
                 ],
                 messages=[{"role": "user", "content": user_message}],
+                thinking={"type": "adaptive"},
                 output_config={
-                    "format": {
-                        "type": "json_schema",
-                        "schema": PLANNER_OUTPUT_SCHEMA,
-                    }
+                    "format": {"type": "json_schema", "schema": PLANNER_OUTPUT_SCHEMA},
+                    "effort": "low",
                 },
             )
 
@@ -217,9 +215,21 @@ class DetectionPlanner:
                 print(
                     f"[detection_planner] stop_reason=max_tokens — response may be truncated")
 
+            text_block = next(
+                (b for b in response.content if b.type == "text"), None
+            )
+            if text_block is None:
+                if DEBUG:
+                    print(
+                        f"[detection_planner] No text block in response "
+                        f"(stop_reason={response.stop_reason}) — "
+                        f"likely truncated by max_tokens before output"
+                    )
+                return None
+
             # Schema-constrained decoding guarantees valid JSON syntax — no
             # defensive bracket extraction needed.
-            return response.content[0].text.strip()
+            return text_block.text.strip()
 
         except Exception as e:
             if DEBUG:

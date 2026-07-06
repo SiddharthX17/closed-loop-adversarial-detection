@@ -4,7 +4,9 @@
     "T1027": true,
     "T1036.005": true,
     "T1053.005": true,
-    "T1059.003": true
+    "T1059.003": true,
+    "T1197": true,
+    "T1543.003": true
   },
   "fp_rate": 0.0023752969121140144,
   "rules": {
@@ -19,6 +21,10 @@
     "T1059.001-potential-powershell-command-line-obfuscation.yml": true,
     "T1059.003-cmd-exe-echo-redirect-vbscript-creation-and-execution-chain.yml": true,
     "T1059.003-windows-command-shell-inline-script-staging-and-execution-via-cmd-exe.yml": true,
-    "T1059.003-windows-command-shell-spawned-by-system-service-host-process.yml": true
+    "T1059.003-windows-command-shell-spawned-by-system-service-host-process.yml": true,
+    "T1197-bits-job-creation-via-bitsadmin-with-notify-command.yml": true,
+    "T1197-bits-job-lifecycle-abuse-via-bitsadmin-with-lolbin-notify-command.yml": true,
+    "T1543.003-suspicious-svchost-hosted-service-creation-via-command-line.yml": true,
+    "T1543.003-svchost-service-group-hijack-via-servicedll-registry-add-command.yml": true
   }
 }

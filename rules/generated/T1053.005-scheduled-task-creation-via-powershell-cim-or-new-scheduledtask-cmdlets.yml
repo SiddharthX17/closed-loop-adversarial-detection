@@ -1,0 +1,59 @@
+title: Scheduled Task Creation via PowerShell CIM or New-ScheduledTask Cmdlets
+id: 1289c991-b0ba-4f72-8ef9-4e4050be30bc
+status: experimental
+description: |
+    Detects PowerShell-based scheduled task creation using New-ScheduledTask/Register-ScheduledTask cmdlets
+    or Invoke-CimMethod with PS_ScheduledTask class. These methods bypass schtasks.exe and are used by
+    attackers to create elevated or hidden scheduled tasks while evading traditional schtasks monitoring.
+references:
+    - https://attack.mitre.org/techniques/T1053/005/
+    - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1053.005/T1053.005.md
+author: Detection Engineer
+date: 2026-06-13
+tags:
+    - attack.execution
+    - attack.persistence
+    - attack.privilege-escalation
+    - attack.t1053.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+    selection_register_task:
+        CommandLine|contains:
+            - 'Register-ScheduledTask'
+            - 'New-ScheduledTask'
+    selection_cim_task:
+        CommandLine|contains|all:
+            - 'Invoke-CimMethod'
+            - 'PS_ScheduledTask'
+    selection_suspicious_parent:
+        ParentImage|endswith:
+            - '\mshta.exe'
+            - '\wscript.exe'
+            - '\cscript.exe'
+            - '\svchost.exe'
+            - '\wmiprvse.exe'
+            - '\rundll32.exe'
+            - '\regsvr32.exe'
+    selection_elevated:
+        CommandLine|contains:
+            - 'RunLevel Highest'
+            - 'RunLevel=Highest'
+            - 'BUILTIN\Administrators'
+            - 'RegisterByXml'
+            - 'AtLogon'
+            - 'AtStartup'
+    condition: selection_img and (
+        (selection_register_task and selection_elevated) or
+        selection_cim_task or
+        (selection_register_task and selection_suspicious_parent)
+        )
+falsepositives:
+    - Legitimate administrative scripts that create elevated scheduled tasks via PowerShell cmdlets
+    - Software deployment tools using CIM-based task registration
+level: high

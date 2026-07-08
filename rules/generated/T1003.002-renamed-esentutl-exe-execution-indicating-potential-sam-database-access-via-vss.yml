@@ -1,0 +1,31 @@
+title: Renamed esentutl.exe Execution Indicating Potential SAM Database Access via VSS
+id: d9dc84e1-b34d-407a-8fb4-e5811294eec6
+status: experimental
+description: >
+  Detects execution of a binary whose OriginalFileName metadata is esentutl.exe
+  but whose Image path does not end with esentutl.exe, indicating binary renaming
+  to evade name-based detection. esentutl.exe is commonly abused to copy locked
+  SAM and SYSTEM hives from Volume Shadow Copies for offline credential extraction
+  (T1003.002). A renamed esentutl.exe is a strong indicator of deliberate evasion.
+references:
+  - https://attack.mitre.org/techniques/T1003/002/
+  - https://www.ired.team/offensive-security/credential-access-and-credential-dumping/dumping-credentials-from-windows-registry-via-volume-shadow-copy
+tags:
+  - attack.credential_access
+  - attack.t1003.002
+author: Detection Engineer
+date: 2024-01-01
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_renamed_esentutl:
+    OriginalFileName: 'esentutl.exe'
+  filter_legitimate_path:
+    Image|endswith: '\esentutl.exe'
+  condition: selection_renamed_esentutl and not filter_legitimate_path
+falsepositives:
+  - Backup or database software that bundles esentutl.exe under an alternate binary
+    name within a known vendor installation directory. Allowlist specific vendor
+    paths in the Image field if confirmed benign in your environment.
+level: high

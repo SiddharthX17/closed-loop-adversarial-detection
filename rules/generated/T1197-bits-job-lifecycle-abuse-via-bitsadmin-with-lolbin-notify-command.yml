@@ -1,0 +1,46 @@
+title: BITS Job Lifecycle Abuse via Bitsadmin with LOLBin Notify Command
+id: 2e321480-a454-4d29-8b0d-b507d09d64a8
+status: experimental
+description: >
+  Detects use of bitsadmin.exe to create and populate a BITS job and configure
+  a /setnotifycmdline notification command pointing to a living-off-the-land
+  binary, indicating abuse of the BITS service to download and execute a
+  payload while evading direct download/execution tooling and network defenses.
+references:
+  - https://attack.mitre.org/techniques/T1197/
+tags:
+  - attack.t1197
+  - attack.defense-evasion
+author: detection-engineer
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_image:
+    Image|endswith: '\bitsadmin.exe'
+  selection_verbs:
+    CommandLine|contains:
+      - '/addfile'
+      - '/setnotifycmdline'
+      - '/resume'
+      - '/complete'
+      - '/create'
+  selection_notify:
+    CommandLine|contains: '/setnotifycmdline'
+  selection_lolbin_notify:
+    CommandLine|contains:
+      - 'rundll32.exe'
+      - 'mshta.exe'
+      - 'regsvr32.exe'
+      - 'cscript.exe'
+      - 'wscript.exe'
+      - 'powershell.exe'
+  filter_signed_installer_notify:
+    CommandLine|contains:
+      - '/setnotifycmdline SyncJob C:\Program Files\'
+      - '/setnotifycmdline DataTransfer C:\Program Files\'
+  condition: selection_image and selection_verbs and selection_notify and selection_lolbin_notify and not filter_signed_installer_notify
+falsepositives:
+  - Legitimate IT automation or patch management using bitsadmin with notify commands pointing to signed installers
+  - Internal software delivery scripts invoking signed installers via /setnotifycmdline
+level: high

@@ -49,7 +49,7 @@ def validate(
     corpus_root: Path,
     *,
     min_match_count: int = 1,
-    min_match_ratio: float = 0.0,
+    min_match_ratio: float = 1.0,
     fp_threshold: float = 0.01,
     benign_gen_seed: int = 42,
     supplement_with_generated: bool = True,

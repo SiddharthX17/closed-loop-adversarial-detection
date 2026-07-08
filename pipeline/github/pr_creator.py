@@ -118,6 +118,20 @@ def _branch_name(technique_id: str) -> str:
     return f"rule/{technique_id}"
 
 
+def _fixture_path(filename: str) -> str:
+    """
+    Regression fixture path for a rule — named after the rule's own
+    filename stem, so the mapping between rules/ and the fixture is a
+    direct lookup, no separate index needed.
+    """
+    return f"tests/fixtures/regression/{Path(filename).stem}/attack_sample.jsonl"
+
+
+def _format_jsonl(events: list[dict]) -> str:
+    """One JSON object per line — matches corpus/attack/*.jsonl convention."""
+    return "\n".join(json.dumps(event) for event in events)
+
+
 # ---------------------------------------------------------------------------
 # PR body helpers
 # ---------------------------------------------------------------------------
@@ -283,6 +297,7 @@ class PRCreator:
         missed_events: list[dict],
         validation_result,
         fired_rules: list | None = None,
+        attack_sample: list[dict] | None = None,
     ) -> PRResult:
         """
         Create or update a GitHub PR for a validated Sigma rule.
@@ -294,6 +309,11 @@ class PRCreator:
             missed_events:     Events not caught — attached as evidence
             validation_result: ValidationResult from validation_pipeline
             fired_rules:       RuleBreakdown list from prior DetectionResult (optional)
+            attack_sample:     Events the rule passed its attack_gate against —
+                                persisted as a frozen regression fixture
+                                (tests/fixtures/regression/{filename_stem}/).
+                                Optional — if omitted, no fixture is written,
+                                everything else behaves exactly as before.
 
         Returns:
             PRResult with pr_url, pr_number, branch_name, rule_filename
@@ -377,6 +397,69 @@ class PRCreator:
                 rule_filename=filename,
             )
 
+        # ── Cleanup: remove rejected rule file(s) from this branch ────────
+        # If a human closed (not merged) a prior PR for this technique, the
+        # rejected rule file(s) still exist on the branch. Remove them via a
+        # new commit on the SAME branch — the branch ref itself is retained,
+        # no delete+recreate — so the next attempt writes a clean file
+        # instead of silently coexisting alongside rejected content.
+        #
+        # Scoped to rejected_pr.get_files() with status=="added" — NOT a
+        # filename-prefix match. A prefix match can't tell "this file was
+        # introduced by the rejected attempt" apart from "this file already
+        # existed on main and the branch inherited it at creation time" —
+        # both can share the same {technique_id}-* prefix if this technique
+        # already has an earlier MERGED rule. get_files()'s status is
+        # computed against main, so "added" can only ever mean the former.
+        if not existing_pr:
+            closed_prs = self._repo.get_pulls(
+                state="closed",
+                head=f"{self._repo.owner.login}:{branch}",
+            )
+            rejected_pr = max(
+                (p for p in closed_prs if not p.merged),
+                key=lambda p: p.closed_at,
+                default=None,
+            )
+            if rejected_pr:
+                try:
+                    changed_files = list(rejected_pr.get_files())
+                except GithubException as e:
+                    changed_files = []
+                    if DEBUG:
+                        print(
+                            f"[pr_creator] Could not list files for "
+                            f"rejected PR #{rejected_pr.number}: {e}")
+
+                for cf in changed_files:
+                    if cf.status != "added":
+                        continue  # never touch anything that predates this PR
+                    try:
+                        # Re-fetch current sha rather than trust cf.sha —
+                        # the PR's file list reflects its head commit, the
+                        # branch may have moved since it was closed.
+                        current = self._repo.get_contents(
+                            cf.filename, ref=branch)
+                        self._repo.delete_file(
+                            path=cf.filename,
+                            message=f"chore: remove rejected rule "
+                            f"(PR #{rejected_pr.number} closed without merge)",
+                            sha=current.sha,
+                            branch=branch,
+                        )
+                        if DEBUG:
+                            print(
+                                f"[pr_creator] Removed rejected rule file "
+                                f"'{cf.filename}' from branch '{branch}'"
+                            )
+                    except GithubException as e:
+                        if e.status == 404:
+                            continue  # already gone — harmless
+                        if DEBUG:
+                            print(
+                                f"[pr_creator] Could not remove '{cf.filename}' "
+                                f"from '{branch}': {e}")
+
         # ── Branch lifecycle: create branch if absent, otherwise reuse existing branch────────────
         # Preserves commit history and PR continuity.
         # This moves the branch tip to current HEAD without losing commit history.
@@ -413,11 +496,6 @@ class PRCreator:
                 if DEBUG:
                     print(f"[pr_creator] Updated {rule_path}")
             except GithubException as e:
-                if DEBUG:
-                    print(
-                        f"[corpus/pusher] get_contents failed: "
-                        f"status={e.status} data={e.data}"
-                    )
                 if e.status == 404:
                     _retry(lambda: self._repo.create_file(
                         path=rule_path,
@@ -429,6 +507,40 @@ class PRCreator:
                         print(f"[pr_creator] Created {rule_path}")
                 else:
                     raise
+
+            # ── Commit regression fixture (additive — only if provided) ──
+            # Mirrors the rule commit pattern exactly. Skipped entirely when
+            # content_unchanged, same reasoning as the rule itself: unchanged
+            # rule content means the evidence that validated it hasn't
+            # changed either.
+            if attack_sample:
+                fixture_path = _fixture_path(filename)
+                fixture_content = _format_jsonl(attack_sample)
+                try:
+                    existing_fixture = self._repo.get_contents(
+                        fixture_path, ref=branch)
+                    _retry(lambda: self._repo.update_file(
+                        path=fixture_path,
+                        message=f"test: {technique_id} regression fixture — automated",
+                        content=fixture_content,
+                        sha=existing_fixture.sha,
+                        branch=branch,
+                    ))
+                    if DEBUG:
+                        print(f"[pr_creator] Updated fixture {fixture_path}")
+                except GithubException as e:
+                    if e.status == 404:
+                        _retry(lambda: self._repo.create_file(
+                            path=fixture_path,
+                            message=f"test: {technique_id} regression fixture — automated",
+                            content=fixture_content,
+                            branch=branch,
+                        ))
+                        if DEBUG:
+                            print(
+                                f"[pr_creator] Created fixture {fixture_path}")
+                    else:
+                        raise
 
         # ── PR: create or update ──────────────────────────────────────────
         if existing_pr:

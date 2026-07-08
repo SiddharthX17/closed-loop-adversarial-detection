@@ -1,0 +1,53 @@
+title: Windows Command Shell Inline Script Staging and Execution via cmd.exe
+id: 90670a15-971c-463a-9341-64e8d18bd9b0
+status: experimental
+description: Detects cmd.exe command lines that chain echo-based script content redirection to a script file with immediate invocation of a Windows script interpreter (cscript.exe or wscript.exe), indicating inline script staging and execution within a single cmd /c chain. This pattern is characteristic of T1059.003 abuse where attackers write and execute attacker-controlled VBScript or JScript in a single shell invocation.
+references:
+  - https://attack.mitre.org/techniques/T1059/003/
+tags:
+  - attack.t1059.003
+author: Detection Engineer
+date: 2024-01-01
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_cmd:
+    Image|endswith: '\cmd.exe'
+    CommandLine|contains: '/c'
+  selection_echo_redirect:
+    CommandLine|contains:
+      - '.vbs'
+      - '.js'
+      - '.hta'
+  selection_redirect_operator:
+    CommandLine|contains: '>'
+  selection_interpreter:
+    CommandLine|contains:
+      - 'cscript'
+      - 'wscript'
+      - 'mshta'
+  selection_writable_path:
+    CommandLine|contains:
+      - 'Temp'
+      - 'AppData'
+      - 'Public'
+      - 'ProgramData'
+  filter_installer_parent:
+    ParentImage|endswith:
+      - '\msiexec.exe'
+      - '\setup.exe'
+      - '\install.exe'
+      - '\installer.exe'
+  condition: >
+    selection_cmd
+    and selection_echo_redirect
+    and selection_redirect_operator
+    and selection_interpreter
+    and selection_writable_path
+    and not filter_installer_parent
+falsepositives:
+  - Software installers that use echo-redirect script helpers during installation
+  - Legitimate IT automation or RMM tools that invoke cscript/wscript from temp directories
+  - Administrative scripts that stage helper scripts in user-writable directories
+level: high

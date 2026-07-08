@@ -314,6 +314,17 @@ def _ground_fields(
             grounded[k] = v
             continue
 
+        # Check 5 — TargetObject: strip conventional \(Default) suffix before
+        # re-checking verbatim. The LLM correctly appends \(Default) for default
+        # registry value writes (e.g. HKCU\...\command\(Default)), but this
+        # suffix is a Windows registry convention that never appears in
+        # procedure_text — only the key path does.
+        if k == "TargetObject" and v_lower.endswith("\\(default)"):
+            base_key = v_lower[: -len("\\(default)")]
+            if base_key in text:
+                grounded[k] = v
+                continue
+
         # EID 3 implicit metadata — DestinationPort, Protocol, Initiated are
         # structural facts about a TCP connection, not extractable from prose.
         # Grounding would always drop them. Pass LLM output through and let
@@ -507,6 +518,22 @@ def build_log_event(
                 grounded_fields[_f] = int(grounded_fields[_f])
             except (ValueError, TypeError):
                 grounded_fields.pop(_f)
+
+    
+    # EID3-specific normalisation.
+    # Protocol: Sysmon only ever emits "tcp" or "udp". The LLM sometimes
+    # extracts the application protocol from the URL (e.g. "https") because
+    # it appears verbatim in the procedure text and passes the grounding bypass.
+    # Normalise any non-tcp/udp value to "tcp" — HTTP(S) and most attacker
+    # traffic is TCP; a UDP technique should be explicit in procedure_text.
+    # Initiated: default to "true" for attacker-initiated connections when
+    # absent — the procedure interpreter only generates outbound network events.
+    if interpretation.get("EventID") == 3:
+        proto = grounded_fields.get("Protocol", "")
+        if str(proto).lower() not in {"tcp", "udp"}:
+            grounded_fields["Protocol"] = "tcp"
+        if "Initiated" not in grounded_fields:
+            grounded_fields["Initiated"] = "true"
 
     try:
         return LogEvent(

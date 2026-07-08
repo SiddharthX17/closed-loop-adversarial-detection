@@ -1,0 +1,30 @@
+{
+  "coverage": {
+    "T1003.002": true,
+    "T1027": true,
+    "T1036.005": true,
+    "T1053.005": true,
+    "T1059.003": true,
+    "T1197": true,
+    "T1543.003": true
+  },
+  "fp_rate": 0.0023752969121140144,
+  "rules": {
+    "T1003.002-credential-hive-access-via-volume-shadow-copy-globalroot-device-path.yml": true,
+    "T1003.002-renamed-esentutl-exe-execution-indicating-potential-sam-database-access-via-vss.yml": true,
+    "T1003.002-sam-hive-credential-theft-via-volume-shadow-copy-device-path.yml": true,
+    "T1003.002-shell-or-interpreter-initiating-outbound-https-to-public-file-hosting-for-sam-credential-staging.yml": true,
+    "T1036.005-masqueraded-windows-system-binary-executing-from-non-canonical-path.yml": true,
+    "T1036.005-masquerading-as-windows-system-binary-from-non-canonical-path.yml": true,
+    "T1036.005-system-process-name-executed-from-non-canonical-directory.yml": true,
+    "T1053.005-suspicious-schtasks-schedule-type-with-high-privileges.yml": true,
+    "T1059.001-potential-powershell-command-line-obfuscation.yml": true,
+    "T1059.003-cmd-exe-echo-redirect-vbscript-creation-and-execution-chain.yml": true,
+    "T1059.003-windows-command-shell-inline-script-staging-and-execution-via-cmd-exe.yml": true,
+    "T1059.003-windows-command-shell-spawned-by-system-service-host-process.yml": true,
+    "T1197-bits-job-creation-via-bitsadmin-with-notify-command.yml": true,
+    "T1197-bits-job-lifecycle-abuse-via-bitsadmin-with-lolbin-notify-command.yml": true,
+    "T1543.003-suspicious-svchost-hosted-service-creation-via-command-line.yml": true,
+    "T1543.003-svchost-service-group-hijack-via-servicedll-registry-add-command.yml": true
+  }
+}

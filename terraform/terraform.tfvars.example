@@ -1,0 +1,14 @@
+# Copy this to terraform.tfvars and fill in real values.
+# terraform.tfvars itself must NEVER be committed (already in .gitignore
+# per project convention — verify it's there before your first `terraform apply`).
+
+project_id      = "your-gcp-project-id"          # from `gcloud projects list`
+region          = "us-central1"
+service_name    = "adversarial-detection-pipeline"
+container_image = "us-central1-docker.pkg.dev/your-gcp-project-id/your-repo/pipeline:latest"
+
+# DO NOT put real secrets in this file even temporarily.
+# Pass these via environment variables instead:
+#   $env:TF_VAR_anthropic_api_key = "sk-ant-..."
+#   $env:TF_VAR_github_token = "ghp_..."
+# Terraform reads TF_VAR_* automatically — no -var flag needed if these are set.

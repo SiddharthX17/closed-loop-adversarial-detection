@@ -1,0 +1,34 @@
+title: BITS Job Creation via Bitsadmin with Notify Command
+id: d4d5653b-078e-4c38-9c8d-0fe934a485ed
+status: experimental
+description: >
+  Detects use of bitsadmin.exe to create a BITS job with a file transfer source
+  (/addfile) combined with a completion notification command (/setnotifycmdline),
+  a structural pattern indicating download-and-execute abuse via BITS Jobs for
+  defense evasion and persistence.
+references:
+  - https://attack.mitre.org/techniques/T1197/
+tags:
+  - attack.t1197
+  - attack.defense-evasion
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_image:
+    Image|endswith: '\bitsadmin.exe'
+  selection_switches:
+    CommandLine|contains: '/addfile'
+  selection_notify:
+    CommandLine|contains: '/setnotifycmdline'
+  filter_deployment_tools:
+    CommandLine|contains:
+      - 'ccmsetup'
+      - '\CCM\'
+      - '\Microsoft Configuration Manager\'
+      - '\IntuneManagementExtension\'
+  condition: selection_image and selection_switches and selection_notify and not filter_deployment_tools
+falsepositives:
+  - Legitimate software deployment or patch management tooling using BITS with a notification command
+  - Administrative scripts orchestrating background downloads with follow-on execution
+level: high

@@ -1,0 +1,82 @@
+title: System Binary Masquerading via Execution from Non-Standard Path
+id: b85f895b-3460-4e0c-bbab-407794e449c6
+status: experimental
+description: |
+  Detects execution of processes whose filenames match known Windows system binaries
+  but whose full image path resolves to a user-writable or non-standard location
+  (e.g. Users, Temp, Downloads, AppData). Adversaries name malicious executables
+  after legitimate system processes to evade detection while staging them in
+  directories they control.
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://mgreen27.github.io/posts/2019/05/12/BinaryRename.html
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-06-07
+modified: 2026-06-07
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  # Match processes whose filename is a known high-value system binary
+  selection_system_binary_name:
+    Image|endswith:
+      - '\lsass.exe'
+      - '\winlogon.exe'
+      - '\csrss.exe'
+      - '\services.exe'
+      - '\smss.exe'
+      - '\wininit.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\spoolsv.exe'
+      - '\explorer.exe'
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\msiexec.exe'
+      - '\svchost.exe'
+      - '\dllhost.exe'
+      - '\conhost.exe'
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+      - '\notepad.exe'
+      - '\calc.exe'
+      - '\net.exe'
+      - '\net1.exe'
+      - '\netsh.exe'
+      - '\wevtutil.exe'
+      - '\sc.exe'
+      - '\reg.exe'
+      - '\at.exe'
+      - '\schtasks.exe'
+  # Restrict to user-writable / non-standard paths
+  selection_suspicious_path:
+    Image|contains:
+      - '\Users\'
+      - '\Temp\'
+      - '\AppData\'
+      - '\Downloads\'
+      - '\Public\'
+      - '\ProgramData\'
+      - '\Desktop\'
+      - '\Documents\'
+  # Exclude legitimate system directories
+  filter_system_paths:
+    Image|contains:
+      - '\Windows\System32\'
+      - '\Windows\SysWOW64\'
+      - '\Windows\WinSxS\'
+      - '\Windows\explorer.exe'
+  condition: selection_system_binary_name and selection_suspicious_path and not filter_system_paths
+falsepositives:
+  - Legitimate administrative tools or portable utilities intentionally named after system binaries
+  - Software development and testing activities creating executables with system binary names
+  - System recovery or forensic tools that replicate system binary names
+  - Legitimate application installers temporarily staging files with system binary names
+level: high

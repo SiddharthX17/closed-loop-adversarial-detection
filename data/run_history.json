@@ -1,0 +1,39 @@
+{
+  "f17d897d-6835-4916-aac0-2d2828b10c25": {
+    "run_id": "f17d897d-6835-4916-aac0-2d2828b10c25",
+    "status": "completed",
+    "started_at": "2026-06-19T19:42:16.268886+00:00",
+    "technique_ids": [
+      "T1059.001"
+    ],
+    "max_iterations": 1,
+    "completed_at": "2026-06-19T19:42:45.718373+00:00",
+    "result": {
+      "iterations_run": 1,
+      "coverage": {
+        "T1059.001": "full"
+      },
+      "pr_urls": [],
+      "run_summary": {
+        "techniques_run": 1,
+        "gaps_found": 0,
+        "rules_generated": 0,
+        "rules_validated": 0
+      },
+      "iterations": [
+        {
+          "iteration": 1,
+          "techniques_attempted": 1,
+          "techniques_covered": 1,
+          "techniques_with_gaps": 0,
+          "rules_generated": 0,
+          "rules_validated": 0,
+          "event_coverage": {
+            "T1059.001": "2/2"
+          },
+          "prs_opened": []
+        }
+      ]
+    }
+  }
+}

@@ -184,7 +184,7 @@ def run(
     attack_sample: list[dict],
     *,
     min_match_count: int = 1,
-    min_match_ratio: float = 0.0,
+    min_match_ratio: float = 1.0,
 ) -> GateResult:
     """
     Evaluate a candidate Sigma rule against an attack log sample.

@@ -1,0 +1,60 @@
+title: System Process Name Executed From Non-Canonical Directory
+id: c646b758-dfb0-4315-9d43-4d28db791bc3
+status: experimental
+description: |
+  Detects execution of binaries whose filenames exactly match known Windows system process names
+  from directories other than their canonical system paths. Adversaries masquerade malicious
+  executables under trusted system process names and place them in user-writable or temp
+  directories to bypass process-name-based detection and analyst triage (T1036.005).
+references:
+  - https://attack.mitre.org/techniques/T1036/005/
+  - https://redcanary.com/blog/threat-detection/process-masquerading/
+author: Detection Engineer
+date: 2026-07-03
+tags:
+  - attack.defense-evasion
+  - attack.t1036.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    Image|endswith:
+      - '\lsass.exe'
+      - '\csrss.exe'
+      - '\smss.exe'
+      - '\wininit.exe'
+      - '\winlogon.exe'
+      - '\services.exe'
+      - '\svchost.exe'
+      - '\spoolsv.exe'
+      - '\taskhost.exe'
+      - '\taskhostw.exe'
+      - '\explorer.exe'
+      - '\userinit.exe'
+      - '\dwm.exe'
+      - '\conhost.exe'
+      - '\dllhost.exe'
+      - '\sihost.exe'
+      - '\fontdrvhost.exe'
+      - '\RuntimeBroker.exe'
+      - '\SearchIndexer.exe'
+      - '\SearchProtocolHost.exe'
+      - '\SearchFilterHost.exe'
+      - '\WmiPrvSE.exe'
+      - '\audiodg.exe'
+      - '\msdtc.exe'
+      - '\lsm.exe'
+  filter_system32:
+    Image|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+      - 'C:\Windows\WinSxS\'
+  filter_windows_root:
+    Image|startswith: 'C:\Windows\'
+  condition: selection and not 1 of filter_*
+falsepositives:
+  - Legitimate administrator-copied diagnostic tools or portable system utilities with system process names (rare)
+  - WinPE or recovery environment scenarios where system binaries run from non-standard paths
+  - Known software that ships binaries coincidentally named after system processes
+level: high

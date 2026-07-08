@@ -1,0 +1,91 @@
+name: Regression Check
+
+# PR job: runs on ANY change touching rules/, regardless of who/what
+# authored it (manual curation or defender-agent PR) — protects the whole
+# ruleset, not just bot-generated changes.
+#
+# update-baseline job: runs after merge to main, recomputes and commits
+# the new "known good" snapshot automatically — closes the loop without
+# a human needing to remember to do it.
+on:
+  pull_request:
+    paths:
+      - 'rules/**'
+  push:
+    branches: [main]
+    paths:
+      - 'rules/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BASELINE_PAT }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # continue-on-error so the PR comment still gets posted even when a
+      # regression IS found — the comment is the whole point of failing.
+      # The job is failed explicitly afterward, in its own dedicated step.
+      - name: Run regression check
+        id: regression
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set +e
+          python scripts/run_regression_check.py --mode=check --output=regression_report.md
+          EXIT_CODE=$?
+          set -e
+          if [ ! -f regression_report.md ]; then
+            printf "## Regression Check Results\n\nScript failed — check step logs above.\n" > regression_report.md
+          fi
+          exit $EXIT_CODE
+
+      - name: Post results as PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: regression_report.md
+
+      - name: Fail job if a regression was detected
+        if: always() && steps.regression.outcome == 'failure'
+        run: exit 1
+
+  update-baseline:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BASELINE_PAT }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Recompute and write new baseline
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/run_regression_check.py --mode=update-baseline
+
+      - name: Commit updated baseline
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: auto-update coverage baseline [skip ci]"
+          file_pattern: data/coverage_baseline.json

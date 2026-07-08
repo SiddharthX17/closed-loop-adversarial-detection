@@ -57,7 +57,7 @@ def write_log_stream(
         out_path = output_dir / f"{technique_id}.jsonl"
         with open(out_path, "w", encoding="utf-8") as f:
             for event in events:
-                record = event.model_dump()
+                record = event.model_dump(exclude_none=True)
                 record["technique_id"] = technique_id
                 f.write(json.dumps(record) + "\n")
 

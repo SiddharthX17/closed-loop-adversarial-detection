@@ -1,0 +1,52 @@
+title: Shell Interpreter Initiating Outbound Connection to Public Code Hosting Raw-Content Endpoints
+id: 4f1f8b5d-1702-4c93-bf20-eab9af3175fa
+status: experimental
+description: Detects Windows command or scripting interpreters initiating outbound connections to public raw-content or paste hosting domains. This pattern is characteristic of PowerShell/cmd download cradles used to fetch and execute remotely-hosted payloads (T1059.001). The Initiated field confirms the interpreter itself is the network originator, which is structurally invariant for this technique.
+references:
+    - https://attack.mitre.org/techniques/T1059/001/
+    - https://github.com/VirtualAlllocEx/Payload-Download-Cradles
+author: Detection Engineer
+date: 2024-01-15
+tags:
+    - attack.execution
+    - attack.t1059.001
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection_interpreter:
+        Initiated: 'true'
+        Image|endswith:
+            - '\cmd.exe'
+            - '\powershell.exe'
+            - '\pwsh.exe'
+            - '\wscript.exe'
+            - '\cscript.exe'
+            - '\mshta.exe'
+    selection_hosting:
+        DestinationHostname|contains:
+            - 'raw.githubusercontent.com'
+            - 'gist.githubusercontent.com'
+            - 'pastebin.com'
+            - 'paste.ee'
+            - 'transfer.sh'
+            - 'hastebin.com'
+            - 'ghostbin.com'
+            - 'cdn.discordapp.com'
+            - 'paste.rs'
+            - 'rentry.co'
+            - 'controlc.com'
+    filter_cicd:
+        ParentImage|endswith:
+            - '\jenkins.exe'
+            - '\java.exe'
+            - '\node.exe'
+            - '\git.exe'
+            - '\agent.exe'
+    condition: all of selection_* and not 1 of filter_*
+falsepositives:
+    - Developers and DevOps engineers pulling scripts from GitHub for automation or bootstrapping
+    - IT administrators using PowerShell to fetch configuration scripts from public repositories
+    - CI/CD pipeline agents executing build or deployment scripts
+    - Security tooling performing health checks or updates via shell interpreters
+level: high

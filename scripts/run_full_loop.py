@@ -1,19 +1,24 @@
 """
-3.16 + 3.17 — wire and test the full adversarial loop.
+CLI entry point for the closed-loop adversarial detection pipeline.
 
-Runs the full pipeline for 2 iterations and verifies:
-  - All stages executed without contract mismatches
-  - Events generated per technique
-  - Detection layer produced results
-  - Defender agent attempted gap closure
-  - Iteration 2 attacker plan captured for 3.18 mutation verification
+Default mode: thin shim around pipeline.orchestrator.Orchestrator — the
+canonical, single source of truth for the full 7-stage loop. This is the
+same code path app.py (FastAPI) calls.
 
-Set OPEN_PRS=0 to skip PR creation during loop testing.
+    python -m scripts.run_full_loop
+    python -m scripts.run_full_loop --technique-ids T1059.001 T1053.005 --max-iterations 3
+    python -m scripts.run_full_loop --no-prs
 
-Usage (from project root):
+--instrumented mode: the original 3.16/3.17 instrumented loop + contract
+verification harness. This duplicates orchestrator logic on purpose — it's
+a manual debugging tool for inspecting per-iteration intermediate state
+(plans, raw event counts, detection results) that Orchestrator.run() does
+not surface. Not part of any automated path. Kept as-is, not merged into
+Orchestrator.
+
     $env:PIPELINE_DEBUG="1"
     $env:OPEN_PRS="0"
-    python -m scripts.run_full_loop
+    python -m scripts.run_full_loop --instrumented
 """
 
 from pipeline.data.stix_loader import get_loader
@@ -26,9 +31,12 @@ from pipeline.corpus.learner import run as run_corpus_learner
 from pipeline.corpus.pusher import update_outcome
 from pipeline.detection_planner.planner import DetectionPlanner
 from pipeline.emulator.test_history import mark_rule_generated
+from pipeline.emulator.emulator import get_used_guids
 
 import sys
 import os
+import argparse
+import json
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
@@ -38,10 +46,10 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 
 OPEN_PRS = os.getenv("OPEN_PRS", "0").lower() in ("1", "true")
-ITERATIONS = 2
+ITERATIONS = 1
 RULES_DIR = Path("rules")
 CORPUS_ROOT = Path("corpus/benign")
-OUTPUT_DIR = None  # suppress file writes during loop test
+OUTPUT_DIR = Path("corpus/attack")
 
 
 # ---------------------------------------------------------------------------
@@ -73,18 +81,11 @@ def run_instrumented_loop(
     from pipeline.defender.agent import DefenderAgent
     from pipeline.github.pr_creator import PRCreator
     from pipeline.metrics.tracker import MetricsTracker
-    from pipeline.embedding.scorer import EmbeddingScorer
-    from pipeline.embedding.embedder import EMBEDDINGS_PATH
-    from pipeline.embedding.gap_scorer import score_gaps
 
     stix = get_loader()
     attacker = AttackerAgent()
     defender = DefenderAgent(corpus_root=CORPUS_ROOT)
     metrics = MetricsTracker()
-
-    scorer = None
-    if EMBEDDINGS_PATH.exists():
-        scorer = EmbeddingScorer(embeddings_path=EMBEDDINGS_PATH)
 
     pr_creator = None
     if OPEN_PRS:
@@ -189,16 +190,6 @@ def run_instrumented_loop(
                 iteration=iteration,
             )
 
-        # Stage 4: Gap scorer
-        if scorer and gaps:
-            print(f"[{iteration}] Stage 4: gap scorer")
-            gap_scores = score_gaps(detection_results, scorer, log_stream)
-            for tid, gs in gap_scores.items():
-                if gs.top_technique:
-                    score_str = f"{gs.top_score:.4f}" if gs.top_score is not None else "none"
-                    print(f"  {tid}: closest = {gs.top_technique} ({score_str}), "
-                          f"embedding similarity computed on {gs.num_events_matched}/{gs.num_events_scored} events")
-
         # Stage 5+6: Defender + Validation
         if not gaps:
             print(f"[{iteration}] No gaps -- skipping defender")
@@ -232,7 +223,7 @@ def run_instrumented_loop(
             if not gap_context:
                 continue
 
-            # Stage 4.5: Detection planner
+            # Stage 4: Detection planner
             strategy = planner.run(
                 technique_id=technique_id,
                 missed_events=gap_context.missed_events,
@@ -282,12 +273,16 @@ def run_instrumented_loop(
                     prs_opened.append(pr_result.pr_url)
                     print(f"  PR: {pr_result.pr_url}")
 
-                    # Mark tests used for this technique so cross-run selector
-                    # deprioritises them going forward.
-                    for guid in emulation_history.get(technique_id, {}):
+                    # Mark only the test that actually produced events this
+                    # iteration. Previously iterated emulation_history.get(
+                    # technique_id, {}) — every GUID ever recorded for this
+                    # technique across ALL historical runs, not just this
+                    # run's pool. Even broader over-marking than the
+                    # orchestrator's version.
+                    used_guid = get_used_guids().get(technique_id)
+                    if used_guid:
                         mark_rule_generated(
-                            emulation_history, technique_id, guid)
-
+                            emulation_history, technique_id, used_guid)
                 except Exception as e:
                     print(f"  PR failed for {technique_id}: {e}")
 
@@ -382,7 +377,12 @@ def verify_contracts(loop_result: LoopTestResult, technique_ids: list[str]) -> l
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
+def run_legacy_instrumented_test():
+    """
+    Original 3.16/3.17 instrumented loop + contract verification.
+    Manual debugging tool only — not the canonical pipeline entry point.
+    See module docstring. Reachable via: python -m scripts.run_full_loop --instrumented
+    """
     print("\n-- 3.16/3.17 Full Loop Wire + Test -----------------------")
     print(f"  Iterations: {ITERATIONS}")
     print(f"  Open PRs:   {OPEN_PRS}")
@@ -438,6 +438,68 @@ def main():
 
     overall = "+ PASSED" if not failures else f"x FAILED ({len(failures)} contract failures)"
     print(f"\n-- 3.16/3.17 result: {overall} ---------------------------")
+
+
+# ---------------------------------------------------------------------------
+# CLI — thin shim around Orchestrator (default), or legacy instrumented
+# test harness (--instrumented, manual debugging only)
+# ---------------------------------------------------------------------------
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Closed-loop adversarial detection pipeline — CLI runner."
+    )
+    parser.add_argument(
+        "--technique-ids",
+        nargs="*",
+        default=None,
+        metavar="TID",
+        help="Target ATT&CK technique IDs, space-separated "
+             "(e.g. T1059.001 T1053.005). Omit to load config/techniques.yaml.",
+    )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=2,
+        help="Number of attacker→emulator→detect→defend cycles (default: 2).",
+    )
+    parser.add_argument(
+        "--no-prs",
+        action="store_true",
+        help="Skip GitHub PR creation for this run.",
+    )
+    parser.add_argument(
+        "--instrumented",
+        action="store_true",
+        help="Run the legacy 3.16/3.17 instrumented loop + contract "
+             "verification instead of Orchestrator. Manual debugging only — "
+             "bypasses the canonical pipeline path. Honours the ITERATIONS "
+             "and OPEN_PRS env-var settings, not the flags above.",
+    )
+    return parser.parse_args()
+
+
+def run_default(args: argparse.Namespace) -> None:
+    """
+    Thin shim: instantiate Orchestrator and call .run(). This is the
+    canonical pipeline path — the same one app.py (FastAPI) uses.
+    Nothing else belongs in this function.
+    """
+    orchestrator = Orchestrator(
+        technique_ids=args.technique_ids,
+        max_iterations=args.max_iterations,
+        open_prs=not args.no_prs,
+    )
+    result = orchestrator.run()
+    print("\n" + json.dumps(result, indent=2))
+
+
+def main():
+    args = _parse_args()
+    if args.instrumented:
+        run_legacy_instrumented_test()
+    else:
+        run_default(args)
 
 
 if __name__ == "__main__":

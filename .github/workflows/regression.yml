@@ -36,6 +36,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check if regression is relevant
+        id: relevance
+        run: |
+          git diff --name-only origin/main...HEAD | grep -qE '^rules/|^tests/fixtures/regression/' && echo "relevant=true" >> $GITHUB_OUTPUT || echo "relevant=false" >> $GITHUB_OUTPUT
+
       # continue-on-error so the PR comment still gets posted even when a
       # regression IS found — the comment is the whole point of failing.
       # The job is failed explicitly afterward, in its own dedicated step.

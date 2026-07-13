@@ -30,6 +30,8 @@
     "T1059.001-powershell-script-loading-and-execution-via-scriptblock-creation.yml": true,
     "T1059.001-shell-interpreter-initiating-outbound-connection-to-public-code-hosting-raw-content-endpoints.yml": true,
     "T1059.003-cmd-exe-echo-redirect-vbscript-creation-and-execution-chain.yml": true,
+    "T1059.003-nested-command-shell-invocation-via-scripting-interpreter-or-hta.yml": true,
+    "T1059.003-script-host-interpreter-spawned-by-non-interactive-parent-process.yml": true,
     "T1059.003-windows-command-shell-inline-script-staging-and-execution-via-cmd-exe.yml": true,
     "T1059.003-windows-command-shell-spawned-by-system-service-host-process.yml": true,
     "T1197-bits-job-creation-via-bitsadmin-with-notify-command.yml": true,

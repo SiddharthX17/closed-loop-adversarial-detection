@@ -1,0 +1,39 @@
+{
+  "coverage": {
+    "T1003.001": true,
+    "T1003.002": true,
+    "T1036.005": true,
+    "T1053.005": true,
+    "T1059.001": true,
+    "T1059.003": true,
+    "T1197": true,
+    "T1567.003": true
+  },
+  "fp_rate": 0.012738853503184714,
+  "rules": {
+    "T1003.001-lsass-memory-dump-via-rdrleakdiag-or-masquerading-tool-with-fullmemdmp-flag.yml": true,
+    "T1003.001-potential-lsass-memory-dump-via-rdrleakdiag.yml": true,
+    "T1003.002-credential-hive-access-via-volume-shadow-copy-globalroot-device-path.yml": true,
+    "T1003.002-renamed-esentutl-exe-execution-indicating-potential-sam-database-access-via-vss.yml": true,
+    "T1036.005-masqueraded-windows-system-binary-executing-from-non-canonical-path.yml": true,
+    "T1036.005-renamed-windows-system-binary-detected-via-originalfilename-mismatch.yml": true,
+    "T1036.005-suspicious-executable-running-from-user-writable-path-spawned-by-svchost.yml": true,
+    "T1036.005-system-binary-masquerading-via-execution-from-non-standard-path.yml": true,
+    "T1036.005-system-process-name-executed-from-non-canonical-directory.yml": true,
+    "T1036.005-system-process-name-masquerading-from-user-writable-directory.yml": true,
+    "T1053.005-powershell-scheduled-task-registration-with-elevated-principal-and-logon-trigger.yml": true,
+    "T1053.005-scheduled-task-creation-via-powershell-cim-or-new-scheduledtask-cmdlets.yml": true,
+    "T1053.005-scheduled-task-creation-via-powershell-new-scheduledtask-cmdlets-or-suspicious-script-execution.yml": true,
+    "T1053.005-scheduled-task-creation-via-schtasks-or-powershell-register-scheduledtask.yml": true,
+    "T1053.005-uac-bypass-via-hkcu-mscfile-shell-handler-registry-hijack.yml": true,
+    "T1053.005-wsh-interpreter-spawned-by-scheduler-or-loader-process-executing-script-from-writable-path.yml": true,
+    "T1059.001-powershell-script-loading-and-execution-via-scriptblock-creation.yml": true,
+    "T1059.001-shell-interpreter-initiating-outbound-connection-to-public-code-hosting-raw-content-endpoints.yml": true,
+    "T1059.003-cmd-exe-echo-redirect-vbscript-creation-and-execution-chain.yml": true,
+    "T1059.003-windows-command-shell-inline-script-staging-and-execution-via-cmd-exe.yml": true,
+    "T1059.003-windows-command-shell-spawned-by-system-service-host-process.yml": true,
+    "T1197-bits-job-creation-via-bitsadmin-with-notify-command.yml": true,
+    "T1567.003-exfiltration-to-text-storage-sites-via-non-browser-process.yml": true,
+    "T1567.003-non-browser-process-outbound-connection-to-text-storage-sites.yml": true
+  }
+}

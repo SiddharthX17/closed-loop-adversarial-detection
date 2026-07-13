@@ -1,0 +1,1 @@
+{"timestamp": "2026-07-13T09:36:36.653283+00:00", "host": "LAPTOP-C9K1", "user": "SYSTEM", "EventID": 13, "event_type": "registry", "Channel": "Microsoft-Windows-Sysmon/Operational", "TargetObject": "HKEY_CURRENT_USER\\Software\\Classes\\mscfile\\shell\\open\\command", "Details": "c:\\windows\\System32\\calc.exe"}

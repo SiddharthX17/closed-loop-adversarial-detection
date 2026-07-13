@@ -1,0 +1,1 @@
+{"timestamp": "2026-07-13T10:37:01.852310+00:00", "host": "PC-ASMITH", "user": "CORP\\bwilliams", "EventID": 1, "event_type": "process_creation", "Channel": "Microsoft-Windows-Sysmon/Operational", "Image": "C:\\Users\\bwilliams\\AppData\\Roaming\\svchost.exe", "CommandLine": "C:\\Users\\bwilliams\\AppData\\Roaming\\svchost.exe", "ParentImage": "C:\\Windows\\explorer.exe"}

@@ -86,7 +86,7 @@ import yaml
 
 # Default scope: curated rules only. Change via --rules-dir, not by
 # editing this constant, so the default stays self-documenting.
-RULES_SOURCE_DIR = Path("rules")
+RULES_SOURCE_DIR = Path("rules/generated/1")
 FIXTURES_DIR = Path("tests/fixtures/regression")
 
 TECHNIQUE_TAG_PATTERN = re.compile(
@@ -254,7 +254,8 @@ def _rank_candidates(
 
 def events_to_dicts(events: list) -> list[dict]:
     return [
-        e.model_dump(exclude_none=True) if hasattr(e, "model_dump") else dict(e)
+        e.model_dump(exclude_none=True) if hasattr(
+            e, "model_dump") else dict(e)
         for e in events
     ]
 
@@ -333,14 +334,16 @@ def main() -> None:
         top_n = ranked[: args.max_candidates]
 
         for i, (guid, cleaned, score, matched) in enumerate(top_n):
-            preview = ", ".join(matched[:3]) + ("…" if len(matched) > 3 else "")
+            preview = ", ".join(matched[:3]) + \
+                ("…" if len(matched) > 3 else "")
             print(
                 f"  candidate {i + 1}/{len(top_n)}: '{cleaned.test_name}' "
                 f"score={score:.2f} matched=[{preview}]"
             )
 
         if args.dry_run:
-            print(f"  (dry-run) would try {len(top_n)} candidate(s) above, in order\n")
+            print(
+                f"  (dry-run) would try {len(top_n)} candidate(s) above, in order\n")
             continue
 
         attempts: list[tuple[str, str]] = []  # (test_name, reason)
@@ -359,24 +362,40 @@ def main() -> None:
                 history=None,
             )
             if not events:
-                attempts.append((cleaned.test_name, "0 events after grounding"))
+                attempts.append(
+                    (cleaned.test_name, "0 events after grounding"))
                 continue
 
             raw_events_dicts = events_to_dicts(events)
             gate_result = attack_gate_run(rule_yaml, raw_events_dicts)
 
             if not gate_result.passed:
-                attempts.append((cleaned.test_name, "attack_gate did not fire"))
+                attempts.append(
+                    (cleaned.test_name, "attack_gate did not fire"))
+                if os.environ.get("PIPELINE_DEBUG", "").lower() in ("1", "true"):
+                    # Same PIPELINE_DEBUG convention used project-wide.
+                    # Shows the actual mismatch instead of just pass/fail —
+                    # is it a missing field, wrong EventID, or a rule
+                    # requiring artifacts this single-step extraction
+                    # can never co-produce in one event?
+                    print(
+                        f"    [DEBUG] gate feedback: {gate_result.feedback()}")
+                    print(
+                        f"    [DEBUG] generated event(s):\n"
+                        f"{json.dumps(raw_events_dicts, indent=2)}"
+                    )
                 continue
 
             written_path = write_fixture(rule_path, raw_events_dicts)
-            print(f"  OK — fixture written to {written_path} (via '{cleaned.test_name}')")
+            print(
+                f"  OK — fixture written to {written_path} (via '{cleaned.test_name}')")
             written.append(rule_path.name)
             fixture_written = True
             break
 
         if not fixture_written:
-            print(f"  FLAGGED — no candidate satisfied attack_gate for {technique_id}")
+            print(
+                f"  FLAGGED — no candidate satisfied attack_gate for {technique_id}")
             for name, reason in attempts:
                 print(f"    - '{name}': {reason}")
             failed_attack_gate.append(

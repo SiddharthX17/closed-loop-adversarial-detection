@@ -1,0 +1,1 @@
+{"timestamp": "2026-07-13T09:37:12.524470+00:00", "host": "WORKSTATION-01", "user": "CORP\\rgarcia", "EventID": 3, "event_type": "network", "Channel": "Microsoft-Windows-Sysmon/Operational", "Image": "C:\\Windows\\System32\\cmd.exe", "ParentImage": "C:\\Windows\\explorer.exe", "DestinationHostname": "pastebin.com", "DestinationPort": 443, "Protocol": "tcp", "Initiated": "true"}

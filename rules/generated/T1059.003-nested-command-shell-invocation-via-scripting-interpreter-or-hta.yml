@@ -1,0 +1,65 @@
+title: Nested Command Shell Invocation via Scripting Interpreter or HTA
+id: 35e43d3e-8ecd-407e-94d8-dd23d2d6f5a8
+status: experimental
+description: >
+  Detects a command shell (cmd.exe) being invoked from within a scripting or HTA
+  context (e.g., WScript.Shell.Exec, vbscript:/javascript: URI in mshta.exe) or
+  a command chain that writes a script file and immediately executes it via
+  cscript/wscript, indicating multi-layer command shell execution used to evade
+  simple parent-child or command-line detections (T1059.003).
+references:
+  - https://attack.mitre.org/techniques/T1059/003/
+author: detection-engineer
+date: 2025-02-14
+tags:
+  - attack.t1059.003
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_shell_exec:
+    CommandLine|contains:
+      - 'WScript.Shell'
+      - 'Shell.Application'
+  selection_cmd_nested:
+    CommandLine|contains:
+      - 'cmd.exe /c'
+      - 'cmd /c'
+  selection_script_wrapper:
+    Image|endswith:
+      - '\mshta.exe'
+      - '\cscript.exe'
+      - '\wscript.exe'
+      - '\cmd.exe'
+  selection_write_execute:
+    CommandLine|contains: '>'
+  selection_write_execute_ext:
+    CommandLine|re: '(?i)\.(vbs|js|bat|ps1)'
+  selection_interpreter_exec:
+    CommandLine|contains:
+      - 'cscript.exe'
+      - 'cscript '
+      - 'wscript.exe'
+      - 'wscript '
+  filter_deployment_tools:
+    ParentImage|contains:
+      - '\CCM\'
+      - '\Microsoft Configuration Manager\'
+      - '\PDQDeploy\'
+      - '\IntuneManagementExtension\'
+  filter_hta_legit_file:
+    Image|endswith: '\mshta.exe'
+    CommandLine|re: '(?i)\.hta("|\s|$)'
+  condition: >
+    (
+      (selection_script_wrapper and selection_shell_exec and selection_cmd_nested)
+      or
+      (selection_script_wrapper and selection_write_execute and selection_write_execute_ext and selection_interpreter_exec)
+    )
+    and not filter_deployment_tools
+    and not filter_hta_legit_file
+falsepositives:
+  - Legitimate software deployment tools generating and executing helper scripts (SCCM, Intune, PDQ Deploy)
+  - Administrative HTA applications referencing discrete .hta files rather than inline vbscript/javascript URIs
+  - IT helpdesk diagnostic scripts using similar write-then-execute patterns
+level: high

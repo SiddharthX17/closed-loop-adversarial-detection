@@ -53,5 +53,4 @@ falsepositives:
   - Windows Update or telemetry components briefly spawned by svchost from non-standard staging paths
   - Enterprise software agents (SCCM, Intune) executing installers from ProgramData
   - Legitimate monitoring or management agents installed under ProgramData with svchost as indirect parent
-  # commenting to check regression workflow
 level: high

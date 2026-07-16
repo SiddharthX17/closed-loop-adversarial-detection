@@ -7,15 +7,22 @@ validates through the full validation pipeline, retries on failure (max 2).
 Returns (rule_yaml, ValidationResult) or (None, last_result) on exhaustion.
 """
 
+import json
 import os
+import uuid
 import anthropic
 
 from dataclasses import dataclass, field
+from datetime import date
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from pipeline.defender.prompts import build_defender_user_message, DEFENDER_SYSTEM_PROMPT
+from pipeline.defender.prompts import (
+    build_defender_user_message,
+    DEFENDER_SYSTEM_PROMPT,
+    DEFENDER_OUTPUT_SCHEMA,
+)
 from pipeline.validation.validation_pipeline import validate, ValidationResult
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.validation.rule_normalizer import normalize_rule_yaml
@@ -102,11 +109,77 @@ def find_existing_rule_paths(
         found.extend(rules_dir.glob(pattern))
     return sorted(set(found))
 
+# ---------------------------------------------------------------------------
+# Rule assembly — merges model-authored fields with code-injected constants
+# ---------------------------------------------------------------------------
 
-def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic) -> str | None:
+
+AUTHOR = "SiddharthX17"  # single constant — change here if needed
+
+
+def _quote_yaml_string(value: str) -> str:
+    """Double-quote and escape a string for safe inline YAML (title, tags, author)."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _mitre_reference(technique_id: str) -> str:
+    """Deterministic MITRE ATT&CK technique URL — no LLM involvement, no hallucination risk."""
+    path = technique_id.replace(".", "/")
+    return f"https://attack.mitre.org/techniques/{path}/"
+
+
+def assemble_rule_yaml(parsed: dict, technique_id: str) -> str:
     """
-    Call Sonnet with cached system prompt, return raw text response (Sigma YAML).
-    Returns None on API failure.
+    Merge LLM-authored fields (parsed JSON matching DEFENDER_OUTPUT_SCHEMA) with
+    code-injected constants (id, date, status, author, references) into a
+    complete Sigma YAML document. Field order matches SigmaHQ convention.
+
+    The 'detection' block is spliced in as raw text, untouched — it still runs
+    through normalize_rule_yaml() afterward exactly as before.
+    """
+    rule_id = str(uuid.uuid4())
+    today = date.today().isoformat()
+
+    lines = [
+        f"title: {_quote_yaml_string(parsed['title'])}",
+        f"id: {rule_id}",
+        "status: experimental",
+        "references:",
+        f"    - {_mitre_reference(technique_id)}",
+        f"author: {_quote_yaml_string(AUTHOR)}",
+        f"date: {today}",
+        "tags:",
+    ]
+    for tag in parsed.get("tags", []):
+        lines.append(f"    - {tag}")
+
+    lines += [
+        "logsource:",
+        f"    category: {parsed['logsource']['category']}",
+        f"    product: {parsed['logsource']['product']}",
+        "detection:",
+    ]
+    for det_line in parsed["detection"].splitlines():
+        lines.append(f"    {det_line}" if det_line.strip() else "")
+
+    fp_list = parsed.get("falsepositives") or []
+    if fp_list:
+        lines.append("falsepositives:")
+        for fp in fp_list:
+            lines.append(f"    - {_quote_yaml_string(fp)}")
+    else:
+        lines.append("falsepositives: []")
+
+    lines.append(f"level: {parsed['level']}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic) -> dict | None:
+    """
+    Call Sonnet with cached system prompt and schema-constrained JSON output.
+    Returns the parsed dict (matching DEFENDER_OUTPUT_SCHEMA), or None on failure.
     """
     try:
         response = client.messages.create(
@@ -120,6 +193,12 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
                 }
             ],
             messages=[{"role": "user", "content": user_message}],
+            output_config={
+                "format": {
+                    "type": "json_schema",
+                    "schema": DEFENDER_OUTPUT_SCHEMA,
+                }
+            },
             thinking={"type": "disabled"},
         )
 
@@ -143,21 +222,15 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
                 )
             return None
 
-        raw = text_block.text.strip()
+        return json.loads(text_block.text.strip())
 
-        # Strip markdown fences — LLM sometimes wraps YAML in ```yaml
-        if raw.startswith("```"):
-            lines = raw.splitlines()
-            raw = "\n".join(
-                line for line in lines
-                if not line.strip().startswith("```")
-            ).strip()
-
-        return raw
-
-    except (IndexError, anthropic.APIError) as e:
+    except anthropic.APIError as e:
         if DEBUG:
             print(f"[defender] LLM call failed: {e}")
+        return None
+    except (json.JSONDecodeError, KeyError) as e:
+        if DEBUG:
+            print(f"[defender] Response parsing failed: {e}")
         return None
 
 
@@ -254,10 +327,10 @@ class DefenderAgent:
                 detection_strategy=gap_context.detection_strategy,
             )
 
-            rule_yaml = _call_llm(DEFENDER_SYSTEM_PROMPT,
-                                  user_message, self._client)
+            parsed = _call_llm(DEFENDER_SYSTEM_PROMPT,
+                               user_message, self._client)
 
-            if not rule_yaml:
+            if not parsed:
                 if DEBUG:
                     print(
                         f"[defender] {technique_id}: "
@@ -265,6 +338,7 @@ class DefenderAgent:
                     )
                 break
 
+            rule_yaml = assemble_rule_yaml(parsed, technique_id)
             rule_yaml = normalize_rule_yaml(rule_yaml)
             last_rule = rule_yaml
 

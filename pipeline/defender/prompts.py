@@ -109,14 +109,27 @@ DEFENDER_SYSTEM_PROMPT = (
     "  intended to represent — 'Image|startswith: C:\\Program Files\\' exempts\n"
     "  everything in Program Files, not just the vendor you meant. Use specific\n"
     "  vendor/tool paths or binary names when the intent is narrower than a\n"
-    "  directory root.\n"
-    "  Before filtering, judge whether the overlap with legitimate activity is\n"
-    "  undifferentiated baseline behaviour (safe to exclude broadly) or a\n"
-    "  mechanism also used by attackers for the same objective (installers,\n"
-    "  LOLBins, admin tooling) — in the latter case, key the filter on what\n"
-    "  specifically differs between legitimate and malicious use, not on the\n"
-    "  mechanism's mere presence. Where no reliable differentiator exists, say\n"
-    "  so rather than filtering anyway.\n\n"
+    "  directory root.\n\n"
+
+    "Filter breadth — avoiding blind spots (treat this as a hard check):\n"
+    "  Understand the context of overlap between malicious and legitimate\n"
+    "  activity before writing a filter condition — do not default to umbrella\n"
+    "  passes. Excluding an entire directory (e.g. all of Program Files), or\n"
+    "  failing to account for abuse of legitimate internal components (LOLBins,\n"
+    "  admin tooling), can let the rule correctly identify malicious activity\n"
+    "  and then silently let it through anyway, because the filter did not\n"
+    "  account for that edge case. Exclusions scoped to something like System32\n"
+    "  can be legitimate, but only once you have reasoned through whether an attacker\n"
+    "  could plausibly abuse what is being excluded — not by default. The same judgment\n"
+    "  applies to mechanisms that are baseline-normal on most endpoints but also double\n"
+    "  as attack surface: msiexec running is ordinary background activity almost\n"
+    "  everywhere, but the same binary installs malicious payloads too, and here\n"
+    "  the context of the specific instance is what matters, not the mechanism's\n"
+    "  mere presence. Where available log fields let you bake that distinguishing\n"
+    "  context directly into the filter condition, do so. Where they do not\n"
+    "  support making that distinction, do not apply a blanket pass anyway —\n"
+    "  document the ambiguity in false positives instead of quietly filtering\n"
+    "  it away.\n\n"
 
     "Logsource:\n"
     "  logsource.category: process_creation, registry_set, network_connection,\n"
@@ -265,7 +278,7 @@ def _format_strategy_block(strategy: "DetectionStrategy") -> str:
         viability = opp.get("viability", "?")
         precision = opp.get("precision_estimate", "?")
         reason = opp.get("selection_reason", "")
-        fp_risk = opp.get("fp_risk", "")
+        fp_risk = opp.get("fp_risk") or {}
 
         block = (
             f"  [{i}] {ctype} — {desc}\n"
@@ -277,8 +290,11 @@ def _format_strategy_block(strategy: "DetectionStrategy") -> str:
         block += f"      Viability: {viability}  |  Precision: {precision}\n"
         if reason:
             block += f"      Selected:      {reason}\n"
-        if fp_risk:
-            block += f"      FP risk:       {fp_risk}\n"
+        if fp_risk.get("level"):
+            block += (
+                f"      FP risk:       {fp_risk['level']} — "
+                f"{fp_risk.get('reason', '')}\n"
+            )
         opp_blocks.append(block)
 
     # ── False positive profile ────────────────────────────────────────────
@@ -447,7 +463,10 @@ def build_defender_user_message(
             "  Use specific binary names or known-good path prefixes only — generic\n"
             "  keywords that could appear in attacker-chosen strings will cause\n"
             "  false negatives.\n"
-            "  Use AND logic to combine conditions — avoid single-field rules.\n\n"
+            "  Combine required conditions with AND. Add supporting conditions only\n"
+            "  when they are same-event-plausible (see single-event scope above) and\n"
+            "  meaningfully improve precision — never merely to avoid a single-field\n"
+            "  rule.\n\n"
         )
     else:
         prompt += (
@@ -463,6 +482,13 @@ def build_defender_user_message(
         )
 
     prompt += (
+        "─── FINAL CHECK ─────────────────────────────────────────\n"
+        "Before finalising: did you AND two fields that could only co-occur\n"
+        "across separate invocations? Does any filter exempt more than the\n"
+        "specific legitimate activity it targets? Fix either now.\n\n"
+    )
+
+    prompt += (
         "Metadata:\n"
         "  Title: concise and descriptive — also the basis for the rule's filename\n"
         f"  ({technique_id}-<short-description>), so keep it tight.\n\n"
@@ -470,8 +496,12 @@ def build_defender_user_message(
         f"  e.g. 'attack.{tactic.lower().replace(' ', '-')}' and\n"
         f"  'attack.{technique_id.lower()}'.\n\n"
         "  Level: your genuine severity judgment — not a default value.\n\n"
-        "  False positives: genuine legitimate-activity sources only. An empty\n"
-        "  list is correct when none meaningfully apply — do not pad it.\n\n"
+        "  False positives: document every legitimate-activity source this rule\n"
+        "  could plausibly match — including whatever your filter logic addresses,\n"
+        "  and any other common source for this technique you can identify even\n"
+        "  if you have not filtered it. If none realistically apply, say so\n"
+        "  explicitly with a one-line reason rather than leaving the field\n"
+        "  silently empty.\n\n"
 
         "Your response is constrained to a JSON schema enforced by the API — you\n"
         "do not need to format YAML yourself. Focus on the quality of the detection\n"

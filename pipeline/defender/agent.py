@@ -114,7 +114,7 @@ def find_existing_rule_paths(
 # ---------------------------------------------------------------------------
 
 
-AUTHOR = "SiddharthX17"  # single constant — change here if needed
+AUTHOR = "Defender Agent — Detection Engineering Automation"
 
 
 def _quote_yaml_string(value: str) -> str:

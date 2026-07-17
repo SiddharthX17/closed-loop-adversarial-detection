@@ -9,12 +9,8 @@ name: Regression Check
 # a human needing to remember to do it.
 on:
   pull_request:
-    paths:
-      - 'rules/**'
   push:
     branches: [main]
-    paths:
-      - 'rules/**'
 
 permissions:
   contents: write
@@ -29,17 +25,19 @@ jobs:
         with:
           token: ${{ secrets.BASELINE_PAT }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
       - name: Check if regression is relevant
         id: relevance
         run: |
           git diff --name-only origin/main...HEAD | grep -qE '^rules/|^tests/fixtures/regression/' && echo "relevant=true" >> $GITHUB_OUTPUT || echo "relevant=false" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-python@v5
+        if: steps.relevance.outputs.relevant == 'true'
+        with:
+          python-version: '3.11'
+  
+      - name: Install dependencies
+        if: steps.relevance.outputs.relevant == 'true'
+        run: pip install -r requirements.txt
 
       # continue-on-error so the PR comment still gets posted even when a
       # regression IS found — the comment is the whole point of failing.

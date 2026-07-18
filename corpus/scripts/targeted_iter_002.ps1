@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   1  |  Feasible: 1  |  Variants: 2
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,108 +10,89 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_34f0481c-d3ef-4b1c-ad9d-fc6f46385a19  (1 rule(s)) ---------------------
-# Intent:    Attackers using BITS (Background Intelligent Transfer Service) via bitsadmin.exe
-# Rules:     34f0481c-d3ef-4b1c-ad9d-fc6f46385a19
+# -- Cluster: singleton_f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7  (1 rule(s)) ---------------------
+# Intent:    Detect Background Intelligent Transfer Service (BITS) job creation and managemen
+# Rules:     f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7
 # Archetype: IT admin workflow
 
-$BitsJobName = 'WindowsUpdate_Q4_2024'
-$InternalServer = 'internal.corp.local'
-$SourcePath = "http://$InternalServer/updates/KB5000000_x64.msu"
-$DestPath = "$env:TEMP\KB5000000_x64.msu"
+$bits_temp = Join-Path $env:TEMP "bits_admin_staging"
+New-Item -ItemType Directory -Path $bits_temp -Force | Out-Null
+Set-Location $bits_temp
 
-Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Starting BITS job for update distribution..."
+# Create a BITS job for legitimate patch transfer
+$job_name = "PatchDistribution_$(Get-Random)"
+bitsadmin.exe /create /name $job_name
 
-try {
-    # Create BITS job for update transfer
-    bitsadmin.exe /create /name $BitsJobName /resume 2>&1 | Out-Null
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] BITS job created: $BitsJobName"
+# Add a file from internal repository (simulated with localhost)
+bitsadmin.exe /addfile $job_name "http://127.0.0.1/patches/kb5000000.msu" "$bits_temp\kb5000000.msu"
 
-    # Add file to job
-    bitsadmin.exe /addfile $BitsJobName $SourcePath $DestPath 2>&1 | Out-Null
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] File added to job from $SourcePath"
+# Resume the job to begin transfer
+bitsadmin.exe /resume $job_name
 
-    # Resume job to start transfer
-    bitsadmin.exe /resume $BitsJobName 2>&1 | Out-Null
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] BITS job resumed"
+# Wait briefly for job state to update
+Start-Sleep -Seconds 2
 
-    # Poll job status with timeout
-    $maxAttempts = 10
-    $attempt = 0
-    while ($attempt -lt $maxAttempts) {
-        Start-Sleep -Seconds 1
-        $jobInfo = bitsadmin.exe /info $BitsJobName /verbose 2>&1
-        if ($jobInfo -match 'State: Transferred|State: Error') {
-            break
-        }
-        $attempt++
-    }
+# Complete the job
+bitsadmin.exe /complete $job_name
 
-    # Complete job to finalize transfer
-    bitsadmin.exe /complete $BitsJobName 2>&1 | Out-Null
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] BITS job completed: $BitsJobName"
+# Cleanup: Remove the temporary directory and its contents
+Set-Location $env:TEMP
+Remove-Item -Path $bits_temp -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Verify and cleanup
-    if (Test-Path $DestPath) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Update file transferred successfully"
-        Remove-Item -Path $DestPath -Force -ErrorAction SilentlyContinue
-    }
-}
-finally {
-    # Clean up BITS job
-    bitsadmin.exe /complete $BitsJobName 2>&1 | Out-Null
-    Start-Sleep -Milliseconds 500
-}
-
-# -- Cluster: singleton_34f0481c-d3ef-4b1c-ad9d-fc6f46385a19  (1 rule(s)) ---------------------
-# Intent:    Attackers using BITS (Background Intelligent Transfer Service) via bitsadmin.exe
-# Rules:     34f0481c-d3ef-4b1c-ad9d-fc6f46385a19
+# -- Cluster: singleton_f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7  (1 rule(s)) ---------------------
+# Intent:    Detect Background Intelligent Transfer Service (BITS) job creation and managemen
+# Rules:     f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7
 # Archetype: Software installer/updater workflow
 
-$DeploymentId = 'CONFIG_PKG_2024_v2'
-$PackageServer = 'internal.corp.local'
-$PackageUrl = "http://$PackageServer/updates/appconfig.zip"
-$LocalPath = "$env:TEMP\appconfig.zip"
+$staging_dir = Join-Path $env:ProgramData "SoftwareDeployment_$(Get-Random)"
+New-Item -ItemType Directory -Path $staging_dir -Force | Out-Null
+Set-Location $staging_dir
 
-Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Initiating enterprise application deployment..."
+# Simulate software distribution framework using BITS
+# This would be a legitimate deployment automation scenario
+$job_name = "AppInstall_$(Get-Random)"
+bitsadmin.exe /create /name $job_name
 
-try {
-    # Create new BITS job for package deployment
-    & cmd /c "bitsadmin /create /name $DeploymentId /resume 2>nul"
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Deployment job initialized: $DeploymentId"
+# Add application binary from distribution server
+bitsadmin.exe /addfile $job_name "http://127.0.0.1/apps/enterprise-tool.exe" "$staging_dir\enterprise-tool.exe"
 
-    # Attach application package to job
-    & cmd /c "bitsadmin /addfile $DeploymentId $PackageUrl $LocalPath 2>nul"
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Package attached from internal.corp.local/updates/"
+# Begin transfer
+bitsadmin.exe /resume $job_name
+Start-Sleep -Seconds 1
 
-    # Resume the deployment transfer
-    & cmd /c "bitsadmin /resume $DeploymentId 2>nul"
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Transfer initiated"
+# Complete transfer
+bitsadmin.exe /complete $job_name
 
-    # Monitor deployment progress
-    for ($i = 0; $i -lt 8; $i++) {
-        Start-Sleep -Seconds 1
-        $status = & cmd /c "bitsadmin /info $DeploymentId 2>nul" | Select-String -Pattern 'State:'
-        if ($status -match 'Transferred|Error') {
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Transfer status: $status"
-            break
-        }
-    }
+# Cleanup
+Set-Location $env:TEMP
+Remove-Item -Path $staging_dir -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Finalize and commit the deployment
-    & cmd /c "bitsadmin /complete $DeploymentId 2>nul"
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Deployment package finalized"
+# -- Cluster: singleton_f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7  (1 rule(s)) ---------------------
+# Intent:    Detect Background Intelligent Transfer Service (BITS) job creation and managemen
+# Rules:     f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7
+# Archetype: User-driven workflow
 
-    if (Test-Path $LocalPath) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Package delivery confirmed"
-        Remove-Item -Path $LocalPath -Force -ErrorAction SilentlyContinue
-    }
-}
-finally {
-    # Ensure job cleanup
-    & cmd /c "bitsadmin /complete $DeploymentId 2>nul" | Out-Null
-    Start-Sleep -Milliseconds 300
-}
+$user_appdata = Join-Path $env:APPDATA "DownloadManager"
+New-Item -ItemType Directory -Path $user_appdata -Force | Out-Null
+Set-Location $user_appdata
+
+# User-initiated download via BITS-backed utility
+$job_name = "UserDownload_$(Get-Random)"
+bitsadmin.exe /create /name $job_name
+
+# Add file for user download
+bitsadmin.exe /addfile $job_name "http://127.0.0.1/files/document.pdf" "$user_appdata\document.pdf"
+
+# Resume download
+bitsadmin.exe /resume $job_name
+Start-Sleep -Seconds 1
+
+# Complete download
+bitsadmin.exe /complete $job_name
+
+# Cleanup
+Set-Location $env:TEMP
+Remove-Item -Path $user_appdata -Recurse -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

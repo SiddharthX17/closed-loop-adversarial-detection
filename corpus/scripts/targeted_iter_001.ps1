@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   2  |  Feasible: 2  |  Variants: 5
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,169 +10,218 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_73c5d4df-3658-4628-af50-113323422f10  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of legitimate system processes by scripts or scripting hosts
-# Rules:     73c5d4df-3658-4628-af50-113323422f10
+# -- Cluster: singleton_3661d88b-3700-4f93-b4fe-038f467c1833  (1 rule(s)) ---------------------
+# Intent:    Detect masqueraded system processes (svchost, lsass, csrss, etc.) being executed
+# Rules:     3661d88b-3700-4f93-b4fe-038f467c1833
 # Archetype: IT admin workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
-$logPath = Join-Path $env:TEMP "process_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+$assessmentDir = Join-Path $env:TEMP 'SecurityAssessment_2024'
+if (Test-Path $assessmentDir) { Remove-Item $assessmentDir -Recurse -Force }
+New-Item -ItemType Directory -Path $assessmentDir | Out-Null
 
-# Query running processes and their details - legitimate admin monitoring
-Get-Process | Select-Object -Property Name, Id, ProcessName, @{Name='ParentProcessId';Expression={$_.Id}} | Format-Table -AutoSize | Out-File -FilePath $logPath -Encoding UTF8
+try {
+    # Copy system executables to non-standard location for analysis
+    $sourceExes = @('svchost.exe', 'lsass.exe', 'csrss.exe', 'taskhostw.exe')
+    foreach ($exe in $sourceExes) {
+        $sourcePath = Join-Path 'C:\Windows\System32' $exe
+        if (Test-Path $sourcePath) {
+            Copy-Item -Path $sourcePath -Destination (Join-Path $assessmentDir $exe) -Force
+        }
+    }
 
-# Enumerate system processes using WMI - common admin diagnostic activity
-$sysProcesses = Get-WmiObject Win32_Process | Where-Object {$_.Name -match '^(lsass|svchost|csrss|services|explorer|dwm|smss|taskhostw)\.exe$'} | Select-Object -First 5
+    # Execute copied system processes from non-standard directory
+    # This exercises the detection logic for process masquerading
+    $procPath = Join-Path $assessmentDir 'svchost.exe'
+    if (Test-Path $procPath) {
+        & $procPath -k LocalSystemNetworkRestricted 2>&1 | Out-Null
+    }
 
-# Query process command lines for those processes
-foreach ($proc in $sysProcesses) {
-  if ($null -ne $proc) {
-    $cmdLine = $proc.CommandLine
-    # This reference to system process names in queries is normal admin activity
-  }
+    $procPath = Join-Path $assessmentDir 'taskhostw.exe'
+    if (Test-Path $procPath) {
+        & $procPath 2>&1 | Out-Null
+    }
+
+    # Verify detection via command-line activity logs
+    Start-Process -FilePath 'powershell.exe' -ArgumentList "-NoProfile -Command `\"& (Join-Path '$assessmentDir' 'svchost.exe') -k LocalServiceNetworkRestricted`\"" -NoNewWindow -PassThru | Wait-Process
+}
+finally {
+    # Clean up temporary assessment artifacts
+    if (Test-Path $assessmentDir) {
+        Remove-Item $assessmentDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Use cscript to enumerate system configuration - legitimate IT admin tool usage
-$vbsPath = Join-Path $env:TEMP "sysinfo_query.vbs"
-@"
-Set objWMI = GetObject("winmgmts:")
-Set colItems = objWMI.ExecQuery("Select * from Win32_Process where Name = 'powershell.exe'")
-For Each objItem in colItems
-  WScript.Echo objItem.CommandLine
-Next
-"@ | Out-File -FilePath $vbsPath -Encoding ASCII
-
-# Execute through cscript - parent is cscript.exe, triggers parent detection
-cscript.exe "$vbsPath" 2>&1 | Out-Null
-
-# Clean up temporary files
-Remove-Item -Path $vbsPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_73c5d4df-3658-4628-af50-113323422f10  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of legitimate system processes by scripts or scripting hosts
-# Rules:     73c5d4df-3658-4628-af50-113323422f10
+# -- Cluster: singleton_3661d88b-3700-4f93-b4fe-038f467c1833  (1 rule(s)) ---------------------
+# Intent:    Detect masqueraded system processes (svchost, lsass, csrss, etc.) being executed
+# Rules:     3661d88b-3700-4f93-b4fe-038f467c1833
 # Archetype: Software installer/updater workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
-$installerLogPath = Join-Path $env:TEMP "installer_validation.log"
-$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+$stagingDir = Join-Path $env:TEMP 'AppUpdate_Staging'
+if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force }
+New-Item -ItemType Directory -Path $stagingDir | Out-Null
 
-# Pre-installation validation - check system processes and services
-Add-Content -Path $installerLogPath -Value "[$timestamp] Starting pre-installation system validation"
+try {
+    # Simulate installer creating a staging directory with system process names
+    @('winlogon.exe', 'services.exe', 'smss.exe', 'wininit.exe') | ForEach-Object {
+        $srcPath = Join-Path 'C:\Windows\System32' $_
+        if (Test-Path $srcPath) {
+            Copy-Item -Path $srcPath -Destination (Join-Path $stagingDir $_) -Force
+        }
+    }
 
-# Verify critical system services are running - legitimate installer pre-check
-$services = @('svchost', 'lsass', 'explorer', 'dwm')
-foreach ($service in $services) {
-  $running = Get-Process -Name $service -ErrorAction SilentlyContinue
-  if ($running) {
-    Add-Content -Path $installerLogPath -Value "[$timestamp] System process $service found: $($running.Path)"
-  }
+    # Application setup may invoke these binaries from staging area
+    $setupExe = Join-Path $stagingDir 'wininit.exe'
+    if (Test-Path $setupExe) {
+        Start-Process -FilePath $setupExe -NoNewWindow -PassThru -Wait
+    }
+
+    # Launch another staged executable via indirect command invocation
+    $servicesExe = Join-Path $stagingDir 'services.exe'
+    if (Test-Path $servicesExe) {
+        cmd /c $servicesExe 2>&1 | Out-Null
+    }
+
+    # Verify installation by running services from staging directory
+    $smsPath = Join-Path $stagingDir 'smss.exe'
+    if (Test-Path $smsPath) {
+        Start-Process -FilePath 'powershell.exe' -ArgumentList "-NoProfile -Command `\"& '$smsPath'`\"" -NoNewWindow -PassThru -Wait
+    }
+}
+finally {
+    # Remove temporary staging directory
+    if (Test-Path $stagingDir) {
+        Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Use rundll32 to extract shell icon for setup wizard - legitimate installer pattern
-$iconCacheDir = Join-Path $env:TEMP "installer_cache"
-if (-not (Test-Path -Path $iconCacheDir)) {
-  New-Item -ItemType Directory -Path $iconCacheDir -Force | Out-Null
+# -- Cluster: singleton_3661d88b-3700-4f93-b4fe-038f467c1833  (1 rule(s)) ---------------------
+# Intent:    Detect masqueraded system processes (svchost, lsass, csrss, etc.) being executed
+# Rules:     3661d88b-3700-4f93-b4fe-038f467c1833
+# Archetype: Document/file operation workflow
+
+$analysisDir = Join-Path $env:TEMP 'SystemDiagnostics'
+if (Test-Path $analysisDir) { Remove-Item $analysisDir -Recurse -Force }
+New-Item -ItemType Directory -Path $analysisDir | Out-Null
+
+try {
+    # Collect system process binaries for diagnostic analysis
+    $systemProcs = @('lsass.exe', 'csrss.exe', 'taskhostw.exe', 'svchost.exe')
+    $procInfo = @()
+
+    foreach ($procName in $systemProcs) {
+        $procPath = Join-Path 'C:\Windows\System32' $procName
+        if (Test-Path $procPath) {
+            $copyDest = Join-Path $analysisDir $procName
+            Copy-Item -Path $procPath -Destination $copyDest -Force
+
+            # Log file metadata for compliance reporting
+            $fileInfo = Get-Item -Path $copyDest
+            $procInfo += [PSCustomObject]@{
+                Name = $procName
+                Path = $copyDest
+                Size = $fileInfo.Length
+                Modified = $fileInfo.LastWriteTime
+            }
+        }
+    }
+
+    # Execute collected binaries to verify integrity and functionality
+    foreach ($proc in $procInfo) {
+        if (Test-Path $proc.Path) {
+            Start-Process -FilePath $proc.Path -NoNewWindow -PassThru -Wait -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Generate diagnostic report with execution data
+    $reportPath = Join-Path $env:TEMP 'diagnostics_report.txt'
+    $procInfo | ForEach-Object {
+        $cmdLine = "& '{0}'" -f $_.Path
+        "Process: {0} | Path: {1} | Size: {2}" -f $_.Name, $_.Path, $_.Size | Out-File -FilePath $reportPath -Append
+    }
+
+    # Execute from analysis directory to trigger detection
+    $csrssPath = Join-Path $analysisDir 'csrss.exe'
+    if (Test-Path $csrssPath) {
+        Start-Process -FilePath 'powershell.exe' -ArgumentList "-NoProfile -Command `\"& '$csrssPath'`\"" -NoNewWindow -PassThru -Wait
+    }
+}
+finally {
+    # Remove analysis directory and diagnostic artifacts
+    if (Test-Path $analysisDir) {
+        Remove-Item $analysisDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $reportPath) {
+        Remove-Item $reportPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Common installer pattern: use rundll32 to extract system resources
-rundll32.exe shell32.dll,ExtractIconEx "$env:SystemRoot\system32\shell32.dll" 0 "$iconCacheDir\icon.ico" 1 2>&1 | Out-Null
+# -- Cluster: singleton_3d57d068-bd8d-42af-b383-bc205f34daba  (1 rule(s)) ---------------------
+# Intent:    Detect BITS job notification command execution that invokes shell proxies (cmd, 
+# Rules:     3d57d068-bd8d-42af-b383-bc205f34daba
+# Archetype: IT admin workflow
 
-# Enumerate system paths that installer needs - this triggers path references in logs
-$systemPaths = @(
-  "$env:SystemRoot\system32",
-  "$env:SystemRoot\syswow64",
-  "$env:SystemRoot\winsxs"
-)
+$BitsJobName = "SoftwareDistribution_Notification"
+$NotifyScript = "C:\Windows\System32\cmd.exe /c eventcreate /T INFORMATION /ID 1000 /L Application /SO AdminAudit /D `"BITS job $BitsJobName completed successfully`""
 
-foreach ($path in $systemPaths) {
-  $itemCount = @(Get-ChildItem -Path $path -ErrorAction SilentlyContinue -File | Select-Object -First 1).Count
-  Add-Content -Path $installerLogPath -Value "[$timestamp] Validated system path: $path"
+try {
+    $ExistingJob = Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue
+    if ($ExistingJob) {
+        Remove-BitsTransfer -BitsJob $ExistingJob -Confirm:$false
+    }
+
+    $TransferJob = Add-BitsFile `
+        -Source "https://download.microsoft.com/download/sample.exe" `
+        -Destination "$env:TEMP\sample.exe" `
+        -TransferType Download `
+        -Name $BitsJobName `
+        -ErrorAction SilentlyContinue
+
+    if ($TransferJob) {
+        bitsadmin.exe /setnotifycmdline $BitsJobName $NotifyScript ""
+    }
+} catch {
+    Write-Verbose "BITS configuration for operational audit completed"
 }
 
-# Use mshta to validate HTML installer components - legitimate setup tool usage
-$htmlTest = Join-Path $env:TEMP "install_component_check.hta"
-@"
-<HTML>
-<BODY>
-Installer validation complete.
-</BODY>
-</HTML>
-"@ | Out-File -FilePath $htmlTest -Encoding ASCII
+Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue | Remove-BitsTransfer -Confirm:$false
 
-# Execute through mshta - parent is mshta.exe
-mshta.exe "$htmlTest" 2>&1 | Out-Null
+# -- Cluster: singleton_3d57d068-bd8d-42af-b383-bc205f34daba  (1 rule(s)) ---------------------
+# Intent:    Detect BITS job notification command execution that invokes shell proxies (cmd, 
+# Rules:     3d57d068-bd8d-42af-b383-bc205f34daba
+# Archetype: Software installer/updater workflow
 
-# Clean up temporary files
-Remove-Item -Path $iconCacheDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $htmlTest -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $installerLogPath -Force -ErrorAction SilentlyContinue
+$BitsJobName = "PatchManagement_Deployment"
+$DeploymentId = [System.Guid]::NewGuid().ToString()
+$LogPath = "$env:TEMP\deployment_log_$DeploymentId.txt"
 
-# -- Cluster: singleton_73c5d4df-3658-4628-af50-113323422f10  (1 rule(s)) ---------------------
-# Intent:    Detect masquerading of legitimate system processes by scripts or scripting hosts
-# Rules:     73c5d4df-3658-4628-af50-113323422f10
-# Archetype: User-driven workflow
+$NotifyCommand = "powershell.exe -NoProfile -Command Add-Content -Path `"$LogPath`" -Value `"Deployment completed at $(Get-Date)\""
 
-$ErrorActionPreference = 'SilentlyContinue'
+try {
+    $ExistingJob = Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue
+    if ($ExistingJob) {
+        Remove-BitsTransfer -BitsJob $ExistingJob -Confirm:$false
+    }
 
-# User runs a system diagnostics utility - common PowerShell-based admin helper
-$diagnosticsPath = Join-Path $env:TEMP "diagnostics.ps1"
+    $BitsJob = Add-BitsFile `
+        -Source "https://catalog.update.microsoft.com/v7/site/Updates/Download.aspx" `
+        -Destination "$env:TEMP\update_package.cab" `
+        -TransferType Download `
+        -Name $BitsJobName `
+        -ErrorAction SilentlyContinue
 
-$diagnosticsScript = @'
-# Collect system diagnostics for troubleshooting
-$report = @{}
-$report['Timestamp'] = Get-Date
-
-# Check critical system processes
-$processes = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-  $_.ProcessName -match '^(lsass|svchost|csrss|services|explorer|dwm)$'
+    if ($BitsJob) {
+        bitsadmin.exe /setnotifycmdline $BitsJobName $NotifyCommand ""
+    }
+} catch {
+    Write-Verbose "Automated patch deployment notification handler configured"
 }
 
-$report['SystemProcesses'] = @()
-foreach ($proc in $processes) {
-  $report['SystemProcesses'] += @{
-    Name = $proc.ProcessName
-    Path = $proc.Path
-    CommandLine = $proc.CommandLine
-  }
+Start-Sleep -Milliseconds 500
+Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue | Remove-BitsTransfer -Confirm:$false
+
+if (Test-Path $LogPath) {
+    Remove-Item -Path $LogPath -Force
 }
-
-# Verify Windows system folders integrity
-$systemFolders = @(
-  "$env:SystemRoot\system32",
-  "$env:SystemRoot\syswow64",
-  "$env:SystemRoot\winsxs"
-)
-
-$report['SystemFolders'] = @()
-foreach ($folder in $systemFolders) {
-  if (Test-Path -Path $folder) {
-    $report['SystemFolders'] += $folder
-  }
-}
-
-# Output summary
-$report
-'@
-
-Set-Content -Path $diagnosticsPath -Value $diagnosticsScript
-
-# Execute diagnostics script through PowerShell - parent is powershell.exe
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $diagnosticsPath | Out-Null
-
-# Also run through pwsh if available (modern PowerShell)
-$pwshPath = Join-Path $env:ProgramFiles "PowerShell\7\pwsh.exe"
-if (Test-Path -Path $pwshPath) {
-  & $pwshPath -NoProfile -File $diagnosticsPath 2>&1 | Out-Null
-}
-
-# Invoke a registry query for diagnostic purposes - user running admin helper
-reg.exe query "HKLM\SYSTEM\CurrentControlSet\Services\svchost" /v ImagePath 2>&1 | Out-Null
-reg.exe query "HKLM\SYSTEM\CurrentControlSet\Services\lsass" /v ImagePath 2>&1 | Out-Null
-
-# Clean up
-Remove-Item -Path $diagnosticsPath -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

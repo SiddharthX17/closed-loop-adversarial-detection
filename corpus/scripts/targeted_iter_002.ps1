@@ -10,89 +10,167 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7  (1 rule(s)) ---------------------
-# Intent:    Detect Background Intelligent Transfer Service (BITS) job creation and managemen
-# Rules:     f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7
+# -- Cluster: singleton_c3fdf77e-7eeb-4f6b-aab3-df73cc5db9fa  (1 rule(s)) ---------------------
+# Intent:    Detecting the use of BITS jobs configured with custom notify commands to achieve
+# Rules:     c3fdf77e-7eeb-4f6b-aab3-df73cc5db9fa
 # Archetype: IT admin workflow
 
-$bits_temp = Join-Path $env:TEMP "bits_admin_staging"
-New-Item -ItemType Directory -Path $bits_temp -Force | Out-Null
-Set-Location $bits_temp
+$LogPath = Join-Path $env:TEMP 'bits_update_ops.log'
 
-# Create a BITS job for legitimate patch transfer
-$job_name = "PatchDistribution_$(Get-Random)"
-bitsadmin.exe /create /name $job_name
+# Create a BITS transfer for a legitimate Windows update download
+# The notify command will trigger a compliance verification script
+$ComplianceScript = Join-Path $env:TEMP 'verify_update_compliance.cmd'
 
-# Add a file from internal repository (simulated with localhost)
-bitsadmin.exe /addfile $job_name "http://127.0.0.1/patches/kb5000000.msu" "$bits_temp\kb5000000.msu"
+# Create the benign compliance verification script
+@'
+echo Update installation at %date% %time% >> C:\Windows\Logs\updates.log
+echo Compliance check completed successfully
+'@ | Out-File -FilePath $ComplianceScript -Encoding ASCII -Force
 
-# Resume the job to begin transfer
-bitsadmin.exe /resume $job_name
+# Create a BITS job with notification command
+# This is legitimate for update orchestration workflows
+$JobName = 'UpdateComplianceTransfer'
+$DisplayName = 'Windows Update Compliance Download'
 
-# Wait briefly for job state to update
-Start-Sleep -Seconds 2
+try {
+    # Remove any existing job with this name
+    Get-BitsTransfer -Name $JobName -ErrorAction SilentlyContinue | Remove-BitsTransfer -Force
 
-# Complete the job
-bitsadmin.exe /complete $job_name
+    # Create the BITS job
+    $BitsJob = New-BitsTransfer `
+        -Name $JobName `
+        -DisplayName $DisplayName `
+        -TransferType Download `
+        -Priority Foreground
 
-# Cleanup: Remove the temporary directory and its contents
-Set-Location $env:TEMP
-Remove-Item -Path $bits_temp -Recurse -Force -ErrorAction SilentlyContinue
+    # Add file to transfer (using a real Windows path)
+    $BitsJob | Add-BitsFile `
+        -Source 'https://download.windowsupdate.com/d/msdownload/update/software/upd/2024/01/windows10.0-kb5034441-x64_e8d59e5e9c2c1de3c7f8e3b3d6a1e2f4.msu' `
+        -Destination (Join-Path $env:TEMP 'kb5034441.msu')
 
-# -- Cluster: singleton_f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7  (1 rule(s)) ---------------------
-# Intent:    Detect Background Intelligent Transfer Service (BITS) job creation and managemen
-# Rules:     f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7
+    # Configure the notify command to execute after job completion
+    # Using BITS setnotifycmdline parameter for legitimate compliance callback
+    $CommandToNotify = "cmd /c `"$ComplianceScript`""
+
+    # Use bitsadmin.exe to set the notify command (alternative approach)
+    $JobId = $BitsJob.JobId
+    cmd /c "bitsadmin /create /name UpdateComplianceTransfer /type Download"
+    cmd /c "bitsadmin /addfile UpdateComplianceTransfer https://download.windowsupdate.com/d/msdownload/update/software/upd/2024/01/windows10.0-kb5034441-x64_e8d59e5e9c2c1de3c7f8e3b3d6a1e2f4.msu $env:TEMP\kb5034441.msu"
+    cmd /c "bitsadmin /setnotifycmdline UpdateComplianceTransfer $ComplianceScript null"
+    cmd /c "bitsadmin /cancel UpdateComplianceTransfer"
+
+    Add-Content -Path $LogPath -Value "$(Get-Date): BITS job created with compliance notification callback"
+}
+catch {
+    Add-Content -Path $LogPath -Value "$(Get-Date): Error creating BITS job - $_"
+}
+finally {
+    # Cleanup temporary files and BITS jobs
+    Get-BitsTransfer -Name $JobName -ErrorAction SilentlyContinue | Remove-BitsTransfer -Force
+    Remove-Item -Path $ComplianceScript -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $LogPath -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_c3fdf77e-7eeb-4f6b-aab3-df73cc5db9fa  (1 rule(s)) ---------------------
+# Intent:    Detecting the use of BITS jobs configured with custom notify commands to achieve
+# Rules:     c3fdf77e-7eeb-4f6b-aab3-df73cc5db9fa
 # Archetype: Software installer/updater workflow
 
-$staging_dir = Join-Path $env:ProgramData "SoftwareDeployment_$(Get-Random)"
-New-Item -ItemType Directory -Path $staging_dir -Force | Out-Null
-Set-Location $staging_dir
+$DeploymentLog = Join-Path $env:TEMP 'deployment_operations.log'
+$DeploymentStaging = Join-Path $env:TEMP 'deployment_staging'
 
-# Simulate software distribution framework using BITS
-# This would be a legitimate deployment automation scenario
-$job_name = "AppInstall_$(Get-Random)"
-bitsadmin.exe /create /name $job_name
+# Create staging directory for deployment operations
+if (-not (Test-Path $DeploymentStaging)) {
+    New-Item -ItemType Directory -Path $DeploymentStaging -Force | Out-Null
+}
 
-# Add application binary from distribution server
-bitsadmin.exe /addfile $job_name "http://127.0.0.1/apps/enterprise-tool.exe" "$staging_dir\enterprise-tool.exe"
+# Define deployment configuration callback script
+$ConfigScript = Join-Path $DeploymentStaging 'apply_config.cmd'
+@'
+echo Configuration applied at %date% %time% >> %APPDATA%\deployment.log
+echo Package validation completed
+'@ | Out-File -FilePath $ConfigScript -Encoding ASCII -Force
 
-# Begin transfer
-bitsadmin.exe /resume $job_name
-Start-Sleep -Seconds 1
+try {
+    # Simulate enterprise software deployment with BITS
+    # Create multiple BITS jobs for different application components
 
-# Complete transfer
-bitsadmin.exe /complete $job_name
+    # Job 1: Application runtime
+    cmd /c "bitsadmin /create /name AppRuntimeDeployment /type Download"
+    cmd /c "bitsadmin /addfile AppRuntimeDeployment https://software.company.com/releases/runtime-2024.msi $DeploymentStaging\runtime.msi"
+    cmd /c "bitsadmin /setnotifycmdline AppRuntimeDeployment $ConfigScript null"
+    cmd /c "bitsadmin /cancel AppRuntimeDeployment"
 
-# Cleanup
-Set-Location $env:TEMP
-Remove-Item -Path $staging_dir -Recurse -Force -ErrorAction SilentlyContinue
+    # Job 2: Security updates
+    cmd /c "bitsadmin /create /name SecurityUpdateDeployment /type Download"
+    cmd /c "bitsadmin /addfile SecurityUpdateDeployment https://security.updates.company.com/patches/security-2024-01.exe $DeploymentStaging\security-update.exe"
+    cmd /c "bitsadmin /setnotifycmdline SecurityUpdateDeployment $ConfigScript null"
+    cmd /c "bitsadmin /cancel SecurityUpdateDeployment"
 
-# -- Cluster: singleton_f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7  (1 rule(s)) ---------------------
-# Intent:    Detect Background Intelligent Transfer Service (BITS) job creation and managemen
-# Rules:     f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7
+    Add-Content -Path $DeploymentLog -Value "$(Get-Date): Software deployment BITS jobs configured"
+}
+catch {
+    Add-Content -Path $DeploymentLog -Value "$(Get-Date): Deployment error - $_"
+}
+finally {
+    # Cleanup all deployment artifacts and BITS jobs
+    Get-BitsTransfer -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.DisplayName -like '*Deployment*' -or $_.Name -like '*Deployment*') {
+            Remove-BitsTransfer -BitsJob $_ -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Remove staging directory and logs
+    Remove-Item -Path $DeploymentStaging -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $DeploymentLog -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_c3fdf77e-7eeb-4f6b-aab3-df73cc5db9fa  (1 rule(s)) ---------------------
+# Intent:    Detecting the use of BITS jobs configured with custom notify commands to achieve
+# Rules:     c3fdf77e-7eeb-4f6b-aab3-df73cc5db9fa
 # Archetype: User-driven workflow
 
-$user_appdata = Join-Path $env:APPDATA "DownloadManager"
-New-Item -ItemType Directory -Path $user_appdata -Force | Out-Null
-Set-Location $user_appdata
+$UserDeploymentLog = Join-Path $env:TEMP 'file_sync.log'
+$DownloadStaging = Join-Path $env:TEMP 'downloads_sync'
 
-# User-initiated download via BITS-backed utility
-$job_name = "UserDownload_$(Get-Random)"
-bitsadmin.exe /create /name $job_name
+# Create staging directory
+if (-not (Test-Path $DownloadStaging)) {
+    New-Item -ItemType Directory -Path $DownloadStaging -Force | Out-Null
+}
 
-# Add file for user download
-bitsadmin.exe /addfile $job_name "http://127.0.0.1/files/document.pdf" "$user_appdata\document.pdf"
+# Create notification script that will be invoked on BITS job completion
+$NotificationScript = Join-Path $DownloadStaging 'notify_completion.cmd'
+@'
+echo Download completed at %date% %time% >> %USERPROFILE%\Downloads\sync_log.txt
+echo File is ready for processing
+'@ | Out-File -FilePath $NotificationScript -Encoding ASCII -Force
 
-# Resume download
-bitsadmin.exe /resume $job_name
-Start-Sleep -Seconds 1
+try {
+    # User creates a BITS transfer for a legitimate work-related file download
+    # Configure notification to trigger a simple status logging script
 
-# Complete download
-bitsadmin.exe /complete $job_name
+    cmd /c "bitsadmin /create /name LargeFileTransfer /type Download"
+    cmd /c "bitsadmin /addfile LargeFileTransfer https://media.company.com/sharepoint/Q3_Reports.zip $DownloadStaging\Q3_Reports.zip"
+    cmd /c "bitsadmin /setnotifycmdline LargeFileTransfer $NotificationScript null"
+    cmd /c "bitsadmin /cancel LargeFileTransfer"
 
-# Cleanup
-Set-Location $env:TEMP
-Remove-Item -Path $user_appdata -Recurse -Force -ErrorAction SilentlyContinue
+    Add-Content -Path $UserDeploymentLog -Value "$(Get-Date): User-initiated file transfer configured with completion notification"
+}
+catch {
+    Add-Content -Path $UserDeploymentLog -Value "$(Get-Date): File transfer configuration error - $_"
+}
+finally {
+    # Cleanup all BITS jobs and temporary files
+    Get-BitsTransfer -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.Name -like '*FileTransfer*' -or $_.DisplayName -like '*FileTransfer*') {
+            Remove-BitsTransfer -BitsJob $_ -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Remove temporary staging and logs
+    Remove-Item -Path $DownloadStaging -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $UserDeploymentLog -Force -ErrorAction SilentlyContinue
+}
 
 
 # ===========================================================================

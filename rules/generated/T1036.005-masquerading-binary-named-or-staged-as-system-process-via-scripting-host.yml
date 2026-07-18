@@ -1,0 +1,67 @@
+title: "T1036.005 - Masquerading Binary Named or Staged as System Process via Scripting Host"
+id: 73c5d4df-3658-4628-af50-113323422f10
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1036/005/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-18
+tags:
+    - attack.defense-evasion
+    - attack.t1036.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_name_outside_system:
+      Image|endswith:
+        - '\lsass.exe'
+        - '\svchost.exe'
+        - '\spoolsv.exe'
+        - '\csrss.exe'
+        - '\services.exe'
+        - '\winlogon.exe'
+        - '\wininit.exe'
+        - '\smss.exe'
+        - '\explorer.exe'
+        - '\taskhost.exe'
+        - '\taskhostw.exe'
+        - '\dwm.exe'
+    filter_legit_path:
+      Image|startswith:
+        - 'C:\Windows\System32\'
+        - 'C:\Windows\SysWOW64\'
+        - 'C:\Windows\WinSxS\'
+    selection_commandline_masquerade_target:
+      CommandLine|contains:
+        - '\lsass.exe'
+        - '\svchost.exe'
+        - '\spoolsv.exe'
+        - '\csrss.exe'
+        - '\services.exe'
+        - '\winlogon.exe'
+        - '\wininit.exe'
+        - '\smss.exe'
+        - '\explorer.exe'
+        - '\taskhost.exe'
+        - '\taskhostw.exe'
+        - '\dwm.exe'
+    filter_commandline_legit_path:
+      CommandLine|contains:
+        - 'C:\Windows\System32\'
+        - 'C:\Windows\SysWOW64\'
+        - 'C:\Windows\WinSxS\'
+    selection_lolbin_parent:
+      ParentImage|endswith:
+        - '\powershell.exe'
+        - '\pwsh.exe'
+        - '\mshta.exe'
+        - '\wscript.exe'
+        - '\cscript.exe'
+        - '\rundll32.exe'
+    condition: (selection_name_outside_system and not filter_legit_path) or (selection_commandline_masquerade_target and not filter_commandline_legit_path and selection_lolbin_parent)
+falsepositives:
+    - "Third-party or vendor-packaged applications that legitimately ship a binary literally named after a core Windows process (rare, but possible with poorly-named custom tooling) — verify via the binary's own digital signature/hash rather than assuming legitimacy from path alone"
+    - "Portable/USB-based diagnostic or forensic tools that intentionally bundle copies of system binaries (e.g., copied lsass.exe for offline analysis) run from non-standard paths"
+    - "Legitimate installers or updaters (e.g., Electron app updaters) spawned from scripting hosts that reference filenames coincidentally matching system process names as command-line arguments (e.g., passing a path to rundll32) — verify the referenced target binary's own signature/hash rather than trusting the parent-child relationship alone"
+    - "This rule does not verify PE signature/hash, so any legitimately signed binary with a colliding filename or a command line referencing one will still alert — treat all matches as requiring manual signature/hash verification before dismissal"
+level: high

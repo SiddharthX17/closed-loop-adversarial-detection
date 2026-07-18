@@ -1,0 +1,35 @@
+title: "BITS Job Creation via bitsadmin CLI Grammar"
+id: f9fc4f1e-0b30-4f71-88c9-30a33eb47ed7
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-18
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_create:
+        CommandLine|contains: '/create'
+    selection_addfile:
+        CommandLine|contains: '/addfile'
+    selection_finish:
+        CommandLine|contains:
+            - '/resume'
+            - '/complete'
+    supporting_nonstandard_path:
+        Image|contains:
+            - '\Temp\'
+            - '\Public\'
+            - '\ProgramData\'
+            - '\AppData\'
+    condition: selection_create and selection_addfile and selection_finish
+falsepositives:
+    - "Legitimate administrative scripts or scheduled tasks invoking bitsadmin.exe from System32 with the full /create /addfile /resume|/complete grammar for authorized file transfer automation (this rule will still match these; use the non-standard-path supporting signal and destination review to triage such cases rather than relying on a blanket System32 exclusion)"
+    - "Enterprise software packaging or deployment tools that legitimately embed a copy of bitsadmin.exe (or a wrapper with identical CLI grammar) outside System32 for installer purposes"
+    - "Legacy patch/update automation that still relies on the bitsadmin CLI wrapper instead of the newer BITS PowerShell cmdlets"
+    - "BITS jobs created via the COM API directly (no CLI invocation) are not covered by this rule and would require network-based or API-level telemetry instead"
+level: medium

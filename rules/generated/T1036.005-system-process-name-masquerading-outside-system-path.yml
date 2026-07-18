@@ -1,0 +1,51 @@
+title: "T1036.005 - System Process Name Masquerading Outside System Path"
+id: 3661d88b-3700-4f93-b4fe-038f467c1833
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1036/005/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1036.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image_masquerade:
+      Image|endswith:
+        - '\svchost.exe'
+        - '\lsass.exe'
+        - '\csrss.exe'
+        - '\winlogon.exe'
+        - '\services.exe'
+        - '\taskhostw.exe'
+        - '\smss.exe'
+        - '\wininit.exe'
+    filter_legit_path:
+      Image|startswith:
+        - 'C:\Windows\System32\'
+        - 'C:\Windows\SysWOW64\'
+        - 'C:\Windows\WinSxS\'
+    selection_commandline_masquerade:
+      CommandLine|contains:
+        - '\svchost.exe'
+        - '\lsass.exe'
+        - '\csrss.exe'
+        - '\winlogon.exe'
+        - '\services.exe'
+        - '\taskhostw.exe'
+        - '\smss.exe'
+        - '\wininit.exe'
+    filter_commandline_legit_path:
+      CommandLine|contains:
+        - 'C:\Windows\System32\'
+        - 'C:\Windows\SysWOW64\'
+        - 'C:\Windows\WinSxS\'
+    condition: (selection_image_masquerade and not filter_legit_path) or (selection_commandline_masquerade and not filter_commandline_legit_path)
+falsepositives:
+    - "Legitimate software vendors rarely but occasionally name helper binaries after system process names in ProgramData/AppData install paths; verify digital signature or hash before dismissing as benign"
+    - "Rundll32.exe, csc.exe, or other LOLBins referencing a target file named after a system process (e.g. svchost.exe) outside System32/SysWOW64/WinSxS in their own command line will match via the CommandLine-based selection even when the Image field itself points to a legitimate System32 binary such as rundll32.exe"
+    - "Forensic tools, EDR agents, or sysadmin utilities that intentionally copy, rename, or reference diagnostic binaries matching system process names for testing purposes"
+    - "Build/compile tooling (csc.exe /out:, PowerShell Add-Type -OutputAssembly) that legitimately produces or references an output assembly incidentally named after a system process, though this is uncommon in normal development workflows"
+level: high

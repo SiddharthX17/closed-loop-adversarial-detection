@@ -1,0 +1,26 @@
+title: "BITS Job Creation with Notify Command Execution"
+id: c3fdf77e-7eeb-4f6b-aab3-df73cc5db9fa
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_create:
+      CommandLine|contains: '/create'
+    selection_addfile:
+      CommandLine|contains: '/addfile'
+    selection_notify:
+      CommandLine|contains: 'setnotifycmdline'
+    condition: selection_create and selection_addfile and selection_notify
+falsepositives:
+    - "Legitimate software deployment/update via BITS: bitsadmin.exe (System32) creating jobs with /addfile pointing to internal update servers and no suspicious notify command — verify Image path is the signed System32 bitsadmin.exe and destination host is on an internal-infrastructure allowlist before excluding."
+    - "IT admin scripting using BITS notification for post-download automation: /setnotifycmdline referencing powershell.exe or cmd.exe with signed internal automation scripts — should only be excluded when the script path/hash matches a maintained allowlist, since attacker scripts can mimic naming."
+    - "PowerShell BITS cmdlets (Start-BitsTransfer with -TransferType Download and job notification via events) may not appear in this command-line-based detection at all, representing a coverage gap rather than a false positive."
+level: high

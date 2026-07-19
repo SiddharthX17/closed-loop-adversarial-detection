@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 2  |  Variants: 5
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,217 +10,86 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_3661d88b-3700-4f93-b4fe-038f467c1833  (1 rule(s)) ---------------------
-# Intent:    Detect masqueraded system processes (svchost, lsass, csrss, etc.) being executed
-# Rules:     3661d88b-3700-4f93-b4fe-038f467c1833
+# -- Cluster: singleton_5d770769-75c9-4b62-af7f-825351746d5d  (1 rule(s)) ---------------------
+# Intent:    BITS abuse via desktopimgdownldr.exe with malicious /lockscreenurl parameter poi
+# Rules:     5d770769-75c9-4b62-af7f-825351746d5d
 # Archetype: IT admin workflow
 
-$assessmentDir = Join-Path $env:TEMP 'SecurityAssessment_2024'
-if (Test-Path $assessmentDir) { Remove-Item $assessmentDir -Recurse -Force }
-New-Item -ItemType Directory -Path $assessmentDir | Out-Null
+# Lock screen branding configuration by IT admin
+# This script deploys a corporate lock screen image URL to standardize desktop appearance
+$imageUrl = "https://corp-cdn.internal/branding/lockscreen.jpg"
+$tempDir = Join-Path $env:TEMP ("lockscreen_$(Get-Random)")
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 try {
-    # Copy system executables to non-standard location for analysis
-    $sourceExes = @('svchost.exe', 'lsass.exe', 'csrss.exe', 'taskhostw.exe')
-    foreach ($exe in $sourceExes) {
-        $sourcePath = Join-Path 'C:\Windows\System32' $exe
-        if (Test-Path $sourcePath) {
-            Copy-Item -Path $sourcePath -Destination (Join-Path $assessmentDir $exe) -Force
-        }
+    # Simulate legitimate IT admin invoking desktopimgdownldr.exe with corporate branding image
+    # This is realistic as IT departments do standardize lock screens via this binary
+    $desktopImgPath = "C:\Windows\System32\desktopimgdownldr.exe"
+    if (Test-Path $desktopImgPath) {
+        # Call with legitimate image file parameter
+        & $desktopImgPath /lockscreenurl:"C:\Windows\Branding\lockscreen.png"
     }
-
-    # Execute copied system processes from non-standard directory
-    # This exercises the detection logic for process masquerading
-    $procPath = Join-Path $assessmentDir 'svchost.exe'
-    if (Test-Path $procPath) {
-        & $procPath -k LocalSystemNetworkRestricted 2>&1 | Out-Null
-    }
-
-    $procPath = Join-Path $assessmentDir 'taskhostw.exe'
-    if (Test-Path $procPath) {
-        & $procPath 2>&1 | Out-Null
-    }
-
-    # Verify detection via command-line activity logs
-    Start-Process -FilePath 'powershell.exe' -ArgumentList "-NoProfile -Command `\"& (Join-Path '$assessmentDir' 'svchost.exe') -k LocalServiceNetworkRestricted`\"" -NoNewWindow -PassThru | Wait-Process
 }
 finally {
-    # Clean up temporary assessment artifacts
-    if (Test-Path $assessmentDir) {
-        Remove-Item $assessmentDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $tempDir) {
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
-# -- Cluster: singleton_3661d88b-3700-4f93-b4fe-038f467c1833  (1 rule(s)) ---------------------
-# Intent:    Detect masqueraded system processes (svchost, lsass, csrss, etc.) being executed
-# Rules:     3661d88b-3700-4f93-b4fe-038f467c1833
+# -- Cluster: singleton_5d770769-75c9-4b62-af7f-825351746d5d  (1 rule(s)) ---------------------
+# Intent:    BITS abuse via desktopimgdownldr.exe with malicious /lockscreenurl parameter poi
+# Rules:     5d770769-75c9-4b62-af7f-825351746d5d
 # Archetype: Software installer/updater workflow
 
-$stagingDir = Join-Path $env:TEMP 'AppUpdate_Staging'
-if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force }
-New-Item -ItemType Directory -Path $stagingDir | Out-Null
+# Desktop image deployment during enterprise OS imaging
+# Software deployment system configures lock screen during baseline build
+$configDir = Join-Path $env:TEMP ("deploy_$(Get-Random)")
+New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+$logFile = Join-Path $configDir "deployment.log"
 
 try {
-    # Simulate installer creating a staging directory with system process names
-    @('winlogon.exe', 'services.exe', 'smss.exe', 'wininit.exe') | ForEach-Object {
-        $srcPath = Join-Path 'C:\Windows\System32' $_
-        if (Test-Path $srcPath) {
-            Copy-Item -Path $srcPath -Destination (Join-Path $stagingDir $_) -Force
-        }
+    # Log the deployment action
+    Add-Content -Path $logFile -Value "[$(Get-Date)] Starting lock screen deployment"
+
+    # Enterprise imaging tool invokes desktopimgdownldr.exe with image URL
+    # This is legitimate as many enterprise deployment solutions do this
+    $desktopImgPath = "C:\Windows\System32\desktopimgdownldr.exe"
+    if (Test-Path $desktopImgPath) {
+        # Deployment with legitimate image format
+        & $desktopImgPath /lockscreenurl:"https://intranet.company.net/media/corporate_lockscreen.bmp" 2>&1 | Add-Content -Path $logFile
     }
 
-    # Application setup may invoke these binaries from staging area
-    $setupExe = Join-Path $stagingDir 'wininit.exe'
-    if (Test-Path $setupExe) {
-        Start-Process -FilePath $setupExe -NoNewWindow -PassThru -Wait
+    Add-Content -Path $logFile -Value "[$(Get-Date)] Lock screen deployment completed"
+}
+finally {
+    if (Test-Path $configDir) {
+        Remove-Item -Path $configDir -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
 
-    # Launch another staged executable via indirect command invocation
-    $servicesExe = Join-Path $stagingDir 'services.exe'
-    if (Test-Path $servicesExe) {
-        cmd /c $servicesExe 2>&1 | Out-Null
-    }
+# -- Cluster: singleton_5d770769-75c9-4b62-af7f-825351746d5d  (1 rule(s)) ---------------------
+# Intent:    BITS abuse via desktopimgdownldr.exe with malicious /lockscreenurl parameter poi
+# Rules:     5d770769-75c9-4b62-af7f-825351746d5d
+# Archetype: User-driven workflow
 
-    # Verify installation by running services from staging directory
-    $smsPath = Join-Path $stagingDir 'smss.exe'
-    if (Test-Path $smsPath) {
-        Start-Process -FilePath 'powershell.exe' -ArgumentList "-NoProfile -Command `\"& '$smsPath'`\"" -NoNewWindow -PassThru -Wait
+# User or support tech applies custom lock screen branding
+# Represents legitimate manual configuration of desktop personalization
+$workDir = Join-Path $env:TEMP ("personalization_$(Get-Random)")
+New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+
+try {
+    # Simulate user or support technician invoking desktopimgdownldr.exe
+    # with custom lock screen image
+    $desktopImgPath = "C:\Windows\System32\desktopimgdownldr.exe"
+    if (Test-Path $desktopImgPath) {
+        # User-provided or support-supplied image reference
+        & $desktopImgPath /lockscreenurl:"C:\Users\Public\Pictures\custom_lockscreen.gif"
     }
 }
 finally {
-    # Remove temporary staging directory
-    if (Test-Path $stagingDir) {
-        Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $workDir) {
+        Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-}
-
-# -- Cluster: singleton_3661d88b-3700-4f93-b4fe-038f467c1833  (1 rule(s)) ---------------------
-# Intent:    Detect masqueraded system processes (svchost, lsass, csrss, etc.) being executed
-# Rules:     3661d88b-3700-4f93-b4fe-038f467c1833
-# Archetype: Document/file operation workflow
-
-$analysisDir = Join-Path $env:TEMP 'SystemDiagnostics'
-if (Test-Path $analysisDir) { Remove-Item $analysisDir -Recurse -Force }
-New-Item -ItemType Directory -Path $analysisDir | Out-Null
-
-try {
-    # Collect system process binaries for diagnostic analysis
-    $systemProcs = @('lsass.exe', 'csrss.exe', 'taskhostw.exe', 'svchost.exe')
-    $procInfo = @()
-
-    foreach ($procName in $systemProcs) {
-        $procPath = Join-Path 'C:\Windows\System32' $procName
-        if (Test-Path $procPath) {
-            $copyDest = Join-Path $analysisDir $procName
-            Copy-Item -Path $procPath -Destination $copyDest -Force
-
-            # Log file metadata for compliance reporting
-            $fileInfo = Get-Item -Path $copyDest
-            $procInfo += [PSCustomObject]@{
-                Name = $procName
-                Path = $copyDest
-                Size = $fileInfo.Length
-                Modified = $fileInfo.LastWriteTime
-            }
-        }
-    }
-
-    # Execute collected binaries to verify integrity and functionality
-    foreach ($proc in $procInfo) {
-        if (Test-Path $proc.Path) {
-            Start-Process -FilePath $proc.Path -NoNewWindow -PassThru -Wait -ErrorAction SilentlyContinue
-        }
-    }
-
-    # Generate diagnostic report with execution data
-    $reportPath = Join-Path $env:TEMP 'diagnostics_report.txt'
-    $procInfo | ForEach-Object {
-        $cmdLine = "& '{0}'" -f $_.Path
-        "Process: {0} | Path: {1} | Size: {2}" -f $_.Name, $_.Path, $_.Size | Out-File -FilePath $reportPath -Append
-    }
-
-    # Execute from analysis directory to trigger detection
-    $csrssPath = Join-Path $analysisDir 'csrss.exe'
-    if (Test-Path $csrssPath) {
-        Start-Process -FilePath 'powershell.exe' -ArgumentList "-NoProfile -Command `\"& '$csrssPath'`\"" -NoNewWindow -PassThru -Wait
-    }
-}
-finally {
-    # Remove analysis directory and diagnostic artifacts
-    if (Test-Path $analysisDir) {
-        Remove-Item $analysisDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    if (Test-Path $reportPath) {
-        Remove-Item $reportPath -Force -ErrorAction SilentlyContinue
-    }
-}
-
-# -- Cluster: singleton_3d57d068-bd8d-42af-b383-bc205f34daba  (1 rule(s)) ---------------------
-# Intent:    Detect BITS job notification command execution that invokes shell proxies (cmd, 
-# Rules:     3d57d068-bd8d-42af-b383-bc205f34daba
-# Archetype: IT admin workflow
-
-$BitsJobName = "SoftwareDistribution_Notification"
-$NotifyScript = "C:\Windows\System32\cmd.exe /c eventcreate /T INFORMATION /ID 1000 /L Application /SO AdminAudit /D `"BITS job $BitsJobName completed successfully`""
-
-try {
-    $ExistingJob = Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue
-    if ($ExistingJob) {
-        Remove-BitsTransfer -BitsJob $ExistingJob -Confirm:$false
-    }
-
-    $TransferJob = Add-BitsFile `
-        -Source "https://download.microsoft.com/download/sample.exe" `
-        -Destination "$env:TEMP\sample.exe" `
-        -TransferType Download `
-        -Name $BitsJobName `
-        -ErrorAction SilentlyContinue
-
-    if ($TransferJob) {
-        bitsadmin.exe /setnotifycmdline $BitsJobName $NotifyScript ""
-    }
-} catch {
-    Write-Verbose "BITS configuration for operational audit completed"
-}
-
-Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue | Remove-BitsTransfer -Confirm:$false
-
-# -- Cluster: singleton_3d57d068-bd8d-42af-b383-bc205f34daba  (1 rule(s)) ---------------------
-# Intent:    Detect BITS job notification command execution that invokes shell proxies (cmd, 
-# Rules:     3d57d068-bd8d-42af-b383-bc205f34daba
-# Archetype: Software installer/updater workflow
-
-$BitsJobName = "PatchManagement_Deployment"
-$DeploymentId = [System.Guid]::NewGuid().ToString()
-$LogPath = "$env:TEMP\deployment_log_$DeploymentId.txt"
-
-$NotifyCommand = "powershell.exe -NoProfile -Command Add-Content -Path `"$LogPath`" -Value `"Deployment completed at $(Get-Date)\""
-
-try {
-    $ExistingJob = Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue
-    if ($ExistingJob) {
-        Remove-BitsTransfer -BitsJob $ExistingJob -Confirm:$false
-    }
-
-    $BitsJob = Add-BitsFile `
-        -Source "https://catalog.update.microsoft.com/v7/site/Updates/Download.aspx" `
-        -Destination "$env:TEMP\update_package.cab" `
-        -TransferType Download `
-        -Name $BitsJobName `
-        -ErrorAction SilentlyContinue
-
-    if ($BitsJob) {
-        bitsadmin.exe /setnotifycmdline $BitsJobName $NotifyCommand ""
-    }
-} catch {
-    Write-Verbose "Automated patch deployment notification handler configured"
-}
-
-Start-Sleep -Milliseconds 500
-Get-BitsTransfer -Name $BitsJobName -ErrorAction SilentlyContinue | Remove-BitsTransfer -Confirm:$false
-
-if (Test-Path $LogPath) {
-    Remove-Item -Path $LogPath -Force
 }
 
 

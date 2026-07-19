@@ -71,11 +71,14 @@ def _base_instructions(technique_id: str, technique_name: str, tactic: str) -> s
         "Keep all hints contextually relevant to the originating event type only.\n"
         "Generate TWO execution variants for the selected test:\n"
         "- evasion_hints: base execution — realistic mutation of the test procedure.\n"
-        "- evasion_hints_v2: a SECOND variant that meaningfully differs from v1.\n"
-        "  Change the execution chain, parent process, or binary staging path — not just string values.\n"
-        "  Example: v1 uses powershell.exe parent, v2 uses mshta.exe parent.\n"
-        "  Example: v1 stages to Downloads, v2 stages to AppData\\Local\\Temp.\n"
-        "  Both variants must stay within the technique's behavioural envelope.\n"
+        "- evasion_hints_v2: an initial idea for a second variant of the SAME STEP as\n"
+        "  v1 — not a different step or a different action within the technique, the\n"
+        "  same underlying action achieved a different realistic way. Vary the\n"
+        "  execution chain, parent process, or staging path — not just string values.\n"
+        "  Example: v1 uses powershell.exe parent, v2 uses mshta.exe parent — same action.\n"
+        "  Example: v1 stages to Downloads, v2 stages to AppData\\Local\\Temp — same action.\n"
+        "  This initial idea may be refined later once the actual base event is known —\n"
+        "  treat it as a reasonable starting point, not a final answer.\n"
         "  evasion_hints_v2 is REQUIRED — always populate it.\n\n"
     )
 
@@ -111,6 +114,68 @@ def _output_schema() -> str:
         "  }\n"
         "}"
     )
+
+
+def _output_schema_v2_only() -> str:
+    return (
+        "Respond with a single JSON object only. No preamble, no explanation, "
+        "no markdown fences.\n\n"
+        "JSON encoding rules (strict):\n"
+        "- All string values must be valid JSON.\n"
+        "- Escape backslashes as \\\\\\\\ (four backslashes in source = \\\\ in JSON).\n"
+        "- Do not use PowerShell escape characters (backtick, unescaped single quotes) "
+        "inside JSON string values.\n"
+        "- If a command line contains quotes, escape them as \\\\\".\n\n"
+        "- Do not include literal newlines, tabs, or control characters "
+        "- inside JSON string values. Replace newlines with a space.\n"
+        "Schema:\n"
+        "{\n"
+        '  "evasion_hints_v2": {\n'
+        '    "<SysmonFieldName>": "<mutated value>"\n'
+        "    // include only fields you are actually mutating\n"
+        "    // use Sysmon field names: Image, CommandLine, ParentImage,\n"
+        "    // ParentCommandLine, TargetObject, DestinationIp,\n"
+        "    // DestinationHostname, OriginalFileName\n"
+        "  }\n"
+        "}"
+    )
+
+
+def build_variant2_refinement_prompt(
+    technique_id: str,
+    technique_name: str,
+    tactic: str,
+    base_event: dict,
+    original_hints_v2: dict,
+) -> str:
+    """
+    Second, separate attacker call — made after variant 1 has actually been
+    interpreted. Gives the attacker the real base event (not just its own
+    earlier guess at what it might look like) before finalising evasion_hints_v2,
+    so the second variant is a genuine alternate of what actually got generated,
+    not a blind guess made before either event existed.
+    """
+    return (
+        f"You are an adversarial simulation assistant helping stress-test detection rules.\n\n"
+        f"Technique: {technique_id} — {technique_name}\n"
+        f"Tactic: {tactic}\n\n"
+        f"This is the actual log event already generated for this technique's base "
+        f"execution:\n{json.dumps(base_event, indent=2)}\n\n"
+        f"Your job: propose a second, realistic alternate execution of the SAME step "
+        f"shown above — the kind of variation a real attacker might genuinely use to "
+        f"achieve that exact same action, not a different step and not a different "
+        f"technique. Vary the specific method (parent process, staging path, execution "
+        f"chain, or specific values) enough that it is not identical to the event "
+        f"above, while staying clearly recognisable as the same underlying action.\n\n"
+        f"You are not designing this to evade any specific detection rule — you don't "
+        f"know what rules exist and shouldn't try to guess around one. Just describe a "
+        f"meaningful, realistic alternate a motivated attacker might use for this same "
+        f"step.\n\n"
+        f"Your initial idea for this variant, from before the base event above existed, "
+        f"was:\n{json.dumps(original_hints_v2, indent=2)}\n"
+        f"Revise it if the actual base event above changes what a good alternate would "
+        f"look like — keep it if it still fits.\n\n"
+    ) + _output_schema_v2_only()
 
 
 def build_coldstart_prompt(

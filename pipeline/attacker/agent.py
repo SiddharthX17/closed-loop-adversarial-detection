@@ -37,6 +37,7 @@ from pipeline.attacker.prompts import (
     AtomicCandidate,
     build_coldstart_prompt,
     build_mutation_prompt,
+    build_variant2_refinement_prompt,
 )
 
 load_dotenv()
@@ -47,6 +48,12 @@ TECHNIQUES_PATH = Path("config/techniques.yaml")
 MODEL = "claude-haiku-4-5-20251001"
 TEMPERATURE = 0.2
 MAX_CANDIDATES = 1
+
+# Module-level client for standalone functions called from other modules
+# (e.g. emulator.py calling refine_evasion_hints_v2) — matches the pattern
+# already used in procedure_interpreter.py. AttackerAgent itself still owns
+# its own client instance for its main run() path.
+_client = anthropic.Anthropic()
 
 # ---------------------------------------------------------------------------
 # Executor list — used as diversity tiebreaker only, not primary filter.
@@ -415,6 +422,69 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> dict | None:
         if DEBUG:
             print(f"[attacker] LLM call failed: {e}")
         return None
+
+
+def refine_evasion_hints_v2(
+    technique_id: str,
+    technique_name: str,
+    tactic: str,
+    base_event: dict,
+    original_hints_v2: dict,
+    client: anthropic.Anthropic | None = None,
+) -> dict:
+    """
+    Second, separate attacker call — made from emulator.py after variant 1 has
+    actually been interpreted. Refines evasion_hints_v2 using the real base
+    event instead of the blind guess made before either event existed.
+
+    Falls back to original_hints_v2 unchanged on any failure — this is a
+    refinement, not a hard dependency; the emulation should not stall because
+    a second LLM call had a transient failure.
+    """
+    if not base_event:
+        return original_hints_v2
+
+    client = client or _client
+
+    prompt = build_variant2_refinement_prompt(
+        technique_id=technique_id,
+        technique_name=technique_name,
+        tactic=tactic,
+        base_event=base_event,
+        original_hints_v2=original_hints_v2,
+    )
+
+    raw = _call_llm(prompt, client)
+    if not raw:
+        if DEBUG:
+            print(
+                f"[attacker] {technique_id}: variant 2 refinement call failed "
+                f"— keeping original evasion_hints_v2"
+            )
+        return original_hints_v2
+
+    refined = raw.get("evasion_hints_v2")
+    if not isinstance(refined, dict) or not refined:
+        if DEBUG:
+            print(
+                f"[attacker] {technique_id}: refinement returned no usable "
+                f"evasion_hints_v2 — keeping original"
+            )
+        return original_hints_v2
+
+    refined = {
+        k: v for k, v in refined.items()
+        if isinstance(k, str) and isinstance(v, str)
+    }
+    if not refined:
+        return original_hints_v2
+
+    if DEBUG:
+        print(
+            f"[attacker] {technique_id}: evasion_hints_v2 refined using "
+            f"actual base event, fields={list(refined.keys())}"
+        )
+    return refined
 
 
 def _parse_llm_output(

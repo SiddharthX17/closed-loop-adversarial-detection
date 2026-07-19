@@ -189,6 +189,7 @@ STRICT OUTPUT SCHEMA — follow exactly, no extra keys:
   "reason": "<brief explanation of what was extracted or why confidence is low>",
   "event_type": "process_creation" | "registry" | "network",
   "EventID": <integer>,
+  "selected_step": "<verbatim text of the single step you chose as primary, exactly as shown above — e.g. 'bitsadmin.exe /resume JobName'>",
   "fields": {
     "<SysmonFieldName>": "<extracted value>"
   }
@@ -214,6 +215,7 @@ _FALLBACK_RESULT = {
     "reason":     "Extraction failed — see interpreter log",
     "event_type": None,
     "EventID":    None,
+    "selected_step": None,
     "fields":     {},
 }
 
@@ -414,25 +416,43 @@ def _validate_minimum_canonical_fields(event_type: str, fields: dict) -> bool:
 
 def interpret_procedure(
     cleaned_test: CleanedAtomicTest,
-    evasion_hints: dict | None = None,
+        evasion_hints: dict | None = None,
     required_event_type: str | None = None,
+    required_step: str | None = None,
 ) -> dict:
     """
     Send a CleanedAtomicTest to the LLM and return a structured extraction dict.
     Never raises — returns _FALLBACK_RESULT on any failure.
 
-    required_event_type: when set, this interpretation is a second (or later)
-    variant of a test already interpreted once in this same emulation cycle.
-    Forces the model to stay on the same event_type as that earlier variant —
-    without this, the NETWORK EVENT RULE's "choose either" license lets two
-    independent calls over the same test land on genuinely different event
-    types (e.g. one variant process_creation, another network), which is a
-    much more severe divergence than varying parent process or staging path.
+    required_step: when set, this interpretation is a second (or later) variant
+    of a test already interpreted once in this same emulation cycle. Forces the
+    model to interpret the SAME step already chosen for that earlier variant —
+    without this, each call independently re-derives "which step is primary"
+    via the PRIMARY ACTION RULE, and two calls over the same multi-step test
+    can reasonably land on different steps (e.g. one call picking an
+    installation step, another picking an execution step), producing two
+    events that don't actually describe the same underlying action.
+
+    required_event_type: same idea, one level broader — kept as an additional
+    safety net even when required_step is set, in case the model still frames
+    the same step as a different observable category.
     """
     evasion_block = ""
     if evasion_hints:
         evasion_block = EVASION_BLOCK.format(
             evasion_hints=json.dumps(evasion_hints, indent=2)
+        )
+
+    step_constraint = ""
+    if required_step:
+        step_constraint = (
+            f"\n\nThis is a second variant of a test already interpreted using "
+            f"this exact step: '{required_step}'. You MUST interpret that SAME "
+            f"step again — do not select a different one, even if the PRIMARY "
+            f"ACTION RULE's reasoning might otherwise suggest another step. "
+            f"Vary the execution context around this step (parent process, "
+            f"staging path, specific values) via the evasion hints, not the "
+            f"choice of which step to represent."
         )
 
     event_type_constraint = ""
@@ -450,7 +470,7 @@ def interpret_procedure(
 
     prompt = USER_PROMPT_TEMPLATE.format(
         formatted_input=cleaned_test.formatted_input,
-        evasion_block=evasion_block + event_type_constraint,
+        evasion_block=evasion_block + step_constraint + event_type_constraint,
     )
 
     try:

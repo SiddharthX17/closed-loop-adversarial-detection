@@ -10,85 +10,123 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_5d770769-75c9-4b62-af7f-825351746d5d  (1 rule(s)) ---------------------
-# Intent:    BITS abuse via desktopimgdownldr.exe with malicious /lockscreenurl parameter poi
-# Rules:     5d770769-75c9-4b62-af7f-825351746d5d
+# -- Cluster: singleton_c1ebff9d-270e-4d2a-a779-ad6005fa416a  (1 rule(s)) ---------------------
+# Intent:    Detection of BITSAdmin command-line usage for file transfer operations, commonly
+# Rules:     c1ebff9d-270e-4d2a-a779-ad6005fa416a
 # Archetype: IT admin workflow
 
-# Lock screen branding configuration by IT admin
-# This script deploys a corporate lock screen image URL to standardize desktop appearance
-$imageUrl = "https://corp-cdn.internal/branding/lockscreen.jpg"
-$tempDir = Join-Path $env:TEMP ("lockscreen_$(Get-Random)")
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+# Download Windows Update component package using BITS for optimized transfer
+$bitsjobName = "WinUpdate_Deployment_$(Get-Date -Format 'yyyyMMddHHmmss')"
+$targetUri = "https://update.microsoft.com/download/WindowsServer2022-KB5021234-x64.msu"
+$downloadPath = "$env:TEMP\WinServer2022_Patch.msu"
 
+# Create BITS transfer job for bandwidth-managed download
 try {
-    # Simulate legitimate IT admin invoking desktopimgdownldr.exe with corporate branding image
-    # This is realistic as IT departments do standardize lock screens via this binary
-    $desktopImgPath = "C:\Windows\System32\desktopimgdownldr.exe"
-    if (Test-Path $desktopImgPath) {
-        # Call with legitimate image file parameter
-        & $desktopImgPath /lockscreenurl:"C:\Windows\Branding\lockscreen.png"
+    & 'C:\Windows\System32\bitsadmin.exe' /create /name $bitsjobName $targetUri $downloadPath
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "BITS job created: $bitsjobName"
+
+        # Configure job for low-priority, bandwidth-throttled transfer
+        & 'C:\Windows\System32\bitsadmin.exe' /info $bitsjobName /verbose
+
+        # Clean up: remove the job (no actual transfer occurs without /resume)
+        Start-Sleep -Seconds 1
+        & 'C:\Windows\System32\bitsadmin.exe' /complete $bitsjobName
+        Write-Host "BITS job cleanup completed"
     }
-}
-finally {
-    if (Test-Path $tempDir) {
-        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Host "BITS operation completed"
+} finally {
+    if (Test-Path $downloadPath) {
+        Remove-Item -Path $downloadPath -Force -ErrorAction SilentlyContinue
     }
 }
 
-# -- Cluster: singleton_5d770769-75c9-4b62-af7f-825351746d5d  (1 rule(s)) ---------------------
-# Intent:    BITS abuse via desktopimgdownldr.exe with malicious /lockscreenurl parameter poi
-# Rules:     5d770769-75c9-4b62-af7f-825351746d5d
+# -- Cluster: singleton_c1ebff9d-270e-4d2a-a779-ad6005fa416a  (1 rule(s)) ---------------------
+# Intent:    Detection of BITSAdmin command-line usage for file transfer operations, commonly
+# Rules:     c1ebff9d-270e-4d2a-a779-ad6005fa416a
 # Archetype: Software installer/updater workflow
 
-# Desktop image deployment during enterprise OS imaging
-# Software deployment system configures lock screen during baseline build
-$configDir = Join-Path $env:TEMP ("deploy_$(Get-Random)")
-New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-$logFile = Join-Path $configDir "deployment.log"
+# Application update delivery via BITS - common in enterprise deployment scenarios
+$appUpdateJob = "AppUpdate_Delivery_$(Get-Date -Format 'yyyyMMddHHmmss')"
+$sourceUrl = "https://softwarerepository.corp.local/applications/Analytics-Agent-2024.01.msi"
+$destinationPath = "$env:TEMP\Analytics-Agent-2024.01.msi"
+$logPath = "$env:TEMP\bits_transfer.log"
 
+# Initialize BITS transfer job for application package
 try {
-    # Log the deployment action
-    Add-Content -Path $logFile -Value "[$(Get-Date)] Starting lock screen deployment"
+    Write-Host "Initializing BITS transfer for application update"
 
-    # Enterprise imaging tool invokes desktopimgdownldr.exe with image URL
-    # This is legitimate as many enterprise deployment solutions do this
-    $desktopImgPath = "C:\Windows\System32\desktopimgdownldr.exe"
-    if (Test-Path $desktopImgPath) {
-        # Deployment with legitimate image format
-        & $desktopImgPath /lockscreenurl:"https://intranet.company.net/media/corporate_lockscreen.bmp" 2>&1 | Add-Content -Path $logFile
+    # Create transfer job with source and destination
+    $bitsCmd = @(
+        'C:\Windows\System32\bitsadmin.exe',
+        '/create',
+        '/name', $appUpdateJob,
+        $sourceUrl,
+        $destinationPath
+    )
+    & $bitsCmd[0] $bitsCmd[1] $bitsCmd[2] $bitsCmd[3] $bitsCmd[4] $bitsCmd[5]
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "BITS job created for application delivery"
+
+        # Add notification on completion (simulating enterprise configuration)
+        & 'C:\Windows\System32\bitsadmin.exe' /info $appUpdateJob
+
+        # Cleanup job
+        Start-Sleep -Seconds 1
+        & 'C:\Windows\System32\bitsadmin.exe' /complete $appUpdateJob
+        Write-Host "Application update job finalized"
     }
-
-    Add-Content -Path $logFile -Value "[$(Get-Date)] Lock screen deployment completed"
-}
-finally {
-    if (Test-Path $configDir) {
-        Remove-Item -Path $configDir -Recurse -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Host "Update job processing completed"
+} finally {
+    # Clean up temporary files
+    if (Test-Path $destinationPath) {
+        Remove-Item -Path $destinationPath -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $logPath) {
+        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
     }
 }
 
-# -- Cluster: singleton_5d770769-75c9-4b62-af7f-825351746d5d  (1 rule(s)) ---------------------
-# Intent:    BITS abuse via desktopimgdownldr.exe with malicious /lockscreenurl parameter poi
-# Rules:     5d770769-75c9-4b62-af7f-825351746d5d
-# Archetype: User-driven workflow
+# -- Cluster: singleton_c1ebff9d-270e-4d2a-a779-ad6005fa416a  (1 rule(s)) ---------------------
+# Intent:    Detection of BITSAdmin command-line usage for file transfer operations, commonly
+# Rules:     c1ebff9d-270e-4d2a-a779-ad6005fa416a
+# Archetype: Document/file operation workflow
 
-# User or support tech applies custom lock screen branding
-# Represents legitimate manual configuration of desktop personalization
-$workDir = Join-Path $env:TEMP ("personalization_$(Get-Random)")
-New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+# Enterprise backup retrieval using BITS for reliable, throttled downloads
+$backupJobName = "Daily_Backup_Retrieve_$(Get-Date -Format 'yyyyMMddHHmmss')"
+$backupSourceUri = "https://backup.internal.corp/archives/daily/backup-2024-01-15.tar.gz"
+$backupDestination = "$env:TEMP\daily_backup_archive.tar.gz"
 
+# Initialize BITS-based backup retrieval
 try {
-    # Simulate user or support technician invoking desktopimgdownldr.exe
-    # with custom lock screen image
-    $desktopImgPath = "C:\Windows\System32\desktopimgdownldr.exe"
-    if (Test-Path $desktopImgPath) {
-        # User-provided or support-supplied image reference
-        & $desktopImgPath /lockscreenurl:"C:\Users\Public\Pictures\custom_lockscreen.gif"
+    Write-Host "Initiating BITS-based backup retrieval"
+
+    # Create BITS job for backup download
+    & 'C:\Windows\System32\bitsadmin.exe' /create /name $backupJobName $backupSourceUri $backupDestination
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Backup retrieval job initialized: $backupJobName"
+
+        # Verify job status
+        & 'C:\Windows\System32\bitsadmin.exe' /info $backupJobName /verbose
+
+        # Set job priority for background operation
+        & 'C:\Windows\System32\bitsadmin.exe' /info $backupJobName
+
+        # Finalize job
+        Start-Sleep -Seconds 1
+        & 'C:\Windows\System32\bitsadmin.exe' /complete $backupJobName
+        Write-Host "Backup retrieval job completed"
     }
-}
-finally {
-    if (Test-Path $workDir) {
-        Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Host "Backup job processing finished"
+} finally {
+    # Clean up backup file
+    if (Test-Path $backupDestination) {
+        Remove-Item -Path $backupDestination -Force -ErrorAction SilentlyContinue
     }
 }
 

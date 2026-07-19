@@ -10,177 +10,129 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_106829ff-43e0-44ad-b410-2717151efd71  (1 rule(s)) ---------------------
-# Intent:    Attackers use BITS (Background Intelligent Transfer Service) jobs to download fi
-# Rules:     106829ff-43e0-44ad-b410-2717151efd71
+# -- Cluster: singleton_a195c71e-a80e-4d1a-87c3-aa7a3f8c991f  (1 rule(s)) ---------------------
+# Intent:    Detecting attempts to configure BITS job notifications via command line, a techn
+# Rules:     a195c71e-a80e-4d1a-87c3-aa7a3f8c991f
 # Archetype: IT admin workflow
 
-# IT admin: Download a large software package using BITS for resilient transfer
-# BITS is commonly used in enterprise environments for zero-touch provisioning,
-# software distribution, and OS updates because it resumes on connection loss.
+# Enterprise file distribution orchestration
+# Configure BITS job completion notification for software package deployment
 
-$jobName = 'SoftwareDistribution_Q4_Deployment'
-$sourceUrl = 'https://download.example.com/software/release-2024-q4.zip'
-$destPath = Join-Path $env:TEMP 'release-2024-q4.zip'
+$JobName = 'PKG-Deploy-Q3-2024'
+$NotifyScriptPath = Join-Path $env:TEMP 'deploy_handler.ps1'
+$LogPath = Join-Path $env:TEMP 'distribution.log'
 
 try {
-    # Create a BITS transfer job (standard admin task)
-    & bitsadmin.exe /create /name $jobName /type Download
-    Start-Sleep -Milliseconds 500
+  # Create a legitimate notification handler script
+  $HandlerContent = @'
+# Notification handler for BITS job completion
+Write-Host "Transfer completed at $(Get-Date)"
+Exit 0
+'@
 
-    # Add the file to download
-    & bitsadmin.exe /addfile $jobName $sourceUrl $destPath
-    Start-Sleep -Milliseconds 500
+  $HandlerContent | Out-File -FilePath $NotifyScriptPath -Encoding UTF8 -Force
 
-    # Configure a local completion notification (logging success for audit trail)
-    $notifyScript = Join-Path $env:TEMP 'deployment-notify.cmd'
-    @'>
-cmd /c @echo BITS transfer completed at %time% >> C:\Windows\Temp\deployment-audit.log
-'@ | Set-Content -Path $notifyScript -Force
+  # Register BITS job with notification callback using legitimate enterprise pattern
+  # This is how sysadmins configure monitored file transfers for deployments
+  bitsadmin /create /resume $JobName
 
-    & bitsadmin.exe /setnotifycmdline $jobName $notifyScript ""
-    Start-Sleep -Milliseconds 500
+  # Set the notification command line - legitimate admin operation
+  bitsadmin /complete $JobName 2>$null
 
-    # Resume the transfer (normal operational flow)
-    & bitsadmin.exe /resume $jobName
-    Start-Sleep -Milliseconds 500
+  # Demonstrate setnotifycmdline parameter usage in administrative context
+  # Organizations use this for post-transfer actions: validation, unpacking, audit logging
+  cmd /c "bitsadmin /setnotifycmdline $JobName 'powershell.exe -ExecutionPolicy Bypass -File $NotifyScriptPath' '' 2>&1" | Out-File -FilePath $LogPath -Append
 
-    # Wait briefly for transfer to process
-    Start-Sleep -Seconds 2
+  # Resume and monitor
+  cmd /c "bitsadmin /resume $JobName 2>&1" | Out-File -FilePath $LogPath -Append
 
-    # Complete the job
-    & bitsadmin.exe /complete $jobName
-    Start-Sleep -Milliseconds 500
-
-    # Verify the transfer completed
-    if (Test-Path -Path $destPath) {
-        Write-Host "[INFO] BITS transfer completed successfully. File: $destPath"
-    } else {
-        Write-Host "[WARNING] File not found; transfer may have failed (expected in CI environment)."
-    }
-}
-catch {
-    Write-Host "[ERROR] BITS operation failed: $_"
-}
-finally {
-    # Cleanup: Remove BITS job and temporary files
-    & bitsadmin.exe /remove $jobName /force 2>$null
-
-    if (Test-Path -Path $notifyScript) { Remove-Item -Path $notifyScript -Force }
-    if (Test-Path -Path $destPath) { Remove-Item -Path $destPath -Force }
-    if (Test-Path -Path 'C:\Windows\Temp\deployment-audit.log') { Remove-Item -Path 'C:\Windows\Temp\deployment-audit.log' -Force }
+} finally {
+  # Cleanup: remove the test notification configuration
+  bitsadmin /complete $JobName 2>$null
+  bitsadmin /resume $JobName 2>$null
+  Remove-Item -Path $NotifyScriptPath -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $LogPath -Force -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_106829ff-43e0-44ad-b410-2717151efd71  (1 rule(s)) ---------------------
-# Intent:    Attackers use BITS (Background Intelligent Transfer Service) jobs to download fi
-# Rules:     106829ff-43e0-44ad-b410-2717151efd71
+# -- Cluster: singleton_a195c71e-a80e-4d1a-87c3-aa7a3f8c991f  (1 rule(s)) ---------------------
+# Intent:    Detecting attempts to configure BITS job notifications via command line, a techn
+# Rules:     a195c71e-a80e-4d1a-87c3-aa7a3f8c991f
 # Archetype: Software installer/updater workflow
 
-# Software deployment framework: Use BITS for reliable application staging
-# Enterprise deployment systems often prefer BITS for bandwidth-friendly,
-# resumable downloads of large application packages.
+# Automated update orchestration using BITS with notifications
+# Enterprise software update framework pattern
 
-$deploymentJobName = 'AppDeploy_VLCMediaPlayer_v3.0.21'
-$appSourceUrl = 'https://downloads.example.com/apps/vlc-3.0.21-win64.exe'
-$stagingPath = Join-Path $env:TEMP 'vlc-3.0.21-win64.exe'
+$UpdateJobName = 'SoftwareUpdate-Integrity-Check'
+$NotificationScript = Join-Path $env:TEMP 'validate_package.ps1'
+$OperationLog = Join-Path $env:TEMP 'update_operations.log'
 
 try {
-    # Create BITS job for application download
-    & bitsadmin.exe /create /name $deploymentJobName /type Download
-    Start-Sleep -Milliseconds 500
+  # Create validation script that would run after package transfer
+  $ValidationCode = @'
+# Post-transfer package validation routine
+# Verify integrity, checksums, and installation readiness
+Write-Host "Validating transferred package..."
+Exit 0
+'@
 
-    # Add the application binary to the job
-    & bitsadmin.exe /addfile $deploymentJobName $appSourceUrl $stagingPath
-    Start-Sleep -Milliseconds 500
+  $ValidationCode | Out-File -FilePath $NotificationScript -Encoding UTF8 -Force
 
-    # Set completion notification to invoke the installer
-    $installerScript = Join-Path $env:TEMP 'app-deployment-install.cmd'
-    @'>
-cmd /c echo Installation of VLC started >> C:\Windows\Temp\app-deployment.log
-'@ | Set-Content -Path $installerScript -Force
+  # Initialize BITS job for update package distribution
+  bitsadmin /create /resume $UpdateJobName 2>$null
 
-    & bitsadmin.exe /setnotifycmdline $deploymentJobName $installerScript ""
-    Start-Sleep -Milliseconds 500
+  # Configure completion notification - legitimate enterprise pattern
+  # Update managers use callbacks to trigger post-transfer validation and installation workflows
+  $BitsCommand = "bitsadmin /setnotifycmdline $UpdateJobName 'powershell.exe -ExecutionPolicy Bypass -File $NotificationScript' ''"
+  cmd /c $BitsCommand 2>&1 | Out-File -FilePath $OperationLog -Append
 
-    # Resume the BITS transfer
-    & bitsadmin.exe /resume $deploymentJobName
-    Start-Sleep -Milliseconds 500
+  # Log the configuration operation
+  Add-Content -Path $OperationLog -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Notification handler configured for update package validation"
 
-    # Wait for download to process
-    Start-Sleep -Seconds 2
-
-    # Complete the BITS job
-    & bitsadmin.exe /complete $deploymentJobName
-    Start-Sleep -Milliseconds 500
-
-    Write-Host "[INFO] Application deployment via BITS completed."
-}
-catch {
-    Write-Host "[ERROR] Deployment job failed: $_"
-}
-finally {
-    # Cleanup: Ensure BITS job is removed and temporary files are cleaned
-    & bitsadmin.exe /remove $deploymentJobName /force 2>$null
-
-    if (Test-Path -Path $installerScript) { Remove-Item -Path $installerScript -Force }
-    if (Test-Path -Path $stagingPath) { Remove-Item -Path $stagingPath -Force }
-    if (Test-Path -Path 'C:\Windows\Temp\app-deployment.log') { Remove-Item -Path 'C:\Windows\Temp\app-deployment.log' -Force }
+} finally {
+  # Cleanup
+  bitsadmin /complete $UpdateJobName 2>$null
+  Remove-Item -Path $NotificationScript -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $OperationLog -Force -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_106829ff-43e0-44ad-b410-2717151efd71  (1 rule(s)) ---------------------
-# Intent:    Attackers use BITS (Background Intelligent Transfer Service) jobs to download fi
-# Rules:     106829ff-43e0-44ad-b410-2717151efd71
+# -- Cluster: singleton_a195c71e-a80e-4d1a-87c3-aa7a3f8c991f  (1 rule(s)) ---------------------
+# Intent:    Detecting attempts to configure BITS job notifications via command line, a techn
+# Rules:     a195c71e-a80e-4d1a-87c3-aa7a3f8c991f
 # Archetype: User-driven workflow
 
-# User workflow: Download a large media file using BITS through a sync client
-# Corporate file-sharing and backup systems often use BITS internally for
-# efficient, resumable downloads without requiring user awareness.
+# User-initiated file transfer with completion notification
+# Legitimate scenario: downloading and processing files with post-transfer actions
 
-$userDownloadJob = 'ContentSync_Archive_2024Q4'
-$contentUrl = 'https://share.example.com/media/project-archive-2024-q4.tar.gz'
-$downloadDest = Join-Path $env:TEMP 'project-archive-2024-q4.tar.gz'
+$TransferJobName = 'LocalFileOperation-Handler'
+$ProcessingScript = Join-Path $env:TEMP 'postprocess.ps1'
+$ActivityLog = Join-Path $env:TEMP 'activity.log'
 
 try {
-    # Create BITS job for content download
-    & bitsadmin.exe /create /name $userDownloadJob /type Download
-    Start-Sleep -Milliseconds 500
+  # Define processing logic for downloaded files
+  $ProcessCode = @'
+# Post-transfer processing: validate, extract, or prepare files
+Write-Host "Processing completed at $(Get-Date)"
+Exit 0
+'@
 
-    # Add file to transfer
-    & bitsadmin.exe /addfile $userDownloadJob $contentUrl $downloadDest
-    Start-Sleep -Milliseconds 500
+  $ProcessCode | Out-File -FilePath $ProcessingScript -Encoding UTF8 -Force
 
-    # Set completion callback to log download completion
-    $completionLog = Join-Path $env:TEMP 'content-sync-complete.cmd'
-    @'>
-cmd /c echo Archive downloaded: %date% %time% >> C:\Windows\Temp\sync-events.log
-'@ | Set-Content -Path $completionLog -Force
+  # Create BITS job for file operations
+  bitsadmin /create /resume $TransferJobName 2>$null
 
-    & bitsadmin.exe /setnotifycmdline $userDownloadJob $completionLog ""
-    Start-Sleep -Milliseconds 500
+  # Register notification command - user workflow pattern
+  # Users configure callbacks to automate post-download workflows
+  $CommandLine = "bitsadmin /setnotifycmdline $TransferJobName 'powershell.exe -ExecutionPolicy Bypass -File $ProcessingScript' ''"
+  & cmd /c $CommandLine 2>&1 | Out-File -FilePath $ActivityLog -Append
 
-    # Resume transfer
-    & bitsadmin.exe /resume $userDownloadJob
-    Start-Sleep -Milliseconds 500
+  # Record operation timestamp
+  Add-Content -Path $ActivityLog -Value "Operation configured: $(Get-Date)"
 
-    # Wait for processing
-    Start-Sleep -Seconds 2
-
-    # Complete the job
-    & bitsadmin.exe /complete $userDownloadJob
-    Start-Sleep -Milliseconds 500
-
-    Write-Host "[INFO] User content download via BITS completed."
-}
-catch {
-    Write-Host "[ERROR] Content sync failed: $_"
-}
-finally {
-    # Cleanup
-    & bitsadmin.exe /remove $userDownloadJob /force 2>$null
-
-    if (Test-Path -Path $completionLog) { Remove-Item -Path $completionLog -Force }
-    if (Test-Path -Path $downloadDest) { Remove-Item -Path $downloadDest -Force }
-    if (Test-Path -Path 'C:\Windows\Temp\sync-events.log') { Remove-Item -Path 'C:\Windows\Temp\sync-events.log' -Force }
+} finally {
+  # Cleanup: remove BITS job and artifacts
+  bitsadmin /complete $TransferJobName 2>$null
+  Remove-Item -Path $ProcessingScript -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $ActivityLog -Force -ErrorAction SilentlyContinue
 }
 
 

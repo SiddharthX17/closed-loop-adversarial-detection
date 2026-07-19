@@ -10,6 +10,7 @@ Returns (rule_yaml, ValidationResult) or (None, last_result) on exhaustion.
 import json
 import os
 import uuid
+import re
 import anthropic
 
 from dataclasses import dataclass, field
@@ -88,6 +89,41 @@ def _load_existing_rules(rule_paths: list[Path]) -> list[str]:
                 print(f"[defender] Could not read rule {path}: {e}")
     return rules
 
+def _summarize_existing_rule(rule_yaml: str) -> str:
+    """
+    Strip an existing rule down to title + detection block only — the only
+    parts relevant to avoiding duplicate coverage. Existing rules currently
+    cost ~400 tokens each in full (references, author, date, tags,
+    falsepositives, level) purely for de-duplication context; this keeps
+    only what that job actually needs.
+
+    Line-based extraction (mirrors rule_normalizer.py's _detection_bounds
+    pattern) rather than a full YAML parse — these are already-committed,
+    previously-validated rule files, not freeform text needing normalization.
+    """
+    lines = rule_yaml.splitlines()
+
+    title_line = next(
+        (l for l in lines if l.startswith("title:")), "title: (untitled)"
+    )
+
+    det_start = None
+    for i, line in enumerate(lines):
+        if re.match(r"^detection\s*:", line):
+            det_start = i
+            break
+
+    if det_start is None:
+        return title_line
+
+    det_end = len(lines)
+    for i in range(det_start + 1, len(lines)):
+        if lines[i] and not lines[i][0].isspace():
+            det_end = i
+            break
+
+    detection_block = "\n".join(lines[det_start:det_end])
+    return f"{title_line}\n{detection_block}"
 
 def find_existing_rule_paths(
     technique_id: str,
@@ -298,7 +334,8 @@ class DefenderAgent:
             ValidationResult is the last result regardless of pass/fail.
         """
         technique_id = gap_context.technique_id
-        existing_rules = _load_existing_rules(gap_context.existing_rule_paths)
+        existing_rules_raw = _load_existing_rules(gap_context.existing_rule_paths)
+        existing_rules = [_summarize_existing_rule(r) for r in existing_rules_raw]
         corpus_root = gap_context.corpus_root or self._default_corpus_root
 
         retry_feedback: dict | None = None

@@ -1,0 +1,31 @@
+title: "T1197-Bitsadmin BITS Job Management Commands"
+id: 106829ff-43e0-44ad-b410-2717151efd71
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      Image|endswith: '\bitsadmin.exe'
+    selection_verbs:
+      CommandLine|contains:
+        - '/create'
+        - '/addfile'
+        - '/setnotifycmdline'
+        - '/resume'
+        - '/complete'
+        - '/transfer'
+    condition: selection_image and selection_verbs
+falsepositives:
+    - "Legitimate software update/deployment tooling still using bitsadmin.exe for /create, /addfile, or /transfer operations against internal update infrastructure"
+    - "Scripted administrative automation invoking bitsadmin.exe via cmd.exe or powershell.exe for routine job management (e.g. /resume) - parent process alone should not be used to exempt this since the same parents are common attacker LOLBins"
+    - "Legitimate use of /setnotifycmdline in software deployment tooling to trigger a signed internal deployment binary on job completion - only exempt if the notify target binary itself is verified signed/allow-listed, not based on parent process or command-line wording"
+    - "Bitsadmin invoked from scripting hosts (mshta.exe, wscript.exe, cscript.exe) is inherently suspicious and should not be filtered; it is documented here only as a known adjacent pattern increasing confidence rather than a false-positive source"
+level: medium

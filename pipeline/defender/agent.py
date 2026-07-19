@@ -7,15 +7,23 @@ validates through the full validation pipeline, retries on failure (max 2).
 Returns (rule_yaml, ValidationResult) or (None, last_result) on exhaustion.
 """
 
+import json
 import os
+import uuid
+import re
 import anthropic
 
 from dataclasses import dataclass, field
+from datetime import date
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from pipeline.defender.prompts import build_defender_user_message, DEFENDER_SYSTEM_PROMPT
+from pipeline.defender.prompts import (
+    build_defender_user_message,
+    DEFENDER_SYSTEM_PROMPT,
+    DEFENDER_OUTPUT_SCHEMA,
+)
 from pipeline.validation.validation_pipeline import validate, ValidationResult
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.validation.rule_normalizer import normalize_rule_yaml
@@ -81,6 +89,41 @@ def _load_existing_rules(rule_paths: list[Path]) -> list[str]:
                 print(f"[defender] Could not read rule {path}: {e}")
     return rules
 
+def _summarize_existing_rule(rule_yaml: str) -> str:
+    """
+    Strip an existing rule down to title + detection block only — the only
+    parts relevant to avoiding duplicate coverage. Existing rules currently
+    cost ~400 tokens each in full (references, author, date, tags,
+    falsepositives, level) purely for de-duplication context; this keeps
+    only what that job actually needs.
+
+    Line-based extraction (mirrors rule_normalizer.py's _detection_bounds
+    pattern) rather than a full YAML parse — these are already-committed,
+    previously-validated rule files, not freeform text needing normalization.
+    """
+    lines = rule_yaml.splitlines()
+
+    title_line = next(
+        (l for l in lines if l.startswith("title:")), "title: (untitled)"
+    )
+
+    det_start = None
+    for i, line in enumerate(lines):
+        if re.match(r"^detection\s*:", line):
+            det_start = i
+            break
+
+    if det_start is None:
+        return title_line
+
+    det_end = len(lines)
+    for i in range(det_start + 1, len(lines)):
+        if lines[i] and not lines[i][0].isspace():
+            det_end = i
+            break
+
+    detection_block = "\n".join(lines[det_start:det_end])
+    return f"{title_line}\n{detection_block}"
 
 def find_existing_rule_paths(
     technique_id: str,
@@ -102,11 +145,77 @@ def find_existing_rule_paths(
         found.extend(rules_dir.glob(pattern))
     return sorted(set(found))
 
+# ---------------------------------------------------------------------------
+# Rule assembly — merges model-authored fields with code-injected constants
+# ---------------------------------------------------------------------------
 
-def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic) -> str | None:
+
+AUTHOR = "Defender Agent — Detection Engineering Automation"
+
+
+def _quote_yaml_string(value: str) -> str:
+    """Double-quote and escape a string for safe inline YAML (title, tags, author)."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _mitre_reference(technique_id: str) -> str:
+    """Deterministic MITRE ATT&CK technique URL — no LLM involvement, no hallucination risk."""
+    path = technique_id.replace(".", "/")
+    return f"https://attack.mitre.org/techniques/{path}/"
+
+
+def assemble_rule_yaml(parsed: dict, technique_id: str) -> str:
     """
-    Call Sonnet with cached system prompt, return raw text response (Sigma YAML).
-    Returns None on API failure.
+    Merge LLM-authored fields (parsed JSON matching DEFENDER_OUTPUT_SCHEMA) with
+    code-injected constants (id, date, status, author, references) into a
+    complete Sigma YAML document. Field order matches SigmaHQ convention.
+
+    The 'detection' block is spliced in as raw text, untouched — it still runs
+    through normalize_rule_yaml() afterward exactly as before.
+    """
+    rule_id = str(uuid.uuid4())
+    today = date.today().isoformat()
+
+    lines = [
+        f"title: {_quote_yaml_string(parsed['title'])}",
+        f"id: {rule_id}",
+        "status: experimental",
+        "references:",
+        f"    - {_mitre_reference(technique_id)}",
+        f"author: {_quote_yaml_string(AUTHOR)}",
+        f"date: {today}",
+        "tags:",
+    ]
+    for tag in parsed.get("tags", []):
+        lines.append(f"    - {tag}")
+
+    lines += [
+        "logsource:",
+        f"    category: {parsed['logsource']['category']}",
+        f"    product: {parsed['logsource']['product']}",
+        "detection:",
+    ]
+    for det_line in parsed["detection"].splitlines():
+        lines.append(f"    {det_line}" if det_line.strip() else "")
+
+    fp_list = parsed.get("falsepositives") or []
+    if fp_list:
+        lines.append("falsepositives:")
+        for fp in fp_list:
+            lines.append(f"    - {_quote_yaml_string(fp)}")
+    else:
+        lines.append("falsepositives: []")
+
+    lines.append(f"level: {parsed['level']}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic) -> dict | None:
+    """
+    Call Sonnet with cached system prompt and schema-constrained JSON output.
+    Returns the parsed dict (matching DEFENDER_OUTPUT_SCHEMA), or None on failure.
     """
     try:
         response = client.messages.create(
@@ -120,6 +229,12 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
                 }
             ],
             messages=[{"role": "user", "content": user_message}],
+            output_config={
+                "format": {
+                    "type": "json_schema",
+                    "schema": DEFENDER_OUTPUT_SCHEMA,
+                }
+            },
             thinking={"type": "disabled"},
         )
 
@@ -143,21 +258,15 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
                 )
             return None
 
-        raw = text_block.text.strip()
+        return json.loads(text_block.text.strip())
 
-        # Strip markdown fences — LLM sometimes wraps YAML in ```yaml
-        if raw.startswith("```"):
-            lines = raw.splitlines()
-            raw = "\n".join(
-                line for line in lines
-                if not line.strip().startswith("```")
-            ).strip()
-
-        return raw
-
-    except (IndexError, anthropic.APIError) as e:
+    except anthropic.APIError as e:
         if DEBUG:
             print(f"[defender] LLM call failed: {e}")
+        return None
+    except (json.JSONDecodeError, KeyError) as e:
+        if DEBUG:
+            print(f"[defender] Response parsing failed: {e}")
         return None
 
 
@@ -225,7 +334,8 @@ class DefenderAgent:
             ValidationResult is the last result regardless of pass/fail.
         """
         technique_id = gap_context.technique_id
-        existing_rules = _load_existing_rules(gap_context.existing_rule_paths)
+        existing_rules_raw = _load_existing_rules(gap_context.existing_rule_paths)
+        existing_rules = [_summarize_existing_rule(r) for r in existing_rules_raw]
         corpus_root = gap_context.corpus_root or self._default_corpus_root
 
         retry_feedback: dict | None = None
@@ -254,10 +364,10 @@ class DefenderAgent:
                 detection_strategy=gap_context.detection_strategy,
             )
 
-            rule_yaml = _call_llm(DEFENDER_SYSTEM_PROMPT,
-                                  user_message, self._client)
+            parsed = _call_llm(DEFENDER_SYSTEM_PROMPT,
+                               user_message, self._client)
 
-            if not rule_yaml:
+            if not parsed:
                 if DEBUG:
                     print(
                         f"[defender] {technique_id}: "
@@ -265,6 +375,7 @@ class DefenderAgent:
                     )
                 break
 
+            rule_yaml = assemble_rule_yaml(parsed, technique_id)
             rule_yaml = normalize_rule_yaml(rule_yaml)
             last_rule = rule_yaml
 

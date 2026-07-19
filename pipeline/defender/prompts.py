@@ -39,10 +39,46 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
-import uuid
 
 if TYPE_CHECKING:
     from pipeline.detection_planner.planner import DetectionStrategy
+
+
+# ---------------------------------------------------------------------------
+# Structured output schema — enforced via output_config.format
+# ---------------------------------------------------------------------------
+
+DEFENDER_OUTPUT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "level": {
+            "type": "string",
+            "enum": ["informational", "low", "medium", "high", "critical"],
+        },
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+        },
+        "logsource": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "category": {"type": "string"},
+                "product": {"type": "string"},
+            },
+            "required": ["category", "product"],
+        },
+        "detection": {"type": "string", "minLength": 1},
+        "falsepositives": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": ["title", "level", "tags", "logsource", "detection", "falsepositives"],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -58,11 +94,47 @@ DEFENDER_SYSTEM_PROMPT = (
     "    SourceIp, OriginalFileName, CurrentDirectory, Protocol, Initiated,\n"
     "    ProcessId, ParentProcessId\n\n"
 
+    "Identity and exemption fields:\n"
+    "  No field here is unspoofable identity — Image, OriginalFileName, and file\n"
+    "  paths are all attacker-modifiable. When writing an identity or exemption\n"
+    "  condition, prefer a field describing an inherent property of the entity\n"
+    "  itself (its own Image path) over a field describing its relationship to\n"
+    "  something else (ParentImage, CurrentDirectory) — relational fields are set\n"
+    "  by the caller and are attacker-influenceable regardless of whether the\n"
+    "  entity itself is genuine. Never use CurrentDirectory for security-relevant\n"
+    "  scoping.\n\n"
+
+    "Exemption/filter honesty:\n"
+    "  Name and scope a filter for what it literally matches, not what it is\n"
+    "  intended to represent — 'Image|startswith: C:\\Program Files\\' exempts\n"
+    "  everything in Program Files, not just the vendor you meant. Use specific\n"
+    "  vendor/tool paths or binary names when the intent is narrower than a\n"
+    "  directory root.\n\n"
+
+    "Filter breadth — avoiding blind spots (treat this as a hard check):\n"
+    "  Understand the context of overlap between malicious and legitimate\n"
+    "  activity before writing a filter condition — do not default to umbrella\n"
+    "  passes. Excluding an entire directory (e.g. all of Program Files), or\n"
+    "  failing to account for abuse of legitimate internal components (LOLBins,\n"
+    "  admin tooling), can let the rule correctly identify malicious activity\n"
+    "  and then silently let it through anyway, because the filter did not\n"
+    "  account for that edge case. Exclusions scoped to something like System32\n"
+    "  can be legitimate, but only once you have reasoned through whether an attacker\n"
+    "  could plausibly abuse what is being excluded — not by default. The same judgment\n"
+    "  applies to mechanisms that are baseline-normal on most endpoints but also double\n"
+    "  as attack surface: msiexec running is ordinary background activity almost\n"
+    "  everywhere, but the same binary installs malicious payloads too, and here\n"
+    "  the context of the specific instance is what matters, not the mechanism's\n"
+    "  mere presence. Where available log fields let you bake that distinguishing\n"
+    "  context directly into the filter condition, do so. Where they do not\n"
+    "  support making that distinction, do not apply a blanket pass anyway —\n"
+    "  document the ambiguity in false positives instead of quietly filtering\n"
+    "  it away.\n\n"
+
     "Logsource:\n"
-    "  Set logsource correctly for Sysmon:\n"
-    "    logsource:\n"
-    "      category: process_creation  # or registry_set, network_connection, etc.\n"
-    "      product: windows\n\n"
+    "  logsource.category: process_creation, registry_set, network_connection,\n"
+    "  or whichever matches the event type actually being targeted.\n"
+    "  logsource.product: windows\n\n"
 
     "Multiple event types:\n"
     "  If the attack evidence contains events with different EventIDs (e.g. EID 1 and\n"
@@ -70,6 +142,13 @@ DEFENDER_SYSTEM_PROMPT = (
     "  provides the strongest, most specific detection signal for this technique.\n"
     "  One rule = one logsource category. Do not attempt to cover multiple event types\n"
     "  in one rule — it is not possible in Sigma.\n\n"
+
+    "Single-event scope:\n"
+    "  Rules in this system evaluate one event at a time — there is no cross-event\n"
+    "  correlation. Before combining two field values with AND, confirm both could\n"
+    "  plausibly appear together in a single event from the same process invocation.\n"
+    "  If two artifacts originate from separate, sequential commands, use OR instead\n"
+    "  of faking co-occurrence that will rarely or never actually match.\n\n"
 
     "Registry paths:\n"
     "  Registry keys appear in two equivalent forms in Windows telemetry:\n"
@@ -95,6 +174,12 @@ DEFENDER_SYSTEM_PROMPT = (
     "  Do not hardcode full URLs, file hashes, or exact payloads unless definitively\n"
     "  unique to malicious activity.\n\n"
 
+    "Output format:\n"
+    "  The 'detection' field in your response is the YAML text for the Sigma\n"
+    "  detection block's contents only — selections and condition, e.g.\n"
+    "  'selection:\\n  Image|endswith: ...\\ncondition: selection'. Do not include\n"
+    "  the 'detection:' key itself, and do not include title, logsource, or other\n"
+    "  top-level rule fields in this string — those are separate response fields.\n"
 )
 
 # ---------------------------------------------------------------------------
@@ -193,7 +278,7 @@ def _format_strategy_block(strategy: "DetectionStrategy") -> str:
         viability = opp.get("viability", "?")
         precision = opp.get("precision_estimate", "?")
         reason = opp.get("selection_reason", "")
-        fp_risk = opp.get("fp_risk", "")
+        fp_risk = opp.get("fp_risk") or {}
 
         block = (
             f"  [{i}] {ctype} — {desc}\n"
@@ -205,8 +290,11 @@ def _format_strategy_block(strategy: "DetectionStrategy") -> str:
         block += f"      Viability: {viability}  |  Precision: {precision}\n"
         if reason:
             block += f"      Selected:      {reason}\n"
-        if fp_risk:
-            block += f"      FP risk:       {fp_risk}\n"
+        if fp_risk.get("level"):
+            block += (
+                f"      FP risk:       {fp_risk['level']} — "
+                f"{fp_risk.get('reason', '')}\n"
+            )
         opp_blocks.append(block)
 
     # ── False positive profile ────────────────────────────────────────────
@@ -294,7 +382,6 @@ def build_defender_user_message(
     Returns:
         Prompt string ready to send to the LLM.
     """
-    generated_id = str(uuid.uuid4())
     is_retry = retry_feedback is not None
     is_enriched = detection_strategy is not None
 
@@ -314,13 +401,18 @@ def build_defender_user_message(
             "─── ATTACK EVIDENCE ─────────────────────────────────────\n"
             "These events confirm the technique is present. They represent one\n"
             "specific procedure instance. Use the evidence assessment above to\n"
-            "decide what to anchor on, generalise, or ignore — not raw field values:\n\n"
+            "decide what to anchor on, generalise, or ignore — not raw field values.\n"
+            "The rule must match every event shown below, not just one — multiple\n"
+            "events typically represent a base procedure and an evasion variant,\n"
+            "and the rule must generalise across all of them:\n\n"
         )
     else:
         prompt += (
             "─── ATTACK EVIDENCE ─────────────────────────────────────\n"
             "The following events were not caught by existing rules.\n"
-            "Write a Sigma rule that detects them:\n\n"
+            "The rule must match every event shown below, not just one — multiple\n"
+            "events typically represent a base procedure and an evasion variant,\n"
+            "and the rule must generalise across all of them:\n\n"
         )
 
     prompt += f"{_format_missed_events(missed_events)}\n\n"
@@ -328,8 +420,10 @@ def build_defender_user_message(
     # ── Existing rules ────────────────────────────────────────────────────
     prompt += (
         "─── EXISTING RULES (reference only) ────────────────────\n"
-        "Understand what is already covered (use them as context, not ground truth) \n"
-        "before deciding whether to write a new rule or improve an existing one:\n\n"
+        "Shown to help you avoid duplicating coverage — not as a quality\n"
+        "template. Apply the same standards to your rule regardless of whether\n"
+        "these already meet them; do not imitate a filter, field choice, or\n"
+        "condition structure merely because it already exists:\n\n"
         f"{_format_existing_rules(existing_rules)}\n\n"
     )
 
@@ -347,13 +441,7 @@ def build_defender_user_message(
         prompt += _format_retry_feedback(retry_feedback) + "\n\n"
 
     # ── Requirements ──────────────────────────────────────────────────────
-    prompt += (
-        "─── REQUIREMENTS ────────────────────────────────────────\n\n"
-
-        "Rule ID:\n"
-        f"  Use exactly this UUID4: {generated_id}\n"
-        "  Do not change it.\n\n"
-    )
+    prompt += "─── REQUIREMENTS ────────────────────────────────────────\n\n"
 
     if is_enriched:
         prompt += (
@@ -375,7 +463,13 @@ def build_defender_user_message(
             "  Use specific binary names or known-good path prefixes only — generic\n"
             "  keywords that could appear in attacker-chosen strings will cause\n"
             "  false negatives.\n"
-            "  Use AND logic to combine conditions — avoid single-field rules.\n\n"
+            "  Combine required conditions with AND. Add supporting conditions only\n"
+            "  when they are same-event-plausible (see single-event scope above) and\n"
+            "  meaningfully improve precision — never merely to avoid a single-field\n"
+            "  rule. Every selection block you define must be referenced in the\n"
+            "  condition — do not define a selection as documentation or unused\n"
+            "  context. If a field is worth noting but not worth requiring, describe\n"
+            "  it in falsepositives instead of leaving it as an orphaned selection.\n\n"
         )
     else:
         prompt += (
@@ -383,20 +477,46 @@ def build_defender_user_message(
             "  The rule must match the missed events above — not just the technique in general.\n"
             "  Keep logic specific enough to avoid routine enterprise activity\n"
             "  (legitimate PowerShell, scheduled tasks, software updates).\n"
-            "  If using CommandLine matching, require multiple AND conditions.\n"
+            "  If using CommandLine matching, combine conditions only when they would\n"
+            "  co-occur in the same event (see single-event scope above).\n"
             "  Prefer specific high-signal fields over broad keyword matching.\n"
             "  Good: Image|endswith: '\\\\rundll32.exe' AND CommandLine|contains: 'comsvcs'\n"
             "  Bad: CommandLine|contains: 'malware' (too vague)\n\n"
         )
 
     prompt += (
-        "Metadata:\n"
-        "  - Descriptive title\n"
-        f"  - tags: attack.{technique_id.lower()}\n"
-        "  - status: experimental\n"
-        f"  - Rule filename convention (for your title): {technique_id}-<short-description>\n\n"
+        "─── FINAL CHECK ─────────────────────────────────────────\n"
+        "Before finalising: did you AND two fields that could only co-occur\n"
+        "across separate invocations? Does any filter exempt more than the\n"
+        "specific legitimate activity it targets? Fix either now.\n\n"
+        "Trace your condition against every event in the evidence above, not\n"
+        "just the one that inspired your richest branch — a branch that only\n"
+        "holds for one event is not more precise, it is incomplete. If retry\n"
+        "feedback asks you to broaden, that means the overall condition must\n"
+        "match more evidence — it does not mean every existing branch must be\n"
+        "kept as-is; a branch that does not generalise across the shown events\n"
+        "is often the actual problem, not something to preserve while adding\n"
+        "more branches alongside it.\n\n"
+    )
 
-        "Output the Sigma YAML rule only. No explanation, no markdown fences, no preamble."
+    prompt += (
+        "Metadata:\n"
+        "  Title: concise and descriptive — also the basis for the rule's filename\n"
+        f"  ({technique_id}-<short-description>), so keep it tight.\n\n"
+        "  Tags: include at minimum the tactic tag and the technique tag —\n"
+        f"  e.g. 'attack.{tactic.lower().replace(' ', '-')}' and\n"
+        f"  'attack.{technique_id.lower()}'.\n\n"
+        "  Level: your genuine severity judgment — not a default value.\n\n"
+        "  False positives: document every legitimate-activity source this rule\n"
+        "  could plausibly match — including whatever your filter logic addresses,\n"
+        "  and any other common source for this technique you can identify even\n"
+        "  if you have not filtered it. If none realistically apply, say so\n"
+        "  explicitly with a one-line reason rather than leaving the field\n"
+        "  silently empty.\n\n"
+
+        "Your response is constrained to a JSON schema enforced by the API — you\n"
+        "do not need to format YAML yourself. Focus on the quality of the detection\n"
+        "logic and metadata judgment; structure is guaranteed."
     )
 
     return prompt

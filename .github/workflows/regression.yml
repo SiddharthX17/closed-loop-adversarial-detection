@@ -60,13 +60,14 @@ jobs:
           exit $EXIT_CODE
 
       - name: Post results as PR comment
+        if: steps.relevance.outputs.relevant == 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-path: regression_report.md
 
       - name: Fail job if a regression was detected
-        if: always() && steps.regression.outcome == 'failure'
+        if: steps.relevance.outputs.relevant == 'true' && always() && steps.regression.outcome == 'failure'
         run: exit 1
 
   update-baseline:

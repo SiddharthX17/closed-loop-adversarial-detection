@@ -32,6 +32,7 @@ from pipeline.emulator.procedure_interpreter import interpret_procedure, build_l
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.emulator.output_writer import write_log_stream, write_stats
 from pipeline.emulator import test_history
+from pipeline.attacker.agent import refine_evasion_hints_v2
 
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 _CONFIG_PATH = Path("config/techniques.yaml")
@@ -465,15 +466,37 @@ def _emulate_technique(
         _prior_attempts.setdefault(technique_id, set()).add(test_guid)
 
         candidate_events: list[LogEvent] = []
+        required_event_type = None
+        required_step = None
+        base_event_dump = None
 
         for variant_idx, variant_hints in enumerate(hint_sets):
+            # Variant 2+: refine the attacker's original hint set using the
+            # actual variant 1 event, now that it's known, instead of the
+            # blind guess made before either event existed.
+            if variant_idx == 1 and base_event_dump is not None and variant_hints:
+                variant_hints = refine_evasion_hints_v2(
+                    technique_id=technique_id,
+                    technique_name=cleaned.technique_name,
+                    tactic=cleaned.tactic,
+                    base_event=base_event_dump,
+                    original_hints_v2=variant_hints,
+                )
+
             _dbg(
                 f"{technique_id} / '{cleaned.test_name}': "
                 f"calling interpret_procedure (variant {variant_idx + 1})"
             )
 
             interpretation = interpret_procedure(
-                cleaned, evasion_hints=variant_hints)
+                cleaned, evasion_hints=variant_hints,
+                required_event_type=required_event_type,
+                required_step=required_step,
+            )
+
+            if variant_idx == 0:
+                required_event_type = interpretation.get("event_type")
+                required_step = interpretation.get("selected_step")
 
             log_event = build_log_event(
                 interpretation=interpretation,
@@ -486,6 +509,8 @@ def _emulate_technique(
 
             if log_event is not None:
                 candidate_events.append(log_event)
+                if variant_idx == 0:
+                    base_event_dump = log_event.model_dump(exclude_none=True)
                 _dbg(
                     f"{technique_id} / '{cleaned.test_name}': "
                     f"LogEvent generated (EID {log_event.EventID}, {log_event.event_type})"

@@ -1,0 +1,25 @@
+title: "T1197 - BITS Job Notify Command Registration"
+id: a195c71e-a80e-4d1a-87c3-aa7a3f8c991f
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+    - attack.persistence
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_notifycmd:
+      CommandLine|contains:
+        - '/setnotifycmdline'
+        - 'SetNotifyCmdLine'
+    condition: selection_notifycmd
+falsepositives:
+    - "Legitimate BITS-based software deployment/update tooling using bitsadmin.exe /setnotifycmdline or PowerShell Start-BitsTransfer with equivalent notify-command configuration for internal patch/deployment automation - should be handled via an allowlist of exact known-good command-line hashes rather than excluding the binary or switch itself"
+    - "Administrative scripting that legitimately configures BITS job completion/error notification commands as part of deployment orchestration frameworks"
+    - "Presence of LOLBins (rundll32, mshta, regsvr32, powershell) or user-writable paths (Temp, AppData, Public, Downloads) embedded within the notify command argument, which raises confidence but is not required for a match and can also appear in legitimate installer staging workflows"
+level: high

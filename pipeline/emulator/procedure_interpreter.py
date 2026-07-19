@@ -130,8 +130,34 @@ PRIMARY ACTION RULE:
 - Examples:
     Setup (skip): Copy-Item -Path cmd.exe -Destination payload.exe
     Primary (use): Start-Process payload.exe
-    Setup (skip): New-Item -ItemType Directory -Path C:\\staging
+    Setup (skip): New-Item -ItemType Directory -Path C:\staging
     Primary (use): Invoke-Mimikatz -DumpCreds
+
+MULTI-STEP FUSION — NEVER DO THIS:
+Atomic tests frequently contain multiple distinct command invocations representing
+separate steps of an attack chain (e.g. stage a file, then create a task, then execute
+it). You select exactly ONE step as your event, per the PRIMARY ACTION RULE above —
+every field you populate (Image, CommandLine, ParentImage, ParentCommandLine) describes
+that ONE step and its real, direct parent only. Never construct a value that joins
+content from more than one step, whether by inventing shell-chaining operators
+(&&, ||, ;) or by simply placing multiple steps' arguments one after another as if they
+belonged to the same invocation.
+
+Example — given these commands:
+  Step 1: bitsadmin.exe /create JobName
+  Step 2: bitsadmin.exe /addfile JobName <url> <path>
+  Step 3: bitsadmin.exe /resume JobName
+If you select Step 3 as primary:
+  CORRECT   CommandLine: 'bitsadmin.exe /resume JobName'
+  WRONG     CommandLine: 'bitsadmin.exe /create JobName /addfile JobName <url> <path> /resume JobName'
+  WRONG     ParentCommandLine: 'cmd.exe /c bitsadmin.exe /create JobName && bitsadmin.exe /addfile JobName <url> <path> && bitsadmin.exe /resume JobName'
+If you do not know the real parent process, use a plausible standalone parent (cmd.exe,
+svchost.exe, or whatever the evasion hints specify) — do not reconstruct the other
+steps inside it.
+
+Before finalizing: does CommandLine or ParentCommandLine contain recognizable content
+from more than one of the provided steps? If so, you have fused steps together — remove
+the extra content and describe only your single selected step.
  
 NETWORK EVENT RULE:
 - When commands involve outbound network connections (Invoke-WebRequest, Invoke-RestMethod,
@@ -175,8 +201,7 @@ Respond ONLY with the JSON object. No markdown, no explanation outside the JSON.
 
 USER_PROMPT_TEMPLATE = """{formatted_input}{evasion_block}
 
-Extract Sysmon log artifacts from the commands above.
-Focus on the FIRST command that produces a loggable event if multiple steps are present."""
+Extract Sysmon log artifacts from the commands above, following the PRIMARY ACTION RULE above to select which step to interpret."""
 
 EVASION_BLOCK = """
 
@@ -390,10 +415,19 @@ def _validate_minimum_canonical_fields(event_type: str, fields: dict) -> bool:
 def interpret_procedure(
     cleaned_test: CleanedAtomicTest,
     evasion_hints: dict | None = None,
+    required_event_type: str | None = None,
 ) -> dict:
     """
     Send a CleanedAtomicTest to the LLM and return a structured extraction dict.
     Never raises — returns _FALLBACK_RESULT on any failure.
+
+    required_event_type: when set, this interpretation is a second (or later)
+    variant of a test already interpreted once in this same emulation cycle.
+    Forces the model to stay on the same event_type as that earlier variant —
+    without this, the NETWORK EVENT RULE's "choose either" license lets two
+    independent calls over the same test land on genuinely different event
+    types (e.g. one variant process_creation, another network), which is a
+    much more severe divergence than varying parent process or staging path.
     """
     evasion_block = ""
     if evasion_hints:
@@ -401,9 +435,22 @@ def interpret_procedure(
             evasion_hints=json.dumps(evasion_hints, indent=2)
         )
 
+    event_type_constraint = ""
+    if required_event_type:
+        event_type_constraint = (
+            f"\n\nThis is a second variant of a test already interpreted as "
+            f"event_type='{required_event_type}' in this same cycle. You MUST "
+            f"also produce event_type='{required_event_type}' — this overrides "
+            f"the NETWORK EVENT RULE's 'choose either' guidance above, which "
+            f"only applies when deciding the FIRST variant's event type. Do not "
+            f"reinterpret the underlying action as a different observable "
+            f"category; vary the execution context (parent process, staging "
+            f"path, specific values) within that same event type instead."
+        )
+
     prompt = USER_PROMPT_TEMPLATE.format(
         formatted_input=cleaned_test.formatted_input,
-        evasion_block=evasion_block,
+        evasion_block=evasion_block + event_type_constraint,
     )
 
     try:
@@ -519,7 +566,6 @@ def build_log_event(
             except (ValueError, TypeError):
                 grounded_fields.pop(_f)
 
-    
     # EID3-specific normalisation.
     # Protocol: Sysmon only ever emits "tcp" or "udp". The LLM sometimes
     # extracts the application protocol from the URL (e.g. "https") because

@@ -466,7 +466,10 @@ def build_defender_user_message(
             "  Combine required conditions with AND. Add supporting conditions only\n"
             "  when they are same-event-plausible (see single-event scope above) and\n"
             "  meaningfully improve precision — never merely to avoid a single-field\n"
-            "  rule.\n\n"
+            "  rule. Every selection block you define must be referenced in the\n"
+            "  condition — do not define a selection as documentation or unused\n"
+            "  context. If a field is worth noting but not worth requiring, describe\n"
+            "  it in falsepositives instead of leaving it as an orphaned selection.\n\n"
         )
     else:
         prompt += (
@@ -486,6 +489,14 @@ def build_defender_user_message(
         "Before finalising: did you AND two fields that could only co-occur\n"
         "across separate invocations? Does any filter exempt more than the\n"
         "specific legitimate activity it targets? Fix either now.\n\n"
+        "Trace your condition against every event in the evidence above, not\n"
+        "just the one that inspired your richest branch — a branch that only\n"
+        "holds for one event is not more precise, it is incomplete. If retry\n"
+        "feedback asks you to broaden, that means the overall condition must\n"
+        "match more evidence — it does not mean every existing branch must be\n"
+        "kept as-is; a branch that does not generalise across the shown events\n"
+        "is often the actual problem, not something to preserve while adding\n"
+        "more branches alongside it.\n\n"
     )
 
     prompt += (

@@ -1,0 +1,38 @@
+title: "BITS Job Abuse via bitsadmin or PowerShell BitsTransfer"
+id: a7f4e708-9258-426b-9a66-f9eafc3ab9c4
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_bitsadmin:
+      Image|endswith: '\bitsadmin.exe'
+      CommandLine|contains:
+        - '/create'
+        - '/addfile'
+        - '/transfer'
+        - '/resume'
+        - '/setnotifycmdline'
+        - '/setminretrydelay'
+    selection_powershell:
+      Image|endswith:
+        - '\powershell.exe'
+        - '\pwsh.exe'
+      CommandLine|contains:
+        - 'Start-BitsTransfer'
+        - 'Add-BitsTransfer'
+        - 'New-BitsTransfer'
+    condition: selection_bitsadmin or selection_powershell
+falsepositives:
+    - "Legacy Windows Update / WSUS maintenance or other IT administration scripts invoking bitsadmin.exe with job-control switches (/create, /addfile, /resume) — usage has declined since bitsadmin was deprecated but may still appear in older environments"
+    - "Software deployment or patch-management tooling (SCCM, third-party update agents) using PowerShell BitsTransfer cmdlets (Start-BitsTransfer/Add-BitsTransfer/New-BitsTransfer) to fetch files from internal distribution points"
+    - "Script hosts (mshta.exe, wscript.exe, cscript.exe) spawning bitsadmin.exe or powershell.exe as an intermediate step in legitimate logon or automation scripts — this rule does not require a specific parent process, so any legitimate BITS invocation regardless of ancestry will also match, and ancestry alone is not used to suppress or confirm it since it is attacker-influenceable"
+    - "Use of /setnotifycmdline or /setminretrydelay by legitimate deployment tooling to trigger post-transfer actions — rare in normal operations and should be treated as high-priority for manual review rather than auto-excluded"
+level: medium

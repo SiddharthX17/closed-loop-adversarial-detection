@@ -10,125 +10,102 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_c1ebff9d-270e-4d2a-a779-ad6005fa416a  (1 rule(s)) ---------------------
-# Intent:    Detection of BITSAdmin command-line usage for file transfer operations, commonly
-# Rules:     c1ebff9d-270e-4d2a-a779-ad6005fa416a
+# -- Cluster: singleton_b9f1012f-a634-486c-a280-6c4b8dfdf2c4  (1 rule(s)) ---------------------
+# Intent:    Detect malicious use of BITS (Background Intelligent Transfer Service) jobs for 
+# Rules:     b9f1012f-a634-486c-a280-6c4b8dfdf2c4
 # Archetype: IT admin workflow
 
-# Download Windows Update component package using BITS for optimized transfer
-$bitsjobName = "WinUpdate_Deployment_$(Get-Date -Format 'yyyyMMddHHmmss')"
-$targetUri = "https://update.microsoft.com/download/WindowsServer2022-KB5021234-x64.msu"
-$downloadPath = "$env:TEMP\WinServer2022_Patch.msu"
-
-# Create BITS transfer job for bandwidth-managed download
+$tempDir = Join-Path $env:TEMP "patch_staging"
+if (-not (Test-Path $tempDir)) {
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+}
+$jobName = "WindowsUpdateJob_$(Get-Random)"
 try {
-    & 'C:\Windows\System32\bitsadmin.exe' /create /name $bitsjobName $targetUri $downloadPath
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "BITS job created: $bitsjobName"
+    # Create BITS transfer job for downloading a patch manifest from Microsoft
+    & bitsadmin.exe /create /name $jobName /priority high
 
-        # Configure job for low-priority, bandwidth-throttled transfer
-        & 'C:\Windows\System32\bitsadmin.exe' /info $bitsjobName /verbose
+    # Add file transfer to simulate downloading update metadata
+    & bitsadmin.exe /transfer $jobName /download /priority high "https://download.microsoft.com/download/Windows10SDK/updates/manifest.xml" (Join-Path $tempDir "manifest.xml")
 
-        # Clean up: remove the job (no actual transfer occurs without /resume)
-        Start-Sleep -Seconds 1
-        & 'C:\Windows\System32\bitsadmin.exe' /complete $bitsjobName
-        Write-Host "BITS job cleanup completed"
-    }
+    # Simulate waiting for transfer to complete
+    Start-Sleep -Seconds 2
+
+    # Clean up the job
+    & bitsadmin.exe /complete $jobName
+    & bitsadmin.exe /delete $jobName
 } catch {
-    Write-Host "BITS operation completed"
-} finally {
-    if (Test-Path $downloadPath) {
-        Remove-Item -Path $downloadPath -Force -ErrorAction SilentlyContinue
-    }
+    # Ensure cleanup even if error occurs
+    & bitsadmin.exe /delete $jobName -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_c1ebff9d-270e-4d2a-a779-ad6005fa416a  (1 rule(s)) ---------------------
-# Intent:    Detection of BITSAdmin command-line usage for file transfer operations, commonly
-# Rules:     c1ebff9d-270e-4d2a-a779-ad6005fa416a
+# Remove staging directory
+Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_b9f1012f-a634-486c-a280-6c4b8dfdf2c4  (1 rule(s)) ---------------------
+# Intent:    Detect malicious use of BITS (Background Intelligent Transfer Service) jobs for 
+# Rules:     b9f1012f-a634-486c-a280-6c4b8dfdf2c4
 # Archetype: Software installer/updater workflow
 
-# Application update delivery via BITS - common in enterprise deployment scenarios
-$appUpdateJob = "AppUpdate_Delivery_$(Get-Date -Format 'yyyyMMddHHmmss')"
-$sourceUrl = "https://softwarerepository.corp.local/applications/Analytics-Agent-2024.01.msi"
-$destinationPath = "$env:TEMP\Analytics-Agent-2024.01.msi"
-$logPath = "$env:TEMP\bits_transfer.log"
-
-# Initialize BITS transfer job for application package
+$downloadDir = Join-Path $env:TEMP "app_install_files"
+if (-not (Test-Path $downloadDir)) {
+    New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+}
+$uniqueJobId = "AppComponentFetch_$(Get-Random)"
 try {
-    Write-Host "Initializing BITS transfer for application update"
+    # Create BITS job for installer component download
+    & bitsadmin.exe /create /name $uniqueJobId /priority high
 
-    # Create transfer job with source and destination
-    $bitsCmd = @(
-        'C:\Windows\System32\bitsadmin.exe',
-        '/create',
-        '/name', $appUpdateJob,
-        $sourceUrl,
-        $destinationPath
-    )
-    & $bitsCmd[0] $bitsCmd[1] $bitsCmd[2] $bitsCmd[3] $bitsCmd[4] $bitsCmd[5]
+    # Add files that an installer would legitimately download
+    & bitsadmin.exe /addfile $uniqueJobId "https://cdn.example.com/application/component_v2.0.exe" (Join-Path $downloadDir "component.exe")
+    & bitsadmin.exe /addfile $uniqueJobId "https://cdn.example.com/application/dependencies.zip" (Join-Path $downloadDir "dependencies.zip")
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "BITS job created for application delivery"
+    # Transfer all queued files
+    & bitsadmin.exe /transfer $uniqueJobId /download /priority high
 
-        # Add notification on completion (simulating enterprise configuration)
-        & 'C:\Windows\System32\bitsadmin.exe' /info $appUpdateJob
+    Start-Sleep -Seconds 1
 
-        # Cleanup job
-        Start-Sleep -Seconds 1
-        & 'C:\Windows\System32\bitsadmin.exe' /complete $appUpdateJob
-        Write-Host "Application update job finalized"
-    }
+    # Mark job as complete
+    & bitsadmin.exe /complete $uniqueJobId
+    & bitsadmin.exe /delete $uniqueJobId
 } catch {
-    Write-Host "Update job processing completed"
-} finally {
-    # Clean up temporary files
-    if (Test-Path $destinationPath) {
-        Remove-Item -Path $destinationPath -Force -ErrorAction SilentlyContinue
-    }
-    if (Test-Path $logPath) {
-        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
-    }
+    & bitsadmin.exe /delete $uniqueJobId -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_c1ebff9d-270e-4d2a-a779-ad6005fa416a  (1 rule(s)) ---------------------
-# Intent:    Detection of BITSAdmin command-line usage for file transfer operations, commonly
-# Rules:     c1ebff9d-270e-4d2a-a779-ad6005fa416a
-# Archetype: Document/file operation workflow
+# Clean up downloaded files
+Remove-Item -Path $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
 
-# Enterprise backup retrieval using BITS for reliable, throttled downloads
-$backupJobName = "Daily_Backup_Retrieve_$(Get-Date -Format 'yyyyMMddHHmmss')"
-$backupSourceUri = "https://backup.internal.corp/archives/daily/backup-2024-01-15.tar.gz"
-$backupDestination = "$env:TEMP\daily_backup_archive.tar.gz"
+# -- Cluster: singleton_b9f1012f-a634-486c-a280-6c4b8dfdf2c4  (1 rule(s)) ---------------------
+# Intent:    Detect malicious use of BITS (Background Intelligent Transfer Service) jobs for 
+# Rules:     b9f1012f-a634-486c-a280-6c4b8dfdf2c4
+# Archetype: User-driven workflow
 
-# Initialize BITS-based backup retrieval
-try {
-    Write-Host "Initiating BITS-based backup retrieval"
-
-    # Create BITS job for backup download
-    & 'C:\Windows\System32\bitsadmin.exe' /create /name $backupJobName $backupSourceUri $backupDestination
-
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Backup retrieval job initialized: $backupJobName"
-
-        # Verify job status
-        & 'C:\Windows\System32\bitsadmin.exe' /info $backupJobName /verbose
-
-        # Set job priority for background operation
-        & 'C:\Windows\System32\bitsadmin.exe' /info $backupJobName
-
-        # Finalize job
-        Start-Sleep -Seconds 1
-        & 'C:\Windows\System32\bitsadmin.exe' /complete $backupJobName
-        Write-Host "Backup retrieval job completed"
-    }
-} catch {
-    Write-Host "Backup job processing finished"
-} finally {
-    # Clean up backup file
-    if (Test-Path $backupDestination) {
-        Remove-Item -Path $backupDestination -Force -ErrorAction SilentlyContinue
-    }
+$dataDir = Join-Path $env:TEMP "analytics_data"
+if (-not (Test-Path $dataDir)) {
+    New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 }
+$xferJobName = "DataAcquisition_$(Get-Random)"
+try {
+    # Create BITS job for data file transfer
+    & bitsadmin.exe /create /name $xferJobName /priority normal
+
+    # Add data files from a public cloud storage endpoint
+    & bitsadmin.exe /addfile $xferJobName "https://storage.example.com/datasets/q3_analytics.csv" (Join-Path $dataDir "q3_analytics.csv")
+    & bitsadmin.exe /addfile $xferJobName "https://storage.example.com/datasets/vendor_list.xlsx" (Join-Path $dataDir "vendor_list.xlsx")
+
+    # Begin transfer
+    & bitsadmin.exe /transfer $xferJobName /download /priority normal
+
+    Start-Sleep -Seconds 2
+
+    # Finalize transfer
+    & bitsadmin.exe /complete $xferJobName
+    & bitsadmin.exe /delete $xferJobName
+} catch {
+    & bitsadmin.exe /delete $xferJobName -ErrorAction SilentlyContinue
+}
+
+# Clean up data staging area
+Remove-Item -Path $dataDir -Recurse -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

@@ -1,0 +1,35 @@
+title: "T1036.005 - Binary Masquerading via OriginalFileName Mismatch"
+id: efb1170e-2737-4c5d-9c86-8d0dd3c8bd78
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1036/005/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-21
+tags:
+    - attack.defense-evasion
+    - attack.t1036.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_ntdll:
+      OriginalFileName: 'ntdll.dll'
+      Image|endswith: '.exe'
+    selection_mshta:
+      OriginalFileName: 'MSHTA.EXE'
+      Image|endswith: '.exe'
+    filter_ntdll_legit:
+      Image:
+        - 'C:\Windows\System32\ntdll.dll'
+        - 'C:\Windows\SysWOW64\ntdll.dll'
+    filter_mshta_legit:
+      Image:
+        - 'C:\Windows\System32\mshta.exe'
+        - 'C:\Windows\SysWOW64\mshta.exe'
+    condition: (selection_ntdll and not filter_ntdll_legit) or (selection_mshta and not filter_mshta_legit)
+falsepositives:
+    - "Legitimate installer or self-extracting archive stubs that embed OriginalFileName metadata from a shared build template inconsistent with their distributed filename — verify via Authenticode signature before excluding rather than assuming benign."
+    - "Software packaging or update frameworks that rename a helper executable (e.g., an MSHTA-based HTA runner bundled with a product installer) while retaining original PE metadata — validate against a known-good signed publisher rather than exempting by path alone."
+    - "Internal build tooling that intentionally shares OriginalFileName metadata across multiple utilities compiled from the same template/codebase, producing a benign but detectable mismatch."
+    - "Any OriginalFileName/Image pairing not explicitly covered here (this rule only anchors on ntdll.dll and MSHTA.EXE mismatches observed in evidence) — broader masquerading of other system binaries would require additional selections."
+level: high

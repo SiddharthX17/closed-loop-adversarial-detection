@@ -1,0 +1,31 @@
+title: "BITS Job Management via bitsadmin.exe"
+id: 4da457f9-03de-41ff-824c-ef0cd1761275
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-21
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      Image|endswith: '\bitsadmin.exe'
+    selection_verbs:
+      CommandLine|contains:
+        - '/create'
+        - '/addfile'
+        - '/resume'
+        - '/setnotifycmdline'
+        - '/complete'
+        - '/setminretrydelay'
+    condition: selection_image and selection_verbs
+falsepositives:
+    - "Legitimate software deployment or patch management tooling invoking bitsadmin.exe with job-management verbs (e.g., SCCM, third-party deployment agents) — should be filtered by the deployment tool's own signed Image path rather than by job name or parent process, since none is confirmed in this evidence"
+    - "Scripted administrative use of bitsadmin.exe from cmd.exe or PowerShell for legitimate background transfers — parent process alone (cmd.exe, svchost.exe) is not a reliable distinguishing signal since attackers replicate the same invocation chains"
+    - "Execution from svchost.exe as parent (BITS service resuming a job) is normal BITS behavior and does not by itself indicate malice; combined with staging in public/temp directories it raises suspicion but was not required as a filter condition here since it was only observed in one of two samples"
+    - "Windows Update or WSUS-related bitsadmin usage on older or misconfigured systems still relying on legacy scripts"
+level: medium

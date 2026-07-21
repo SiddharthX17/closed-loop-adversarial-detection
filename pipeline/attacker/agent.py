@@ -46,7 +46,7 @@ DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 
 TECHNIQUES_PATH = Path("config/techniques.yaml")
 MODEL = "claude-haiku-4-5-20251001"
-TEMPERATURE = 0.2
+TEMPERATURE = 0
 MAX_CANDIDATES = 1
 
 # Module-level client for standalone functions called from other modules

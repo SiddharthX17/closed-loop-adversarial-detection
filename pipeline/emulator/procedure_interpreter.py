@@ -130,7 +130,7 @@ PRIMARY ACTION RULE:
 - Examples:
     Setup (skip): Copy-Item -Path cmd.exe -Destination payload.exe
     Primary (use): Start-Process payload.exe
-    Setup (skip): New-Item -ItemType Directory -Path C:\staging
+    Setup (skip): New-Item -ItemType Directory -Path C:\\staging
     Primary (use): Invoke-Mimikatz -DumpCreds
 
 MULTI-STEP FUSION — NEVER DO THIS:
@@ -157,7 +157,9 @@ steps inside it.
 
 Before finalizing: does CommandLine or ParentCommandLine contain recognizable content
 from more than one of the provided steps? If so, you have fused steps together — remove
-the extra content and describe only your single selected step.
+the extra content and describe only your single selected step. if any field implies a 
+different action, step, or binary identity than the rest of the event, revise it to 
+match — do not let two fields tell two different stories.
  
 NETWORK EVENT RULE:
 - When commands involve outbound network connections (Invoke-WebRequest, Invoke-RestMethod,
@@ -235,9 +237,26 @@ def get_drop_stats() -> dict:
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _strip_markdown(raw: str) -> str:
-    raw = re.sub(r"^```[a-zA-Z]*\n?", "", raw)
-    raw = re.sub(r"\n?```$", "", raw)
+def _extract_json(raw: str) -> str:
+    """
+    Extract a JSON object from raw LLM text that may contain preamble prose
+    before a fenced or bare JSON block.
+
+    Order of attempts:
+      1. A ```json ... ``` (or bare ``` ... ```) fence anywhere in the text.
+      2. First '{' to matching last '}' — fallback for unfenced output.
+      3. Original text, unchanged — lets the existing parse-error path
+         handle it exactly as before if neither pattern is found.
+    """
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", raw, re.DOTALL)
+    if fence_match:
+        return fence_match.group(1).strip()
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return raw[start:end + 1].strip()
+
     return raw.strip()
 
 
@@ -279,6 +298,14 @@ def _ground_fields(
     grounded = {}
     text = procedure_text.lower()
 
+    hint_text = ""
+    if evasion_hints:
+        hint_text = " ".join(
+            str(hv).lower() for hv in evasion_hints.values()
+            if isinstance(hv, str)
+        )
+    combined_text = f"{text} {hint_text}"
+
     for k, v in fields.items():
 
         if not isinstance(v, str):
@@ -287,18 +314,18 @@ def _ground_fields(
 
         v_lower = v.lower()
 
-        # Check 1 — verbatim
-        if v_lower in text:
+        # Check 1 — verbatim (procedure_text + evasion_hints combined)
+        if v_lower in combined_text:
             grounded[k] = v
             continue
 
         # Check 2 — basename for path-like values
         basename = os.path.basename(v).lower()
-        if basename and basename != v_lower and basename in text:
+        if basename and basename != v_lower and basename in combined_text:
             grounded[k] = v
             continue
         basename_no_ext = os.path.splitext(basename)[0].lower()
-        if basename_no_ext and basename_no_ext != v_lower and basename_no_ext in text:
+        if basename_no_ext and basename_no_ext != v_lower and basename_no_ext in combined_text:
             grounded[k] = v
             continue
 
@@ -308,7 +335,7 @@ def _ground_fields(
                 t for t in v_lower.split()
                 if len(t) > 4  # skip short tokens like '-c', 'the'
             ]
-            matched = sum(1 for t in tokens if t in text)
+            matched = sum(1 for t in tokens if t in combined_text)
             if matched >= _PARTIAL_MATCH_MIN_TOKENS:
                 grounded[k] = v
                 continue
@@ -475,7 +502,7 @@ def interpret_procedure(
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             temperature=0,
             system=SYSTEM_PROMPT,
@@ -496,8 +523,11 @@ def interpret_procedure(
         print("\n[DEBUG] Raw LLM output:")
         print(raw)
 
-    # Strip markdown fences if present
-    raw = _strip_markdown(raw)
+    # Extract JSON — handles preamble prose before a fenced or bare JSON
+    # block. Sonnet 4.6 sometimes reasons through step selection in prose
+    # before emitting JSON; the old start-anchored strip left that prose in
+    # place and json.loads failed on it instead of the JSON.
+    raw = _extract_json(raw)
 
     # Guard JSON parse
     try:

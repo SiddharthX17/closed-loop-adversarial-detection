@@ -47,9 +47,30 @@ UNMATCHED_FEEDBACK_CAP = 5
 # Content-based event hashing (same approach as result_parser._event_hash)
 # ---------------------------------------------------------------------------
 
+_NUMERIC_FIELDS = {"EventID", "DestinationPort",
+                   "ProcessId", "ParentProcessId"}
+
+
 def _event_hash(event: dict) -> str:
-    """Stable content hash for deduplication/comparison. Not crypto."""
-    serialised = json.dumps(event, sort_keys=True, default=str)
+    """
+    Stable content hash for deduplication/comparison. Not crypto.
+
+    Normalises known-numeric fields to int before hashing. matched_events
+    (reconstructed from sqlite3 rows) coerce these to strings, while the
+    original attack_sample events carry native Python int — without this,
+    a byte-identical event hashes differently depending on which side it
+    came from, silently misclassifying real matches as unmatched. Confirmed
+    live: T1197/T1036.005 events in the Jul-19 runs appeared in both the
+    MATCHED and unmatched lists, differing only by EventID '1' vs 1.
+    """
+    normalised = dict(event)
+    for f in _NUMERIC_FIELDS:
+        if f in normalised and normalised[f] is not None:
+            try:
+                normalised[f] = int(normalised[f])
+            except (ValueError, TypeError):
+                pass
+    serialised = json.dumps(normalised, sort_keys=True, default=str)
     return hashlib.md5(serialised.encode()).hexdigest()  # noqa: S324
 
 

@@ -1,0 +1,29 @@
+title: "T1112 - Security Policy Registry Key Modification via BitLocker FVE Path"
+id: c565ac23-9aea-4c00-823a-b3e84f3572ea
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1112/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.defense-evasion
+    - attack.t1112
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_policy_hive:
+      EventID: 13
+      TargetObject|contains: '\SOFTWARE\Policies\Microsoft\'
+    selection_fve:
+      TargetObject|contains: '\SOFTWARE\Policies\Microsoft\FVE\'
+    filter_gpclient:
+      Image|endswith:
+        - '\svchost.exe'
+    condition: (selection_policy_hive or selection_fve) and not filter_gpclient
+falsepositives:
+    - "Group Policy client (gpsvc, typically hosted in svchost.exe) writing these same Policies\\Microsoft keys during a normal policy refresh cycle - filtered here by writer Image, but registry-only telemetry may not always attribute the writing process reliably, so some legitimate GPO refreshes may still surface"
+    - "Endpoint/MDM management agents (Intune, SCCM, MBAM) legitimately pushing BitLocker FVE or other security policy settings during provisioning or scheduled compliance enforcement - not exempted here since no specific agent binary was verified against the evidence; review these against known agent inventory"
+    - "Legitimate IT admin scripted configuration via reg.exe or PowerShell applying the same policy keys outside of GPO - intentionally not filtered since these are also the primary attacker tools for this technique; such writes should be reviewed via change-management correlation rather than suppressed"
+    - "Single-instance evidence means the FVE\\UseAdvancedStartup path is illustrative, not exhaustive - other Policies\\Microsoft subkeys (Defender, LSA/Credential Guard, Windows Firewall policy) will also legitimately be written by endpoint management tooling"
+level: medium

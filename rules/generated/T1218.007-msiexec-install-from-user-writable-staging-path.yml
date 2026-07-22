@@ -1,0 +1,34 @@
+title: "T1218.007 - Msiexec Install From User-Writable Staging Path"
+id: c5e15143-6ec7-48ee-afeb-890283d5c4ea
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1218/007/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.defense-evasion
+    - attack.t1218.007
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+      Image|endswith: '\msiexec.exe'
+    selection_install:
+      CommandLine|contains:
+        - ' /i '
+        - ' /package '
+    selection_staging_path:
+      CommandLine|contains:
+        - ':\Users\Public\'
+        - '\AppData\Local\Temp\'
+        - '\Downloads\'
+        - '\AppData\Roaming\'
+        - '\Windows\Temp\'
+    condition: selection_img and selection_install and selection_staging_path
+falsepositives:
+    - "Legitimate ad-hoc software installation initiated manually by a user from Downloads, Temp, or AppData directories (e.g., double-clicking an installer downloaded from a vendor site)"
+    - "IT/software deployment tooling (SCCM, Intune, PDQ Deploy, etc.) that stages MSI packages in Temp or AppData before invoking msiexec with /i and quiet flags as part of managed software delivery"
+    - "Help desk or administrative scripted installs via cmd.exe/PowerShell that legitimately reference staging paths under Temp or Public\\Downloads"
+    - "Self-extracting installer frameworks that unpack an embedded MSI into a temp directory and immediately invoke msiexec against it as part of normal application setup"
+level: medium

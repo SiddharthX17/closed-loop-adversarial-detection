@@ -1,0 +1,42 @@
+title: "T1543.003 - Service Start via sc.exe Targeting Masqueraded Service Name"
+id: 3f71f5e9-90e2-469e-943a-591d992514bb
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1543/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.persistence
+    - attack.t1543.003
+    - attack.privilege_escalation
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+      Image|endswith: '\sc.exe'
+    condition_action:
+      CommandLine|contains:
+        - ' start '
+        - ' create '
+        - ' config '
+    legit_names:
+      CommandLine|contains:
+        - ' W32Time'
+        - ' wuauserv'
+        - ' BITS'
+        - ' Schedule'
+        - ' Dnscache'
+        - ' LanmanServer'
+        - ' LanmanWorkstation'
+        - ' Dhcp'
+        - ' EventLog'
+        - ' RpcSs'
+        - ' Netlogon'
+    condition: selection_img and condition_action and not legit_names
+falsepositives:
+    - "Legitimate administration or scripted management of real Windows services using sc.exe start/create/config (e.g., restarting W32Time, BITS, Schedule) - filtered here only when the exact known-good service name is referenced"
+    - "Software deployment or configuration management tooling (SCCM, Ansible, Chef via WinRM) that issues sc.exe commands against renamed or custom enterprise service names not on the allowlist - may still trigger and require environment-specific tuning"
+    - "Script-driven installers (wscript/cscript/powershell) invoking sc.exe as part of legitimate setup routines, particularly from Temp or user-writable paths during valid but unusual deployment workflows"
+    - "Internal or third-party services with names that coincidentally resemble but are not exact matches to built-in Windows service names (e.g., abbreviated or product-specific naming) which are not covered by the static allowlist"
+level: medium

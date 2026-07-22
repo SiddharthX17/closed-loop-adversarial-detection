@@ -1,0 +1,25 @@
+title: "T1574.001-SideLoad-Susceptible Binary Execution"
+id: e44bc2ac-7108-4733-9351-a78a1e4d57d1
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1574/001/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.persistence
+    - attack.t1574.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      Image|endswith:
+        - '\dotnet.exe'
+        - '\onedrive.exe'
+    condition: selection_image
+falsepositives:
+    - "Legitimate developer, build, or CI/CD invocation of dotnet.exe from IDEs, terminals, or automated pipelines (explorer.exe or shell-launched) — this is normal and expected on developer workstations"
+    - "OneDrive.exe launched normally at user logon or via Explorer/Task Scheduler"
+    - "This rule anchors only on the child binary's own Image path (a curated list of known side-loading-susceptible binaries) since the observed evidence shows this binary invoked from both a script-host parent (mshta.exe) and a fully benign parent (explorer.exe), meaning ancestry cannot reliably distinguish malicious from benign invocation with the fields present; as a result this rule is a broad, low-precision heuristic that will require Sysmon EventID 7 image-load telemetry (observing the actual DLL loaded from a non-standard path) to achieve meaningful precision"
+    - "Software packaging tools or legacy VBScript/HTA-based deployment scripts that shell out to dotnet.exe or onedrive.exe as part of legitimate installation workflows"
+level: low

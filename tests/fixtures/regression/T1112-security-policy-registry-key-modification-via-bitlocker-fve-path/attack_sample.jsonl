@@ -1,0 +1,2 @@
+{"timestamp": "2026-07-22T18:31:32.073015+00:00", "host": "WORKSTATION-02", "user": "SYSTEM", "EventID": 13, "event_type": "registry", "Channel": "Microsoft-Windows-Sysmon/Operational", "TargetObject": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseAdvancedStartup"}
+{"timestamp": "2026-07-22T18:31:37.510566+00:00", "host": "LAPTOP-C9K1", "user": "SYSTEM", "EventID": 13, "event_type": "registry", "Channel": "Microsoft-Windows-Sysmon/Operational", "TargetObject": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseAdvancedStartup"}

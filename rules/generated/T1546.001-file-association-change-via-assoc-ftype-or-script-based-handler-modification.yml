@@ -1,0 +1,31 @@
+title: "File Association Change via assoc/ftype or Script-Based Handler Modification"
+id: 3d2d0f2a-5835-4d3f-8ff0-47ca1f01a753
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1546/001/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.t1546.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_assoc:
+        CommandLine|re: '(?i)\bassoc\s+\.[A-Za-z0-9]+\s*='
+    selection_ftype:
+        CommandLine|re: '(?i)\bftype\s+[A-Za-z0-9._]+\s*='
+    selection_script_assoc:
+        Image|endswith:
+            - '\wscript.exe'
+            - '\cscript.exe'
+        CommandLine|contains: 'assoc'
+    condition: selection_assoc or selection_ftype or selection_script_assoc
+falsepositives:
+    - "Legitimate software installers (msiexec or vendor setup binaries) registering new file types via assoc/ftype during installation"
+    - "IT administration or scripted environment configuration invoking assoc/ftype to standardize file handlers across managed endpoints — should be scoped to known signed internal tooling rather than excluded by path or name"
+    - "Scripts named or containing 'assoc' invoked via wscript.exe/cscript.exe are a weak signal alone (script content is not visible in process_creation telemetry) — legitimate administrative or logon scripts that happen to reference association changes could trigger this; correlate with registry writes to shell\\open\\command keys for higher-confidence triage"
+    - "Rare legitimate developer or power-user usage of assoc/ftype to inspect or restore file type associations"
+level: medium

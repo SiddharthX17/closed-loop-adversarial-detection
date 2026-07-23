@@ -1,0 +1,35 @@
+title: "Msiexec Install From User-Writable Directory"
+id: 75bd4163-dbe1-4628-b45e-3f6e45bd427b
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1218/007/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.defense-evasion
+    - attack.t1218.007
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+      Image|endswith: '\msiexec.exe'
+    selection_install:
+      CommandLine|contains: '/i'
+    selection_path:
+      CommandLine|contains:
+        - ':\Users\'
+        - '\Downloads\'
+        - '\AppData\'
+        - '\Temp\'
+        - '\Public\'
+        - '\ProgramData\'
+    filter_sccm_cache:
+      CommandLine|contains: '\Windows\ccmcache\'
+    condition: selection_img and selection_install and selection_path and not filter_sccm_cache
+falsepositives:
+    - "Legitimate software installers manually downloaded to Downloads/Temp and run by users or IT staff before being moved to a trusted location"
+    - "IT helpdesk or user-initiated manual MSI installs launched via double-click from explorer.exe (ParentImage alone provides no assurance of legitimacy and is not filtered here)"
+    - "Enterprise deployment tooling (SCCM/Intune/GPO) that stages MSI packages outside the excluded ccmcache path, e.g. custom software distribution shares or agent-specific cache directories not covered by the current exclusion"
+    - "Portable or per-user application installers that legitimately reside under AppData\\Local by design (e.g., some Electron-based app updaters using msiexec internally)"
+level: medium

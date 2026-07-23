@@ -1,0 +1,27 @@
+title: "T1543.003-Windows Service Creation via sc.exe create binPath"
+id: a4ffd403-3534-4421-92d0-5c95d8abbe3e
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1543/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.persistence
+    - attack.t1543.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_create:
+        CommandLine|contains: 'create'
+        CommandLine|contains: 'binPath'
+    selection_tool:
+        - CommandLine|contains: 'sc.exe'
+        - Image|endswith: '\sc.exe'
+    condition: selection_create and selection_tool
+falsepositives:
+    - "Legitimate software installers (MSI/EXE) invoking sc.exe create to register new services during installation — should be validated against an allowlist of expected vendor service names/binPaths rather than excluded wholesale"
+    - "IT administration and automation tooling (SCCM, Ansible, Chef, PowerShell DSC) creating services for legitimate management purposes using the same sc.exe/PowerShell invocation pattern attackers use"
+    - "Legitimate svchost.exe -k <group> service registrations by OS updates or patches where the group name is a genuine, newly-added SvcHost group not yet reflected in a reference allowlist (HKLM\\SYSTEM\\CurrentControlSet\\Control\\ServiceGroupOrder\\List)"
+    - "Deployment of legitimate monitoring/agent services that reference system binaries or use generic-sounding service names for branding/uniformity reasons"
+level: medium

@@ -1,0 +1,33 @@
+title: "Mshta Proxy-Executing Shell Commands via Inline VBScript"
+id: dfe49bba-8f75-4a19-8464-8a87b03c4ca9
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1047/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-25
+tags:
+    - attack.execution
+    - attack.t1047
+    - attack.defense_evasion
+    - t1218.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+      ParentImage|endswith: '\mshta.exe'
+    selection_script:
+      ParentCommandLine|contains:
+        - 'vbscript:'
+        - 'javascript:'
+    selection_shellrun:
+      ParentCommandLine|contains:
+        - 'WScript.Shell'
+        - '.Run('
+        - '.Exec('
+    condition: selection_parent and selection_script and selection_shellrun
+falsepositives:
+    - "Legitimate internal HTA-based business applications that use inline vbscript/javascript with WScript.Shell.Run/Exec to proxy shell commands — should be exempted only by specific file hash or digital signature, not by path or parent name"
+    - "Software packaging/deployment tools that (rarely) use mshta as a wrapper for legacy install scripts"
+    - "Helpdesk or IT automation scripts built on HTA that invoke WMIC or other admin utilities for legitimate remote management — cannot be distinguished from malicious use without hash/signature allowlisting given mshta inline-script-to-shell is inherently rare and suspicious"
+level: high

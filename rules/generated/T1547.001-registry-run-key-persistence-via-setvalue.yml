@@ -1,0 +1,33 @@
+title: "Registry Run Key Persistence via SetValue"
+id: e0ccd616-16f2-4203-af74-0fda2efd9835
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1547/001/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-25
+tags:
+    - attack.persistence
+    - attack.t1547.001
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+      EventID: 13
+      TargetObject|contains:
+        - '\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\'
+        - '\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce\'
+        - '\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run\'
+    filter_known_installer_updater:
+      Details|contains:
+        - '\AppData\Local\Microsoft\Teams\Update.exe'
+        - '\AppData\Local\Google\Update\GoogleUpdate.exe'
+        - '\AppData\Local\Programs\Microsoft VS Code\Update.exe'
+        - '\AppData\Local\Slack\slack.exe'
+    condition: selection and not filter_known_installer_updater
+falsepositives:
+    - "Legitimate self-updating chat/collaboration or dev-tool applications (e.g., Microsoft Teams Squirrel updater, Google Update, VS Code updater, Slack) registering their own Update.exe under a Run key during install or update — filtered above by matching the specific known-good updater binary path referenced in Details, not by registry path prefix or vendor directory alone."
+    - "Other legitimate software self-registration for autostart (installers, cloud sync clients) not covered by the current allowlist will still match; expand the Details allowlist with additional verified (ValueName, target payload) pairs as they are identified, rather than broadening the exclusion by directory or registry path."
+    - "IT/administrative deployment tooling (SCCM, Intune, GPO logon scripts) configuring startup entries as part of legitimate provisioning — cannot be reliably distinguished from malicious writes using registry-only telemetry; would require correlation with the writing process's own verified Image/OriginalFileName once process_creation data becomes available."
+    - "No process_creation data was present in the evidence to further scope this rule by writer identity, so any tool (script, reg.exe, installer, malware) writing to these keys with an unrecognized payload path will match equally."
+level: medium

@@ -1,0 +1,54 @@
+title: "T1053.005 - Scheduled Task Creation via Script Host or PowerShell Cmdlets"
+id: 8af420ec-3464-406e-aa32-0ff39808feab
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1053/005/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-25
+tags:
+    - attack.execution
+    - attack.persistence
+    - attack.t1053.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_taskapi:
+        CommandLine|contains:
+            - 'Register-ScheduledTask'
+            - 'New-ScheduledTaskAction'
+            - 'New-ScheduledTaskTrigger'
+            - 'New-ScheduledTaskPrincipal'
+            - 'Schedule.Service'
+            - 'schtasks /create'
+            - 'schtasks.exe /create'
+            - 'schtasks /Create'
+    selection_schtasks_flag:
+        CommandLine|contains|windash: ' /create '
+    selection_direct_schtasks:
+        - Image|endswith: '\schtasks.exe'
+        - OriginalFileName: 'schtasks.exe'
+    selection_scripthost_staging:
+        Image|endswith:
+            - '\wscript.exe'
+            - '\cscript.exe'
+        CommandLine|contains:
+            - ':\Users\Public\'
+            - ':\Windows\Temp\'
+            - ':\ProgramData\'
+            - '\AppData\'
+            - '%Temp%'
+            - '%AppData%'
+    filter_known_orchestration:
+        Image:
+            - 'C:\Windows\CCM\CcmExec.exe'
+            - 'C:\Program Files\Microsoft Configuration Manager\CcmExec.exe'
+            - 'C:\Program Files (x86)\Microsoft Intune Management Extension\Microsoft.Management.Services.IntuneWindowsAgent.exe'
+    condition: (selection_taskapi or (selection_direct_schtasks and selection_schtasks_flag) or selection_scripthost_staging) and not filter_known_orchestration
+falsepositives:
+    - "Legitimate administrative automation or orchestration tools (SCCM, Intune, Ansible, custom deployment scripts) creating scheduled tasks via PowerShell cmdlets or schtasks.exe — mitigated only for a small allowlist of known signed orchestration binaries by their own Image path; other legitimate tools not in this list will still trigger"
+    - "Software installers or update mechanisms that register maintenance tasks via Register-ScheduledTask or schtasks /create with vendor-specific task names"
+    - "IT helpdesk or sysadmin interactive use of schtasks.exe or PowerShell ScheduledTask cmdlets for routine task management"
+    - "Script-host wrapped Schedule.Service COM abuse (mshta/wscript invoking Schedule.Service) is rare in legitimate use but could appear in legacy internal automation frameworks not accounted for here"
+    - "wscript.exe/cscript.exe executing VBScript payloads staged in Public/Temp/AppData directories — this is a weak supporting signal since users and legitimate installers commonly run scripts from these shared/writable locations without any scheduled task involvement; included here only as a companion signal to catch indirect task-modification scripts lacking API strings in their command line"
+level: medium

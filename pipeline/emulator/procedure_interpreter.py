@@ -260,6 +260,31 @@ def _extract_json(raw: str) -> str:
     return raw.strip()
 
 
+def _ground_details(v: str, procedure_text: str) -> bool:
+    """
+    Fallback check for Details, tried only after the normal verbatim/
+    basename checks already failed. Handles the case where Details holds
+    a Sigma-convention-formatted registry value (e.g. 'DWORD (0x00000001)'
+    or 'QWORD (0x...)') that legitimately can never appear verbatim in
+    procedure_text, which states the raw command argument instead
+    (e.g. '/d 1'). Extracts the hex payload and checks whether its
+    decimal or hex form appears anywhere in the source text. Plain-string
+    Details values (e.g. a persistence payload path) never reach this —
+    they already ground normally via the existing verbatim/basename checks
+    above, same as any other field.
+    """
+    match = re.search(r"0x([0-9a-fA-F]+)", v)
+    if not match:
+        return False
+    hex_digits = match.group(1)
+    try:
+        decimal_value = str(int(hex_digits, 16))
+    except ValueError:
+        return False
+    text_lower = procedure_text.lower()
+    return decimal_value in text_lower or hex_digits.lower() in text_lower
+
+
 def _normalize(val):
     # Only normalizing strings — other types pass through intentionally
     if isinstance(val, str):
@@ -387,6 +412,14 @@ def _ground_fields(
             grounded[k] = v
             continue
 
+        # Fallback for Details — only reached if the generic checks above
+        # (verbatim, basename, partial-token, evasion-hint trust) already
+        # failed. Covers Sigma-formatted numeric registry values that can't
+        # appear verbatim in procedure_text by design.
+        if k == "Details" and _ground_details(v, procedure_text):
+            grounded[k] = v
+            continue
+
         print(f"[procedure_interpreter] Dropping ungrounded field {k}={v!r}")
         _drop_stats["ungrounded"] += 1
 
@@ -505,12 +538,30 @@ def interpret_procedure(
             model="claude-sonnet-4-6",
             max_tokens=1024,
             temperature=0,
-            system=SYSTEM_PROMPT,
+            system=[
+                {
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             messages=[{"role": "user", "content": prompt}]
         )
     except Exception as e:
         print(f"[interpret_procedure] API call failed: {e}")
         return dict(_FALLBACK_RESULT, reason=f"API call failed: {e}")
+
+    if _DEBUG:
+        usage = getattr(response, "usage", None)
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        if cache_write:
+            print(f"[interpret_procedure] Cache WRITE: {cache_write} tokens")
+        elif cache_read:
+            print(f"[interpret_procedure] Cache HIT: {cache_read} tokens")
+        else:
+            print("[interpret_procedure] Cache: no cache tokens this call "
+                  "(below threshold, or system block not identical to a prior call)")
 
     # Safely extract text across all content blocks
     raw = ""
@@ -578,6 +629,15 @@ def build_log_event(
         print("[build_log_event] Dropped: missing or null EventID")
         return None
 
+    try:
+        event_id = int(interpretation["EventID"])
+    except (TypeError, ValueError):
+        print(
+            f"[build_log_event] Dropped: EventID not coercible to int: "
+            f"{interpretation.get('EventID')!r}"
+        )
+        return None
+
     ts = timestamp or datetime.now(timezone.utc).isoformat()
     event_type = interpretation.get("event_type")
     raw_fields = interpretation.get("fields", {})
@@ -589,7 +649,7 @@ def build_log_event(
         return None
 
     # 1b. EID 3 structural enrichment — populate Image/ParentImage from executor
-    if interpretation.get("EventID") == 3:
+    if event_id == 3:
         grounded_fields = _enrich_network_event(grounded_fields, executor_name)
 
     # 2. Sysmon minimum field validation
@@ -624,7 +684,7 @@ def build_log_event(
     # traffic is TCP; a UDP technique should be explicit in procedure_text.
     # Initiated: default to "true" for attacker-initiated connections when
     # absent — the procedure interpreter only generates outbound network events.
-    if interpretation.get("EventID") == 3:
+    if event_id == 3:
         proto = grounded_fields.get("Protocol", "")
         if str(proto).lower() not in {"tcp", "udp"}:
             grounded_fields["Protocol"] = "tcp"
@@ -636,7 +696,7 @@ def build_log_event(
             timestamp=ts,
             user=_resolve_user(elevation_required),
             host=_resolve_host(),
-            EventID=interpretation["EventID"],
+            EventID=event_id,
             event_type=event_type,
             **grounded_fields,
         )

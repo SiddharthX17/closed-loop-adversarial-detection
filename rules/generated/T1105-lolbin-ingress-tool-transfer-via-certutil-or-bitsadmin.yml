@@ -1,0 +1,56 @@
+title: "T1105 - LOLBin Ingress Tool Transfer via CertUtil or BitsAdmin"
+id: 37b9adf5-1251-44bc-97fe-42cc239603b5
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1105/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-25
+tags:
+    - attack.command-and-control
+    - attack.t1105
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_certutil_image:
+      - Image|endswith: '\certutil.exe'
+      - OriginalFileName: 'CertUtil.exe'
+    selection_certutil_flags:
+      CommandLine|contains: '-urlcache'
+    selection_certutil_url:
+      CommandLine|contains:
+        - 'http://'
+        - 'https://'
+    filter_certutil_internal_pki:
+      CommandLine|contains:
+        - '://crl.'
+        - '://ocsp.'
+        - '://pki.'
+        - '.corp.local'
+    certutil_download:
+      CommandLine|contains: '.exe'
+    selection_bitsadmin_image:
+      - Image|endswith: '\bitsadmin.exe'
+      - OriginalFileName: 'bitsadmin.exe'
+    selection_bitsadmin_flags:
+      CommandLine|contains: '/transfer'
+    selection_bitsadmin_download:
+      CommandLine|contains:
+        - '/download'
+        - '/addfile'
+    selection_bitsadmin_url:
+      CommandLine|contains:
+        - 'http://'
+        - 'https://'
+    filter_bitsadmin_internal:
+      CommandLine|contains:
+        - '://wsus.'
+        - '://sccm.'
+        - '.corp.local'
+    condition: (all of selection_certutil_* and not filter_certutil_internal_pki) or (all of selection_bitsadmin_* and not filter_bitsadmin_internal)
+falsepositives:
+    - "Certificate/PKI administration using certutil -urlcache against internal CA distribution points, CRL, or OCSP endpoints not matching the internal-domain filter patterns used in this environment"
+    - "Legitimate BITS-based software deployment or patching (SCCM/WSUS-adjacent scripts) pulling packages from internal update servers whose hostnames do not match the configured internal allowlist patterns"
+    - "Administrative scripts or IT automation intentionally using certutil or bitsadmin to fetch legitimate tools from external vendor sites (uncommon but possible in some environments)"
+    - "Security tooling or EDR test/simulation scripts exercising this exact LOLBin pattern for detection validation"
+level: high

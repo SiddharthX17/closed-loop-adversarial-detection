@@ -6,6 +6,7 @@
     "T1053.005": true,
     "T1059.001": true,
     "T1059.003": true,
+    "T1112": true,
     "T1197": true,
     "T1567.003": true
   },
@@ -34,6 +35,7 @@
     "T1059.003-script-host-interpreter-spawned-by-non-interactive-parent-process.yml": true,
     "T1059.003-windows-command-shell-inline-script-staging-and-execution-via-cmd-exe.yml": true,
     "T1059.003-windows-command-shell-spawned-by-system-service-host-process.yml": true,
+    "T1112-ie-zonemap-trusted-zone-assignment.yml": true,
     "T1197-bits-job-creation-via-bitsadmin-with-notify-command.yml": true,
     "T1567.003-exfiltration-to-text-storage-sites-via-non-browser-process.yml": true,
     "T1567.003-non-browser-process-outbound-connection-to-text-storage-sites.yml": true

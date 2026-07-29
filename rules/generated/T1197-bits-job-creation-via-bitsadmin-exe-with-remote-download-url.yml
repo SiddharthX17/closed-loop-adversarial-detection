@@ -1,0 +1,33 @@
+title: "BITS Job Creation via bitsadmin.exe with Remote Download URL"
+id: b9f1012f-a634-486c-a280-6c4b8dfdf2c4
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-21
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      - Image|endswith: '\bitsadmin.exe'
+      - OriginalFileName: 'bitsadmin.exe'
+    selection_verb:
+      CommandLine|contains:
+        - '/transfer'
+        - '/create'
+        - '/addfile'
+    selection_url:
+      CommandLine|contains:
+        - 'http://'
+        - 'https://'
+        - 'ftp://'
+    condition: selection_image and selection_verb and selection_url
+falsepositives:
+    - "Legitimate software deployment or patching workflows invoking bitsadmin.exe directly with an internal WSUS/SCCM/software-distribution URL — cannot be distinguished from malicious use by Image/CommandLine alone; requires environment-specific URL/hostname allow-listing to resolve ambiguity rather than blanket exclusion"
+    - "RMM or endpoint management tooling that wraps bitsadmin.exe calls through cmd.exe or scripting engines for legitimate file staging — the spawning tool's own binary identity should be verified (e.g. digital signature or known enterprise agent path) before treating as benign, since ParentImage/ParentCommandLine are attacker-influenceable and not used here as exemption criteria"
+    - "Administrative or helpdesk scripts that use bitsadmin.exe for ad-hoc file transfers over HTTP/HTTPS/FTP in environments where BITS CLI usage has not been deprecated in favor of PowerShell BitsTransfer"
+level: high

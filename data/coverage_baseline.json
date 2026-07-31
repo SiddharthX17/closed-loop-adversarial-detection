@@ -10,6 +10,7 @@
     "T1112": true,
     "T1197": true,
     "T1546.001": true,
+    "T1547.001": true,
     "T1564.003": true,
     "T1567.003": true
   },
@@ -42,6 +43,7 @@
     "T1112-ie-zonemap-trusted-zone-assignment.yml": true,
     "T1197-bits-job-creation-via-bitsadmin-with-notify-command.yml": true,
     "T1546.001-file-association-change-via-assoc-ftype-or-script-based-handler-modification.yml": true,
+    "T1547.001-registry-run-key-persistence-via-setvalue.yml": true,
     "T1564.003-hidden-window-via-powershell-or-scripting-host.yml": true,
     "T1567.003-exfiltration-to-text-storage-sites-via-non-browser-process.yml": true,
     "T1567.003-non-browser-process-outbound-connection-to-text-storage-sites.yml": true

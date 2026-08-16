@@ -89,6 +89,7 @@ def _load_existing_rules(rule_paths: list[Path]) -> list[str]:
                 print(f"[defender] Could not read rule {path}: {e}")
     return rules
 
+
 def _summarize_existing_rule(rule_yaml: str) -> str:
     """
     Strip an existing rule down to title + detection block only — the only
@@ -124,6 +125,7 @@ def _summarize_existing_rule(rule_yaml: str) -> str:
 
     detection_block = "\n".join(lines[det_start:det_end])
     return f"{title_line}\n{detection_block}"
+
 
 def find_existing_rule_paths(
     technique_id: str,
@@ -334,9 +336,19 @@ class DefenderAgent:
             ValidationResult is the last result regardless of pass/fail.
         """
         technique_id = gap_context.technique_id
-        existing_rules_raw = _load_existing_rules(gap_context.existing_rule_paths)
-        existing_rules = [_summarize_existing_rule(r) for r in existing_rules_raw]
+        existing_rules_raw = _load_existing_rules(
+            gap_context.existing_rule_paths)
+        existing_rules = [_summarize_existing_rule(
+            r) for r in existing_rules_raw]
         corpus_root = gap_context.corpus_root or self._default_corpus_root
+
+        if DEBUG:
+            total_chars = sum(len(r) for r in existing_rules)
+            print(
+                f"[defender] {technique_id}: {len(existing_rules)} existing rule(s) "
+                f"loaded, ~{total_chars // 4} est. tokens "
+                f"(paths: {[p.name for p in gap_context.existing_rule_paths]})"
+            )
 
         retry_feedback: dict | None = None
         last_result: ValidationResult | None = None

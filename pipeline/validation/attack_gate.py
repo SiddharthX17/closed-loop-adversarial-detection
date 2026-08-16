@@ -47,10 +47,44 @@ UNMATCHED_FEEDBACK_CAP = 5
 # Content-based event hashing (same approach as result_parser._event_hash)
 # ---------------------------------------------------------------------------
 
+_NUMERIC_FIELDS = {"EventID", "DestinationPort",
+                   "ProcessId", "ParentProcessId"}
+
+
 def _event_hash(event: dict) -> str:
-    """Stable content hash for deduplication/comparison. Not crypto."""
-    serialised = json.dumps(event, sort_keys=True, default=str)
-    return hashlib.md5(serialised.encode()).hexdigest()  # noqa: S324
+    """
+    Stable content hash for deduplication/comparison. Not crypto.
+
+    Drops any key with a None/empty value, then casts every remaining
+    value to string, before hashing. This replaces the earlier
+    numeric-field-specific normalization: matched_events (reconstructed
+    from sqlite3 rows) may carry a full, fixed column set with NULLs for
+    unset fields, while attack_sample's events (Pydantic
+    model_dump(exclude_none=True)) never have those keys at all — a
+    differing key-set hashes differently even when every populated field
+    agrees, independent of any single field's type. Stringifying
+    everything also means no future field (not just the four originally
+    listed as numeric) can silently reintroduce this bug.
+    """
+    normalised = {
+        k: str(v) for k, v in event.items()
+        if v is not None and v != ""
+    }
+    serialised = json.dumps(normalised, sort_keys=True)
+    return hashlib.md5(serialised.encode()).hexdigest()
+
+
+def _normalise_for_display(event: dict) -> dict:
+    """
+    Normalise field values for feedback display only — drops empty/None
+    values and stringifies the rest, same treatment as _event_hash's
+    comparison logic. Purely cosmetic: prevents EventID (or any field)
+    displaying as a different type (str vs int) depending on whether the
+    event came from matched_events (sqlite3-reconstructed) or
+    unmatched_events (native attack_sample). Does not affect match/unmatch
+    classification, which is already computed correctly via _event_hash.
+    """
+    return {k: str(v) for k, v in event.items() if v is not None and v != ""}
 
 
 def _find_unmatched(
@@ -172,8 +206,8 @@ def _format_unmatched(unmatched_events: list[dict]) -> str:
     shown = unmatched_events[:cap]
     lines = []
     for i, event in enumerate(shown, 1):
-        parts = {k: event[k] for k in key_fields if event.get(
-            k) is not None and event.get(k) != ""}
+        normalised = _normalise_for_display(event)
+        parts = {k: normalised[k] for k in key_fields if k in normalised}
         lines.append(f"  [{i}] {parts}")
     if len(unmatched_events) > cap:
         lines.append(
@@ -197,8 +231,8 @@ def _format_matched(matched_events: list[dict]) -> str:
     shown = matched_events[:cap]
     lines = []
     for i, event in enumerate(shown, 1):
-        parts = {k: event[k] for k in key_fields if event.get(
-            k) is not None and event.get(k) != ""}
+        normalised = _normalise_for_display(event)
+        parts = {k: normalised[k] for k in key_fields if k in normalised}
         lines.append(f"  [{i}] {parts}")
     if len(matched_events) > cap:
         lines.append(

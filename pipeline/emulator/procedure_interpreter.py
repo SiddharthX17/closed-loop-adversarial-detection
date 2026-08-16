@@ -130,7 +130,7 @@ PRIMARY ACTION RULE:
 - Examples:
     Setup (skip): Copy-Item -Path cmd.exe -Destination payload.exe
     Primary (use): Start-Process payload.exe
-    Setup (skip): New-Item -ItemType Directory -Path C:\staging
+    Setup (skip): New-Item -ItemType Directory -Path C:\\staging
     Primary (use): Invoke-Mimikatz -DumpCreds
 
 MULTI-STEP FUSION — NEVER DO THIS:
@@ -157,7 +157,9 @@ steps inside it.
 
 Before finalizing: does CommandLine or ParentCommandLine contain recognizable content
 from more than one of the provided steps? If so, you have fused steps together — remove
-the extra content and describe only your single selected step.
+the extra content and describe only your single selected step. if any field implies a 
+different action, step, or binary identity than the rest of the event, revise it to 
+match — do not let two fields tell two different stories.
  
 NETWORK EVENT RULE:
 - When commands involve outbound network connections (Invoke-WebRequest, Invoke-RestMethod,
@@ -189,6 +191,7 @@ STRICT OUTPUT SCHEMA — follow exactly, no extra keys:
   "reason": "<brief explanation of what was extracted or why confidence is low>",
   "event_type": "process_creation" | "registry" | "network",
   "EventID": <integer>,
+  "selected_step": "<verbatim text of the single step you chose as primary, exactly as shown above — e.g. 'bitsadmin.exe /resume JobName'>",
   "fields": {
     "<SysmonFieldName>": "<extracted value>"
   }
@@ -214,6 +217,7 @@ _FALLBACK_RESULT = {
     "reason":     "Extraction failed — see interpreter log",
     "event_type": None,
     "EventID":    None,
+    "selected_step": None,
     "fields":     {},
 }
 
@@ -233,10 +237,52 @@ def get_drop_stats() -> dict:
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _strip_markdown(raw: str) -> str:
-    raw = re.sub(r"^```[a-zA-Z]*\n?", "", raw)
-    raw = re.sub(r"\n?```$", "", raw)
+def _extract_json(raw: str) -> str:
+    """
+    Extract a JSON object from raw LLM text that may contain preamble prose
+    before a fenced or bare JSON block.
+
+    Order of attempts:
+      1. A ```json ... ``` (or bare ``` ... ```) fence anywhere in the text.
+      2. First '{' to matching last '}' — fallback for unfenced output.
+      3. Original text, unchanged — lets the existing parse-error path
+         handle it exactly as before if neither pattern is found.
+    """
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", raw, re.DOTALL)
+    if fence_match:
+        return fence_match.group(1).strip()
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return raw[start:end + 1].strip()
+
     return raw.strip()
+
+
+def _ground_details(v: str, procedure_text: str) -> bool:
+    """
+    Fallback check for Details, tried only after the normal verbatim/
+    basename checks already failed. Handles the case where Details holds
+    a Sigma-convention-formatted registry value (e.g. 'DWORD (0x00000001)'
+    or 'QWORD (0x...)') that legitimately can never appear verbatim in
+    procedure_text, which states the raw command argument instead
+    (e.g. '/d 1'). Extracts the hex payload and checks whether its
+    decimal or hex form appears anywhere in the source text. Plain-string
+    Details values (e.g. a persistence payload path) never reach this —
+    they already ground normally via the existing verbatim/basename checks
+    above, same as any other field.
+    """
+    match = re.search(r"0x([0-9a-fA-F]+)", v)
+    if not match:
+        return False
+    hex_digits = match.group(1)
+    try:
+        decimal_value = str(int(hex_digits, 16))
+    except ValueError:
+        return False
+    text_lower = procedure_text.lower()
+    return decimal_value in text_lower or hex_digits.lower() in text_lower
 
 
 def _normalize(val):
@@ -277,6 +323,14 @@ def _ground_fields(
     grounded = {}
     text = procedure_text.lower()
 
+    hint_text = ""
+    if evasion_hints:
+        hint_text = " ".join(
+            str(hv).lower() for hv in evasion_hints.values()
+            if isinstance(hv, str)
+        )
+    combined_text = f"{text} {hint_text}"
+
     for k, v in fields.items():
 
         if not isinstance(v, str):
@@ -285,18 +339,18 @@ def _ground_fields(
 
         v_lower = v.lower()
 
-        # Check 1 — verbatim
-        if v_lower in text:
+        # Check 1 — verbatim (procedure_text + evasion_hints combined)
+        if v_lower in combined_text:
             grounded[k] = v
             continue
 
         # Check 2 — basename for path-like values
         basename = os.path.basename(v).lower()
-        if basename and basename != v_lower and basename in text:
+        if basename and basename != v_lower and basename in combined_text:
             grounded[k] = v
             continue
         basename_no_ext = os.path.splitext(basename)[0].lower()
-        if basename_no_ext and basename_no_ext != v_lower and basename_no_ext in text:
+        if basename_no_ext and basename_no_ext != v_lower and basename_no_ext in combined_text:
             grounded[k] = v
             continue
 
@@ -306,7 +360,7 @@ def _ground_fields(
                 t for t in v_lower.split()
                 if len(t) > 4  # skip short tokens like '-c', 'the'
             ]
-            matched = sum(1 for t in tokens if t in text)
+            matched = sum(1 for t in tokens if t in combined_text)
             if matched >= _PARTIAL_MATCH_MIN_TOKENS:
                 grounded[k] = v
                 continue
@@ -355,6 +409,14 @@ def _ground_fields(
         # Grounding would always drop them. Pass LLM output through and let
         # the attack_gate backstop any hallucinated values.
         if k in {"DestinationPort", "Protocol", "Initiated"}:
+            grounded[k] = v
+            continue
+
+        # Fallback for Details — only reached if the generic checks above
+        # (verbatim, basename, partial-token, evasion-hint trust) already
+        # failed. Covers Sigma-formatted numeric registry values that can't
+        # appear verbatim in procedure_text by design.
+        if k == "Details" and _ground_details(v, procedure_text):
             grounded[k] = v
             continue
 
@@ -414,25 +476,43 @@ def _validate_minimum_canonical_fields(event_type: str, fields: dict) -> bool:
 
 def interpret_procedure(
     cleaned_test: CleanedAtomicTest,
-    evasion_hints: dict | None = None,
+        evasion_hints: dict | None = None,
     required_event_type: str | None = None,
+    required_step: str | None = None,
 ) -> dict:
     """
     Send a CleanedAtomicTest to the LLM and return a structured extraction dict.
     Never raises — returns _FALLBACK_RESULT on any failure.
 
-    required_event_type: when set, this interpretation is a second (or later)
-    variant of a test already interpreted once in this same emulation cycle.
-    Forces the model to stay on the same event_type as that earlier variant —
-    without this, the NETWORK EVENT RULE's "choose either" license lets two
-    independent calls over the same test land on genuinely different event
-    types (e.g. one variant process_creation, another network), which is a
-    much more severe divergence than varying parent process or staging path.
+    required_step: when set, this interpretation is a second (or later) variant
+    of a test already interpreted once in this same emulation cycle. Forces the
+    model to interpret the SAME step already chosen for that earlier variant —
+    without this, each call independently re-derives "which step is primary"
+    via the PRIMARY ACTION RULE, and two calls over the same multi-step test
+    can reasonably land on different steps (e.g. one call picking an
+    installation step, another picking an execution step), producing two
+    events that don't actually describe the same underlying action.
+
+    required_event_type: same idea, one level broader — kept as an additional
+    safety net even when required_step is set, in case the model still frames
+    the same step as a different observable category.
     """
     evasion_block = ""
     if evasion_hints:
         evasion_block = EVASION_BLOCK.format(
             evasion_hints=json.dumps(evasion_hints, indent=2)
+        )
+
+    step_constraint = ""
+    if required_step:
+        step_constraint = (
+            f"\n\nThis is a second variant of a test already interpreted using "
+            f"this exact step: '{required_step}'. You MUST interpret that SAME "
+            f"step again — do not select a different one, even if the PRIMARY "
+            f"ACTION RULE's reasoning might otherwise suggest another step. "
+            f"Vary the execution context around this step (parent process, "
+            f"staging path, specific values) via the evasion hints, not the "
+            f"choice of which step to represent."
         )
 
     event_type_constraint = ""
@@ -450,20 +530,38 @@ def interpret_procedure(
 
     prompt = USER_PROMPT_TEMPLATE.format(
         formatted_input=cleaned_test.formatted_input,
-        evasion_block=evasion_block + event_type_constraint,
+        evasion_block=evasion_block + step_constraint + event_type_constraint,
     )
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             temperature=0,
-            system=SYSTEM_PROMPT,
+            system=[
+                {
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             messages=[{"role": "user", "content": prompt}]
         )
     except Exception as e:
         print(f"[interpret_procedure] API call failed: {e}")
         return dict(_FALLBACK_RESULT, reason=f"API call failed: {e}")
+
+    if _DEBUG:
+        usage = getattr(response, "usage", None)
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        if cache_write:
+            print(f"[interpret_procedure] Cache WRITE: {cache_write} tokens")
+        elif cache_read:
+            print(f"[interpret_procedure] Cache HIT: {cache_read} tokens")
+        else:
+            print("[interpret_procedure] Cache: no cache tokens this call "
+                  "(below threshold, or system block not identical to a prior call)")
 
     # Safely extract text across all content blocks
     raw = ""
@@ -476,8 +574,11 @@ def interpret_procedure(
         print("\n[DEBUG] Raw LLM output:")
         print(raw)
 
-    # Strip markdown fences if present
-    raw = _strip_markdown(raw)
+    # Extract JSON — handles preamble prose before a fenced or bare JSON
+    # block. Sonnet 4.6 sometimes reasons through step selection in prose
+    # before emitting JSON; the old start-anchored strip left that prose in
+    # place and json.loads failed on it instead of the JSON.
+    raw = _extract_json(raw)
 
     # Guard JSON parse
     try:
@@ -528,6 +629,15 @@ def build_log_event(
         print("[build_log_event] Dropped: missing or null EventID")
         return None
 
+    try:
+        event_id = int(interpretation["EventID"])
+    except (TypeError, ValueError):
+        print(
+            f"[build_log_event] Dropped: EventID not coercible to int: "
+            f"{interpretation.get('EventID')!r}"
+        )
+        return None
+
     ts = timestamp or datetime.now(timezone.utc).isoformat()
     event_type = interpretation.get("event_type")
     raw_fields = interpretation.get("fields", {})
@@ -539,7 +649,7 @@ def build_log_event(
         return None
 
     # 1b. EID 3 structural enrichment — populate Image/ParentImage from executor
-    if interpretation.get("EventID") == 3:
+    if event_id == 3:
         grounded_fields = _enrich_network_event(grounded_fields, executor_name)
 
     # 2. Sysmon minimum field validation
@@ -574,7 +684,7 @@ def build_log_event(
     # traffic is TCP; a UDP technique should be explicit in procedure_text.
     # Initiated: default to "true" for attacker-initiated connections when
     # absent — the procedure interpreter only generates outbound network events.
-    if interpretation.get("EventID") == 3:
+    if event_id == 3:
         proto = grounded_fields.get("Protocol", "")
         if str(proto).lower() not in {"tcp", "udp"}:
             grounded_fields["Protocol"] = "tcp"
@@ -586,7 +696,7 @@ def build_log_event(
             timestamp=ts,
             user=_resolve_user(elevation_required),
             host=_resolve_host(),
-            EventID=interpretation["EventID"],
+            EventID=event_id,
             event_type=event_type,
             **grounded_fields,
         )

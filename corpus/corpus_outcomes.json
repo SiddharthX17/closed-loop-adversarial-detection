@@ -3,17 +3,32 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_2d43b208-1119-4cdb-bf44-d400a6f53d39"
+      "singleton_8af420ec-3464-406e-aa32-0ff39808feab",
+      "singleton_37b9adf5-1251-44bc-97fe-42cc239603b5",
+      "singleton_e0ccd616-16f2-4203-af74-0fda2efd9835",
+      "singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9",
+      "singleton_5543fe68-119f-4334-8553-2c92a2d1ab1a"
     ],
     "archetype_tags": [
+      "certutil",
       "commandline",
-      "installer",
-      "parent_process"
+      "explorer",
+      "mshta",
+      "parent_process",
+      "powershell",
+      "registry",
+      "regsvr32",
+      "scheduled_task",
+      "script_host"
     ],
     "behavioral_intents": [
-      "Detect adversaries using PowerShell to register and immediately modify scheduled tasks with elevated privileges, often via MSI installers as a persistence or privilege escalation vector."
+      "Adversaries creating scheduled tasks via PowerShell cmdlets or script hosts to establish persistence or scheduled execution of malicious payloads.",
+      "Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download files from remote servers, typically as part of malware delivery or data exfiltration workflows.",
+      "Attacker persistence via registry Run/RunOnce keys pointing to application updaters (Teams, Google Update, VS Code, Slack) that execute on logon",
+      "Detect mshta.exe as a parent process executing shell commands through inline VBScript or JavaScript, which is a known technique for script-based process injection and code execution.",
+      "Detect the use of scripting hosts (PowerShell, cmd, wscript, mshta, regsvr32) with window-hiding or shell-object invocation parameters that are commonly used to execute code covertly."
     ],
-    "committed_at": 1781772226.6405857,
+    "committed_at": 1784961548.7227612,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,
@@ -23,21 +38,18 @@
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_abf62430-d14c-4519-9d75-25daec01a6a9",
-      "singleton_09a91ef1-5e25-4f77-ad55-38a652652c00"
+      "singleton_efb1170e-2737-4c5d-9c86-8d0dd3c8bd78",
+      "singleton_4da457f9-03de-41ff-824c-ef0cd1761275"
     ],
     "archetype_tags": [
       "commandline",
-      "mshta",
-      "parent_process",
-      "rundll32",
-      "script_host"
+      "mshta"
     ],
     "behavioral_intents": [
-      "Detect attackers using rdrleakdiag.exe with /fullmemdmp flag to dump LSASS process memory for credential extraction (T1003.001 - OS Credential Dumping).",
-      "Detect scheduled task engines or system loaders spawning WSH interpreters (cscript/wscript) to execute scripts from user-writable or temporary paths, a common lateral movement and persistence technique."
+      "",
+      "Detects BITS job lifecycle management operations (create, add file, resume, set notification, complete) which are used by attackers for stealthy background file transfer or persistence payload orchestration."
     ],
-    "committed_at": 1781601480.2558641,
+    "committed_at": 1784575790.4983869,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

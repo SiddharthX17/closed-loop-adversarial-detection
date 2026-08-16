@@ -1,0 +1,17 @@
+{
+  "techniques_attempted": 7,
+  "techniques_with_events": 7,
+  "tests_attempted": 144,
+  "tests_skipped_no_clean": 0,
+  "tests_with_unresolved_vars": 2,
+  "events_generated": 13,
+  "per_technique": {
+    "T1059.001": 2,
+    "T1036.005": 1,
+    "T1567.003": 2,
+    "T1218.007": 2,
+    "T1112": 2,
+    "T1546.001": 2,
+    "T1543.003": 2
+  }
+}

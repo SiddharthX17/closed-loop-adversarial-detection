@@ -3,15 +3,16 @@
 ![Regression Check](https://github.com/SiddharthX17/closed-loop-adversarial-detection/actions/workflows/regression.yml/badge.svg)
 
 A pipeline that attacks its own detection rules, finds what they miss, and writes new
-rules to close the gap — with a human only ever reviewing the final result, not
-building it.
+rules to close the gap — with a human only ever reviewing the final result.
 
 One part of the system emulates a real attacker technique and generates the log
 evidence it would produce. Another part checks whether the existing Sigma ruleset
 actually catches it. When it doesn't, two more stages work out why and write a
 candidate rule — which then has to survive being tested against that same attack
 evidence, a pile of ordinary non-malicious activity, and finally real telemetry from
-an independent source, before it's allowed anywhere near a pull request.
+an independent source, before it's presented for review as a pull request.
+
+Full detail on every stage is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## How it works
 
@@ -25,8 +26,6 @@ flowchart TD
     F -->|"if a rule validated"| G["Corpus stress-test<br/>tries to break it on real telemetry"]
     G -.->|"next iteration: mutate away<br/>from what just got caught"| A
 ```
-
-Full detail on every stage is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 **Built with:** Python · Anthropic API (Claude) · pySigma · sqlite3 · FastAPI ·
 Terraform · Google Cloud Run · GitHub Actions CI/CD

@@ -2,7 +2,7 @@
 
 [![Health Check](../../actions/workflows/health_check.yml/badge.svg)](../../actions/workflows/health_check.yml)
 ![Techniques Covered](https://img.shields.io/github/directory-file-count/SiddharthX17/closed-loop-adversarial-detection/rules/generated?type=dir&label=techniques%20covered)
-![Regression Check](https://github.com/SiddharthX17/closed-loop-adversarial-detection/actions/workflows/regression.yml/badge.svg)
+[![Regression Check](../../actions/workflows/regression.yml/badge.svg)](../../actions/workflows/regression.yml)
 
 Most teams measure detection coverage by counting rules. This system measures it by attacking them. 
 It runs an autonomous red team-to-blue team detection lifecycle through an eight-stage loop: emulating ATT&CK-aligned attacks, generating synthetic Sysmon logs from that emulation, and running a detection engine against the existing ruleset to identify the attacks and expose gaps. The surfaced gaps are analyzed and closed by generating rules which are validated and improved iteratively through feedback loops before being presented for review as pull requests.
@@ -12,13 +12,13 @@ The system runs the same eight-stage loop across multiple iterations:
 | Stage | Objective |
 |---|---|
 | 1. Attacker Agent | **Choose an evasion strategy.** Given an ATT&CK technique, reasons about how an adversary could execute it while sidestepping existing detection, producing intent for both a baseline attack and an evasion variant. |
-| 2. Emulator | **Turn attack intent into grounded telemetry.** Synthesizes realistic telemetry events grounded in real Atomic Red Team procedures |
+| 2. Emulator | **Turn attack intent into grounded telemetry.** Synthesizes realistic telemetry events grounded in real Atomic Red Team procedures. |
 | 3. Detection Layer | **Run the detection engine to identify coverage gaps.** Evaluates the generated telemetry against the existing ruleset and determines whether the attack is detected, exposing any coverage gap. |
 | 4. Detection Planner | **Generalize the gap into detection logic.** Works out durable detection invariants, relevant fields, and false-positive considerations from the observed behavior beyond just the event(s) that revealed it. |
-| 5. Defender Agent | **Translate detection guidance into a rule.** Generates a candidate Sigma rule from the planner's guidance, targeting the underlying behavior |
+| 5. Defender Agent | **Translate detection guidance into a rule.** Generates a candidate Sigma rule from the planner's guidance, targeting the underlying behavior. |
 | 6. Validation *(inside stage 5)* | **Prove the rule works before it leaves the loop.** Checks syntax, confirms the rule fires on the attack, and confirms it stays quiet on benign data; failures feed back into the Defender Agent until the candidate passes. |
 | 7. PR Creator | **Package the validated rule for review.** Opens a GitHub pull request with the rule and its supporting evidence, keeping deployment behind a human decision. |
-| 8. Corpus stress-test | **Challenge the rule with real noise.** Generates targeted benign activity on real infrastructure and stress tests the new rule against it in future regression tests |
+| 8. Corpus stress-test | **Challenge the rule with real noise.** Generates targeted benign activity on real infrastructure to stress tests the new rule. |
 
 The loop then repeats: whatever got caught this round informs how the attacker agent mutates its approach next round.
 
@@ -35,7 +35,7 @@ Every validated rule ships as a reviewable pull request with evidence and reason
 
 **Language & Validation:** Python 3.11 · Pydantic v2
 
-**AI:** Anthropic API Claude Sonnet 5 · Claude Haiku 4.5
+**AI:** Claude Sonnet 5 · Claude Haiku 4.5 (Anthropic APIs)
 
 **Detection Engine:** pySigma · pysigma-backend-sqlite · pysigma-pipeline-sysmon · SQLite
 

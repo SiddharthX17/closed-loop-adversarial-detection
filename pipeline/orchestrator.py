@@ -3,7 +3,7 @@ Coordinates all 7 pipeline stages:
   1. Attacker Agent  → structured campaign plan
   2. Emulator        → log stream per technique
   3. Detection Layer → per-technique match results
-  4 Detection Planner   → technique-level detection strategy (invariants, FP profile)
+  4. Detection Planner   → technique-level detection strategy (invariants, FP profile)
   5. Defender Agent  → candidate Sigma rules for gaps
   6. Validation      → schema linter + attack gate + noise gate (inside DefenderAgent)
   7. PR Creator      → opens GitHub PRs for validated rules

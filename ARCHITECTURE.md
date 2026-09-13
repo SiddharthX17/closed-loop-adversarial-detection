@@ -1,39 +1,54 @@
 # Architecture
 
-This system runs a autonomous loop from red team testing to blue team rule validation
-end to end. It emulates attacker behavior grounded in Atomic Red Team tests for 
-different MITRE ATT&CK techniques, generates synthetic Sysmon logs from that emulation, 
-evaluates them against a Sigma detection ruleset. It analyzes the gap where coverage is missing,
-writes and validates a rule which is opened as a pull request for a human reviewer.
+An autonomous detection engineering system that attacks its own detection rules, identifies gaps, generates and validates new detections, and iteratively improves through adversarial feedback, with the pipeline deployed as a cloud service.
+
+## Table of Contents
+
+- [1. System Overview](#1-system-overview)
+- [2. The Loop, Stage by Stage](#2-the-loop-stage-by-stage)
+  - [2.1 Attacker Agent](#21-attacker-agent)
+  - [2.2 Emulator](#22-emulator)
+  - [2.3 Detection Layer](#23-detection-layer)
+  - [2.4 Detection Planner](#24-detection-planner)
+  - [2.5 Defender Agent](#25-defender-agent)
+  - [2.6 Validation](#26-validation)
+  - [2.7 PR Creator](#27-pr-creator)
+  - [2.8 Corpus Stress-Test](#28-corpus-stress-test)
+- [3. Infrastructure](#3-infrastructure)
+  - [3.1 Deployment](#31-deployment)
+  - [3.2 FastAPI Service](#32-fastapi-service)
+  - [3.3 GitHub Actions](#33-github-actions)
+- [4. Known Limitations](#4-known-limitations)
 
 
 ## 1. System overview
 
 The system runs the same eight-stage loop across multiple iterations:
 
-| Stage | What it does |
+| Stage | Objective |
 |---|---|
-| 1. Attacker Agent | Picks a real Atomic Red Team test and generates a base variant and a plausible evasion variant |
-| 2. Emulator | Turns that test into realistic Sysmon log events |
-| 3. Detection Layer | Runs the existing Sigma ruleset against those events |
-| 4. Detection Planner *(gaps only)* | Works out what's actually detectable about the technique, beyond the one observed procedure |
-| 5. Defender Agent *(gaps only)* | Writes a candidate Sigma rule to close the gap |
-| 6. Validation *(inside stage 5)* | Checks the candidate rule's syntax, whether it fires on the attack, and whether it stays quiet on benign traffic |
-| 7. PR Creator | Opens a GitHub pull request for the validated rule |
-| 8. Corpus stress-test *(conditional)* | Tries to break the new rule against real, independently-generated Windows activity |
+| 1. Attacker Agent | **Choose an evasion strategy.** Given an ATT&CK technique, reasons about how an adversary could execute it while sidestepping existing detection, producing intent for both a baseline attack and an evasion variant. |
+| 2. Emulator | **Turn attack intent into grounded telemetry.** Synthesizes realistic telemetry events grounded in real Atomic Red Team procedures. |
+| 3. Detection Layer | **Run the detection engine to identify coverage gaps.** Evaluates the generated telemetry against the existing ruleset and determines whether the attack is detected, exposing any coverage gap. |
+| 4. Detection Planner | **Generalize the gap into detection logic.** Works out durable detection invariants, relevant fields, and false-positive considerations from the observed behavior beyond just the event(s) that revealed it. |
+| 5. Defender Agent | **Translate detection guidance into a rule.** Generates a candidate Sigma rule from the planner's guidance, targeting the underlying behavior. |
+| 6. Validation *(inside stage 5)* | **Prove the rule works before it leaves the loop.** Checks syntax, confirms the rule fires on the attack, and confirms it stays quiet on benign data; failures feed back into the Defender Agent until the candidate passes. |
+| 7. PR Creator | **Package the validated rule for review.** Opens a GitHub pull request with the rule and its supporting evidence, keeping deployment behind a human decision. |
+| 8. Corpus stress-test | **Challenge the rule with real noise.** Generates targeted benign activity on real infrastructure to stress tests the new rule. |
 
-The loop then repeats: whatever got caught this round informs how the attacker agent
-mutates its approach next round.
 
 ## 2. The loop, stage by stage
 
 Each stage outlines its input, how it works, why it exists, output and key features.
 
 ### 2.1 Attacker Agent — `pipeline/attacker/agent.py`, `prompts.py`
+
+#### Input:
 Consumes the technique ID(s) selected for this run (resolved by the orchestrator —
 either an explicit override or its own default from `config/techniques.yaml`), and,
 from iteration 2 onward, the previous iteration's per-technique detection results.
 
+#### Mechanism:
 An LLM (Haiku, temperature 0.2) is asked to propose a plausible evasion for that
 technique — explicitly steered toward changing the execution chain, binary, or
 context. On iteration 2+, it's additionally shown the exact Sysmon field values
@@ -43,6 +58,13 @@ base hint set and an *initial* guess at a second variant — the second one isn'
 final yet, it gets shown the real interpreted first event and revised again later,
 inside the emulator stage.
 
+#### Why this exists:
+This exists because a static, unchanging attack scenario stops testing anything
+meaningful after the first fix, so this stage reasons on how an adversary could execute a technique
+while sidestepping defenses, producing base-attack hints plus a distinct evasion-variant
+hint set for the Emulator to turn into real events.
+
+#### Output:
 Produces a campaign plan — technique plus evasion hints — consumed directly by the
 Emulator.
 
@@ -80,9 +102,12 @@ the execution approach.
 
 
 ### 2.2 Emulator — `pipeline/emulator/`
+
+#### Input:
 Consumes the campaign plan's evasion hints, plus the raw Atomic Red Team test
 definitions and MITRE metadata for that technique.
 
+#### Mechanism:
 Test selection and evasion-hint generation are two separate concerns: the emulator
 picks *which* Atomic Red Team test to actually run itself, using a weighted scoring
 system that favors interesting behavior (LOLBins, obfuscation, network/registry
@@ -98,10 +123,12 @@ action rather than two independently-imagined ones. If a test produces nothing
 usable, the emulator retries with a different candidate before giving up on that
 technique for this iteration.
 
+#### Why this exists:
 This exists because none of the downstream evaluation means anything if the "attack"
 data is just plausible-sounding fiction — every field has to be traceable to what a
 real attacker running this real test would actually produce.
 
+#### Output:
 Produces a stream of structured Sysmon-shaped log events per technique, consumed by
 the Detection Layer.
 
@@ -121,7 +148,7 @@ previously-seen tests and heavily penalizes tests that already produced a valida
 rule. Set `CLEAR_TEST_HISTORY=1` to wipe that file before a run.
 
 **Grounding layer** (`procedure_interpreter.py`, `_ground_fields`): the core
-anti-hallucination mechanism. every field value is accepted only if it 
+anti-hallucination mechanism. Every field value is accepted only if it 
 traces back to the actual Atomic test, checked in order: (1) verbatim match 
 against `procedure_text` combined with the attacker's `evasion_hints`,
 (2) basename match for path-like values, (3) partial-token match (≥2 tokens, each >4
@@ -154,7 +181,7 @@ EVENT RULE gives the model latitude to choose either a process-creation or a net
 event by default for network-capable techniques — the exact default that
 `required_event_type` (above) overrides for variant 2.
 
-**Zero-event fallback:** if a selected test produces zero events on both variants 
+**Zero-event fallback.** If a selected test produces zero events on both variants 
 (complete grounding failure, or the model correctly self-rejecting a test its evasion
 hints don't actually support), the emulator falls back through its candidate pool 
 (4 candidates total) until one succeeds or the pool is exhausted.
@@ -162,18 +189,23 @@ hints don't actually support), the emulator falls back through its candidate poo
 `run_emulator()` returns three values: `(log_stream, stats, history)`.
 
 ### 2.3 Detection Layer — `pipeline/detection/`
+
+#### Input:
 Consumes the emulated log stream and the existing Sigma ruleset, freshly synced from
 GitHub before the run starts.
 
+#### Mechanism:
 Every rule is converted to SQL and run against the events, loaded into an in-memory
-database Results are aggregated per technique into one of four states: full coverage 
+database. Results are aggregated per technique into one of four states: full coverage
 (every event caught), partial (some but not all), missed (none), or no_rules 
 (nothing exists for this technique yet).
 
+#### Why this exists:
 This is the actual measurement the whole system exists to produce. Everything before
 it generates the test case; everything after it only runs at all if this stage finds
 a gap.
 
+#### Output:
 Produces per-technique coverage verdicts, plus — for gap cases — the specific missed
 events that the Planner and Defender both need to see.
 
@@ -195,17 +227,23 @@ deduplicated by content hash before being handed downstream, so the defender isn
 shown the same event twice under two different rule IDs.
 
 ### 2.4 Detection Planner — `pipeline/detection_planner/`
+
+#### Input:
 Consumes a GapContext — the technique's metadata plus up to five missed events —
 only for techniques the Detection Layer just flagged as a gap.
 
-An LLM (Sonnet, adaptive thinking) works through a fixed six-phase framework
-and translate all of that into concrete rule-design guidance, at the level 
-of required/supporting/negative conditions — not Sigma syntax, which is left 
-to the Defender.
+#### Mechanism:
+An LLM (Sonnet, adaptive thinking) works through a fixed six-phase framework —
+from establishing the technique's mechanical objective through to producing
+concrete rule-design guidance (detailed under Features below) — expressed at
+the level of required/supporting/negative conditions, not Sigma syntax, which
+is left to the Defender.
 
+#### Why this exists:
 This exists because an LLM asked to "write a rule that catches these three events"
 will overfit to exactly those three events.
 
+#### Output:
 Produces a DetectionStrategy, consumed directly by the Defender.
 
 #### Features:
@@ -244,18 +282,23 @@ is additive: on any LLM or parse failure it returns `None`, and the defender fal
 back to its non-enriched prompt path.
 
 ### 2.5 Defender Agent — `pipeline/defender/agent.py`, `prompts.py`
+
+#### Input:
 Consumes the same GapContext, the Planner's strategy if it's available, and
 summarized existing rules for the technique.
 
+#### Mechanism:
 An LLM (Sonnet) produces a candidate rule as schema-constrained JSON.
 Deterministic metadata (ID, date, status, the MITRE reference URL) is filled in by
 code afterward, not generated. On a validation failure, it retries with the specific
 gate feedback — up to 2 attempts normally, 3 if the failure was a gate failure
 specifically rather than a schema-lint failure.
 
+#### Why this exists:
 This is the stage actually accountable for what ships — the Planner's guidance shapes
 it, but the candidate still has to survive validation regardless of how it got there.
 
+#### Output:
 Produces a candidate Sigma rule, handed to validation within this same retry loop.
 
 #### Features:
@@ -302,12 +345,15 @@ whether or not the planner's enriched strategy is present:
 The retry budget is not flat: `MAX_RETRIES = 2` by default, but
 `MAX_RETRIES_GATE_FAILURE = 3` when a retry is triggered specifically by
 `attack_gate` or `noise_gate` failing rather than `schema_linter` — a lint failure
-indicates a prompt-quality problem, not something more attempts fixes; a gate failure
+indicates a prompt-quality problem, not something more attempts would fix; a gate failure
 on an otherwise sound rule is more plausibly one specific detail away from passing.
 
 ### 2.6 Validation — `pipeline/validation/`
+
+#### Input:
 Consumes a candidate rule, the attack sample, and the benign corpus.
 
+#### Mechanism:
 Three gates run in sequence, all required to pass. The schema linter checks every
 field the rule actually references against the real log schema. The attack gate 
 runs the rule against the real attack sample and requires every single event to match.
@@ -316,9 +362,11 @@ and requires the false-positive rate to stay under 1%. Any failure returns
 specific, structured feedback — not just pass/fail — that goes straight into the
 Defender's next retry attempt.
 
+#### Why this exists:
 This exists because an LLM-authored rule isn't trustworthy by default. This is the
 actual boundary between "the model produced something" and "a human ever sees it."
 
+#### Output:
 Produces a pass/fail verdict; only a pass proceeds to PR creation.
 
 #### Features:
@@ -346,21 +394,26 @@ Three gates, sequential, all must pass:
 
 - **`noise_gate.py`** — runs the candidate against the benign corpus, asserts the
   false-positive rate stays under threshold (default 1%). Corpus subdirectory
-  selection is driven by the EventIDs actually present in the attack sample.
+  selection is driven by the EventIDs actually present in the attack sample. A
   process-creation rule only gets tested against the `process/` corpus, supplemented by
   `benign_generator`'s synthetic events for corpus depth.
 
 ### 2.7 PR Creator — `pipeline/github/pr_creator.py`
+
+#### Input:
 Consumes a validated rule, its evidence, and the reasoning behind it.
 
+#### Mechanism:
 Opens or updates a pull request via the GitHub API directly. A regression 
 fixture is also written from the attack sample, which is what every future
 rule change gets tested against in CI.
 
+#### Why this exists:
 This exists because the entire premise of the system is that a human reviews the
 final output rather than anything shipping unsupervised — this stage is what actually
 creates that review surface, evidence attached.
 
+#### Output:
 Produces a GitHub pull request, and a regression fixture that closes a separate,
 longer-running loop.
 
@@ -378,7 +431,7 @@ removes them via a dedicated commit.
 
 If an `attack_sample` is supplied, `create_pr()` also writes or updates a regression
 fixture at `tests/fixtures/regression/{rule_filename_stem}/attack_sample.jsonl`, as a
-separate additive commit — this is what `regression.yml` (§4) later runs against on
+separate additive commit — this is what `regression.yml` (§3.3) later runs against on
 every future PR touching `rules/`.
 
 A companion module, `rules_sync.py`, handles the read side this creates: since
@@ -389,19 +442,24 @@ file costs nothing, no extra API call, no rewrite — and pulls down anything th
 actually different. A sync failure logs and continues rather than aborting the run.
 
 ### 2.8 Corpus stress-test — `pipeline/corpus/`
+
+#### Input:
 Consumes whatever rules validated during this iteration — only runs at all if there's
 at least one.
 
+#### Mechanism:
 An LLM generates a few distinct, realistic benign activity scripts specifically 
 designed to exercise each rule's detection logic from the legitimate side, and 
-that script is pushed to trigger a real GitHub Actions Windows runner — actually 
+those scripts are pushed to trigger a real GitHub Actions Windows runner — actually
 executing PowerShell and producing real telemetry, not synthetic LLM output. 
 
+#### Why this exists:
 This exists because everything up to this point — even most of the benign corpus —
 has only ever been tested against data generated by the same system that wrote the
 rule. This is the one point where a rule meets something genuinely independent of the
 system being evaluated.
 
+#### Output:
 Produces real telemetry committed into the benign corpus for future noise-gate runs,
 and an outcome record the next iteration checks back on.
 
@@ -425,7 +483,7 @@ detection logic from the *legitimate* side — the prompt explicitly frames this
 naturally do that produces these event types as a side effect," not "how do I make
 attacker behavior look benign," with concrete guidance toward realistic paths and tool
 usage. `pusher.py` commits the generated script and a workflow file to a branch and 
-triggers it via `workflow_dispatch`; the static `corpus_runner.yml` workflow (§4) 
+triggers it via `workflow_dispatch`; the static `corpus_runner.yml` workflow (§3.3) 
 is what actually executes it and commits the resulting logs back.
 
 The orchestrator does not wait for that GitHub Actions run to finish — it's
@@ -459,6 +517,41 @@ two secrets above: `PIPELINE_RUN_SECRET` gates the one cost-incurring endpoint;
 `PIPELINE_VIEWER_SECRET` gates the two read-only endpoints. `/health` returning `ok`
 means the process is alive and responding — not a claim about recent run success or
 detection correctness.
+
+#### Trigger a run
+
+```bash
+curl -X POST https://<cloud-run-url>/run \
+  -H "X-Pipeline-Run-Secret: <your run secret>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "technique_ids": ["T1059.001"],
+    "max_iterations": 2
+  }'
+```
+
+Omit `technique_ids` to run whatever's currently configured as default.
+`max_iterations` is 1 to 3. Returns immediately (HTTP 202) with a `run_id` — the
+pipeline runs in the background, one run at a time. A 409 means a run is already in
+progress.
+
+
+```bash
+curl https://<cloud-run-url>/results/<run_id> \
+  -H "X-Pipeline-Viewer-Secret: <your viewer secret>"
+```
+
+`status` is `"running"`, `"completed"`, or `"failed"`. Once completed, this includes
+per-technique coverage, any PR URLs opened, and per-iteration detail. Results persist
+across container restarts.
+
+
+```bash
+curl https://<cloud-run-url>/health \
+  -H "X-Pipeline-Viewer-Secret: <your viewer secret>"
+```
+
+`status: "ok"` means the service is alive and responding.
 
 ### 3.3 GitHub Actions
 
@@ -526,6 +619,5 @@ generated script, commits the resulting logs, uninstalls Sysmon.
   logs and rules being produced despite multiple checks, grounding and prompt nudges.
   A human in the loop to review the final artifact does mitigate this to an extent.
 
-- **Emulator realism, benign corpus quality, and FP/precision threshold calibration
-  are explicit human-judgment calls**, not something the system is designed to
-  self-certify.
+- **Emulator realism, benign corpus quality, and FP/precision threshold calibration are explicit human-judgment calls**,
+  not something the system is designed to self-certify.

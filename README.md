@@ -1,45 +1,59 @@
 # closed-loop-adversarial-detection
 
-![Regression Check](https://github.com/SiddharthX17/closed-loop-adversarial-detection/actions/workflows/regression.yml/badge.svg)
+[![Health Check](../../actions/workflows/health_check.yml/badge.svg)](../../actions/workflows/health_check.yml)
+![Techniques Covered](https://img.shields.io/github/directory-file-count/SiddharthX17/closed-loop-adversarial-detection/rules/generated?type=dir&label=techniques%20covered)
+[![Regression Check](../../actions/workflows/regression.yml/badge.svg)](../../actions/workflows/regression.yml)
 
-A pipeline that attacks its own detection rules, finds what they miss, and writes new
-rules to close the gap — with a human only ever reviewing the final result.
+Most teams measure detection coverage by counting rules. This system measures it by attacking them. 
+It runs an autonomous red team-to-blue team detection lifecycle through an eight-stage loop: emulating ATT&CK-aligned attacks, generating synthetic Sysmon logs from that emulation, and running a detection engine against the existing ruleset to identify the attacks and expose gaps. The surfaced gaps are analyzed and closed by generating rules which are validated and improved iteratively through feedback loops before being presented for review as pull requests.
 
-One part of the system emulates a real attacker technique and generates the log
-evidence it would produce. Another part checks whether the existing Sigma ruleset
-actually catches it. When it doesn't, two more stages work out why and write a
-candidate rule — which then has to survive being tested against that same attack
-evidence, a pile of ordinary non-malicious activity, and finally real telemetry from
-an independent source, before it's presented for review as a pull request.
+The system runs the same eight-stage loop across multiple iterations:
+
+| Stage | Objective |
+|---|---|
+| 1. Attacker Agent | **Choose an evasion strategy.** Given an ATT&CK technique, reasons about how an adversary could execute it while sidestepping existing detection, producing intent for both a baseline attack and an evasion variant. |
+| 2. Emulator | **Turn attack intent into grounded telemetry.** Synthesizes realistic telemetry events grounded in real Atomic Red Team procedures. |
+| 3. Detection Layer | **Run the detection engine to identify coverage gaps.** Evaluates the generated telemetry against the existing ruleset and determines whether the attack is detected, exposing any coverage gap. |
+| 4. Detection Planner | **Generalize the gap into detection logic.** Works out durable detection invariants, relevant fields, and false-positive considerations from the observed behavior beyond just the event(s) that revealed it. |
+| 5. Defender Agent | **Translate detection guidance into a rule.** Generates a candidate Sigma rule from the planner's guidance, targeting the underlying behavior. |
+| 6. Validation *(inside stage 5)* | **Prove the rule works before it leaves the loop.** Checks syntax, confirms the rule fires on the attack, and confirms it stays quiet on benign data; failures feed back into the Defender Agent until the candidate passes. |
+| 7. PR Creator | **Package the validated rule for review.** Opens a GitHub pull request with the rule and its supporting evidence, keeping deployment behind a human decision. |
+| 8. Corpus stress-test | **Challenge the rule with real noise.** Generates targeted benign activity on real infrastructure to stress tests the new rule. |
+
+The loop then repeats: whatever got caught this round informs how the attacker agent mutates its approach next round.
 
 Full detail on every stage is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-## How it works
+## Results
 
-```mermaid
-flowchart TD
-    A["Attacker Agent<br/>selects a real Atomic Red Team test<br/>+ generates an evasion variant"] --> B["Emulator<br/>turns it into realistic Sysmon events"]
-    B --> C["Detection Layer<br/>runs the existing Sigma ruleset"]
-    C -->|"gap only"| D["Detection Planner<br/>what's actually detectable here?"]
-    D --> E["Defender Agent<br/>writes + validates a candidate rule<br/>(schema · attack · noise gates)"]
-    E --> F["PR Creator<br/>opens a GitHub pull request"]
-    F -->|"if a rule validated"| G["Corpus stress-test<br/>tries to break it on real telemetry"]
-    G -.->|"next iteration: mutate away<br/>from what just got caught"| A
-```
+Every validated rule ships as a reviewable pull request with evidence and reasoning attached. The rules that were reviewed and approved for deployment can be found in:
 
-**Built with:** Python · Anthropic API (Claude) · pySigma · sqlite3 · FastAPI ·
-Terraform · Google Cloud Run · GitHub Actions CI/CD
+- **Generated rules:** [`rules/generated/`](../../tree/main/rules/generated)
+- **Merged rule PRs:** [search `is:pr is:merged label:detection-rule`](../../pulls?q=is%3Apr+is%3Amerged+label%3Adetection-rule)
 
-## Running it
+## Built With
+
+**Language & Validation:** Python 3.11 · Pydantic v2
+
+**AI:** Claude Sonnet 5 · Claude Haiku 4.5 (Anthropic APIs)
+
+**Detection Engine:** pySigma · pysigma-backend-sqlite · pysigma-pipeline-sysmon · SQLite
+
+**Grounding Data:** Atomic Red Team · MITRE ATT&CK (STIX) · SigmaHQ
+
+**API Layer:** FastAPI
+
+**Infrastructure:** Google Cloud Run v2 · GCP Secret Manager · GCP Artifact Registry · Terraform · Docker
+
+**CI/CD:** GitHub Actions · PyGithub
+
+
+## Quick Start
 
 The pipeline runs live on Cloud Run, gated behind a shared secret. 
 If you want to actually trigger a run please ask for access.
 
-**Getting a secret:** open an issue, or reach out directly, and ask for read (viewer)
-or run access. Viewer access only unlocks read-only status/results endpoints. Run
-access actually invokes the LLM pipeline and can open real pull requests against this
-repo, so it's shared more selectively.
-
+**Getting a secret:** open an issue, or reach out directly.
 
 ### Trigger a run
 
@@ -53,40 +67,20 @@ curl -X POST https://<cloud-run-url>/run \
   }'
 ```
 
-Omit `technique_ids` to run whatever's currently configured as default.
-`max_iterations` is 1 to 3. Returns immediately (HTTP 202) with a `run_id` — the
-pipeline runs in the background, one run at a time. A 409 means a run is already in
-progress.
+`technique_ids` are MITRE ATT&CK technique IDs.
+`max_iterations` is 1 to 3. 
 
-### Check on it
+Returns immediately (HTTP 202) with a `run_id`
+
 
 ```bash
 curl https://<cloud-run-url>/results/<run_id> \
   -H "X-Pipeline-Viewer-Secret: <your viewer secret>"
 ```
 
-`status` is `"running"`, `"completed"`, or `"failed"`. Once completed, this includes
-per-technique coverage, any PR URLs opened, and per-iteration detail. Results persist
-across container restarts.
+Once completed, this includes per-technique coverage, any PR URLs opened, and per-iteration detail.
 
-### Quick status check
-
-```bash
-curl https://<cloud-run-url>/health \
-  -H "X-Pipeline-Viewer-Secret: <your viewer secret>"
-```
-
-`status: "ok"` means the service is alive and responding — not a claim that the last
-run succeeded or that detection logic is currently sound.
-
-## Documentation
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — full technical reference.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). A subset of the rules in `rules/` are sourced from or
-adapted from [SigmaHQ](https://github.com/SigmaHQ/sigma), which is separately
-licensed under the [Detection Rule License (DRL) 1.1](https://github.com/SigmaHQ/Detection-Rule-License) —
-those files retain their original `author`/`references` fields as attribution, per
-that license's own terms.
+MIT, see [`LICENSE`](LICENSE).

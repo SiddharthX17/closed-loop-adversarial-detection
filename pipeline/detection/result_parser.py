@@ -102,7 +102,10 @@ class DetectionResult:
 
     @property
     def gap(self) -> bool:
-        """True if any attack events were not caught — includes partial coverage."""
+        """True if this technique has rules but none fired at all. Does NOT capture
+        partial coverage (covered, but not every event matched) — that's computed
+        separately in orchestrator.py's coverage_status logic. Use this only as a
+        "nothing fired" signal, not a full coverage check."""
         if self.total_rules == 0:
             return False
         if not self.covered:

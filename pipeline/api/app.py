@@ -22,8 +22,6 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-# ADD right after that line:
-
 # ---------------------------------------------------------------------------
 # Auth — two separate shared secrets, different trust tiers.
 # PIPELINE_RUN_SECRET gates the cost-incurring action (/run) specifically.
@@ -34,12 +32,6 @@ from pydantic import BaseModel, Field
 
 def require_run_secret(x_pipeline_run_secret: str = Header(default="")) -> None:
     expected = os.getenv("PIPELINE_RUN_SECRET", "")
-
-    print(
-        f"[AUTH] expected_len={len(expected)} "
-        f"received_len={len(x_pipeline_run_secret)} "
-        f"match={expected == x_pipeline_run_secret}"
-    )
 
     if not expected or x_pipeline_run_secret != expected:
         raise HTTPException(
@@ -52,9 +44,6 @@ def require_viewer_secret(x_pipeline_viewer_secret: str = Header(default="")) ->
         raise HTTPException(
             status_code=401, detail="Invalid or missing viewer secret")
 
-
-# NOTE: Orchestrator constructor signature must match after the orchestrator refactor.
-# Expected: Orchestrator(technique_ids: list[str] | None, max_iterations: int)
 
 app = FastAPI(
     title="Closed-Loop Adversarial Detection Pipeline",
@@ -133,7 +122,6 @@ def _execute_pipeline(
     config), the run is marked failed immediately — no silent hang.
     """
     try:
-        # VERIFY: constructor args must match orchestrator.py after refactor
         orchestrator = Orchestrator(
             technique_ids=technique_ids,
             max_iterations=max_iterations,

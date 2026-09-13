@@ -11,30 +11,6 @@ from pipeline.data.atomic_cleaner import CleanedAtomicTest
 load_dotenv()
 client = anthropic.Anthropic()
 
-# ─── Canonical schema (RESERVED — not used in current build_log_event flow) ──
-# These are kept for future pipeline stages that need normalised field names.
-# Do NOT use in LogEvent construction — LogEvent expects Sysmon field names.
-
-SIGMA_TO_CANONICAL = {
-    "Image":               "process_name",
-    "CommandLine":         "command_line",
-    "ParentImage":         "parent_process",
-    "TargetObject":        "registry_path",
-    "DestinationIp":       "network_destination",
-    "DestinationHostname": "network_destination",
-}
-
-CANONICAL_EVENT_FIELDS = {
-    "process_creation": {"process_name", "command_line", "parent_process"},
-    "registry":         {"registry_path"},
-    "network":          {"network_destination"},
-}
-
-MIN_CANONICAL_FIELDS = {
-    "process_creation": {"process_name", "command_line"},
-    "registry":         {"registry_path"},
-    "network":          {"network_destination"},
-}
 
 _LOW_PRIV_USERS = [
     "CORP\\jdoe", "CORP\\asmith", "CORP\\bwilliams",
@@ -285,13 +261,6 @@ def _ground_details(v: str, procedure_text: str) -> bool:
     return decimal_value in text_lower or hex_digits.lower() in text_lower
 
 
-def _normalize(val):
-    # Only normalizing strings — other types pass through intentionally
-    if isinstance(val, str):
-        return val.strip()
-    return val
-
-
 def _resolve_user(elevation_required: bool) -> str:
     """
     Return a realistic user context for the emulated event.
@@ -445,31 +414,6 @@ def _validate_minimum_sysmon_fields(event_type: str, fields: dict) -> bool:
         return bool(spec["required_any"] & keys)
 
     return True
-
-
-# ─── Canonical helpers (reserved for future pipeline stage) ───────────────────
-
-def _map_to_canonical(fields: dict) -> dict:
-    mapped = {}
-    for k, v in fields.items():
-        canonical = SIGMA_TO_CANONICAL.get(k)
-        if canonical:
-            if canonical == "network_destination":
-                if "network_destination" not in mapped:
-                    mapped["network_destination"] = _normalize(v)
-            else:
-                mapped[canonical] = _normalize(v)
-    return mapped
-
-
-def _enforce_canonical_constraints(event_type: str, fields: dict) -> dict:
-    allowed = CANONICAL_EVENT_FIELDS.get(event_type, set())
-    return {k: v for k, v in fields.items() if k in allowed}
-
-
-def _validate_minimum_canonical_fields(event_type: str, fields: dict) -> bool:
-    required = MIN_CANONICAL_FIELDS.get(event_type, set())
-    return required.issubset(set(fields.keys()))
 
 
 # ─── Core functions ───────────────────────────────────────────────────────────

@@ -30,7 +30,7 @@ from typing import Optional
 from pipeline.attacker.agent import AttackerAgent, extract_emulator_inputs, CampaignPlan
 from pipeline.emulator.emulator import run_emulator
 from pipeline.detection.engine import DetectionEngine
-from pipeline.detection.result_parser import parse_results, get_gaps, get_covered
+from pipeline.detection.result_parser import parse_results
 from pipeline.defender.agent import DefenderAgent, GapContext, find_existing_rule_paths
 from pipeline.detection_planner.planner import DetectionPlanner
 from pipeline.github.pr_creator import PRCreator, PRResult

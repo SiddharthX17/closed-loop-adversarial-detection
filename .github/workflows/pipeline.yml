@@ -1,5 +1,11 @@
 name: Scheduled Pipeline Run
 
+# Read-only: this workflow only checks out the repo and calls the live
+# Cloud Run endpoint over HTTP. It never writes back to the repository
+# (PR creation happens inside the pipeline service itself, not here).
+permissions:
+  contents: read
+
 # Manual trigger is live now. The cron schedule is intentionally commented
 # out — no automatic runs until explicitly enabled. To turn it on later,
 # uncomment the schedule block below; the cron string is the only thing
@@ -28,14 +34,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Verify secrets exist
-        env:
-          RUN_SECRET: ${{ secrets.PIPELINE_RUN_SECRET }}
-          VIEWER_SECRET: ${{ secrets.PIPELINE_VIEWER_SECRET }}
-        run: |
-          echo "RUN_SECRET length: ${#RUN_SECRET}"
-          echo "VIEWER_SECRET length: ${#VIEWER_SECRET}"
             
       - name: Trigger pipeline run
         id: trigger

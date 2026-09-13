@@ -1,0 +1,28 @@
+title: "BITS LOLBin Abuse via desktopimgdownldr.exe LockScreenURL"
+id: 5d770769-75c9-4b62-af7f-825351746d5d
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+      Image|endswith: '\desktopimgdownldr.exe'
+    selection_switch:
+      CommandLine|contains: '/lockscreenurl'
+    selection_payload_ext:
+      CommandLine|re: '(?i)/lockscreenurl:\S+\.(exe|dll|ps1|bat|cmd|scr|vbs|js|hta|jar|msi)(\s|$|\?)'
+    filter_internal_image:
+      CommandLine|re: '(?i)/lockscreenurl:\S+\.(jpg|jpeg|png|bmp|gif)(\s|$|\?)'
+    condition: (selection_img and selection_switch) and (selection_payload_ext or not filter_internal_image)
+falsepositives:
+    - "Legitimate enterprise lockscreen/wallpaper customization via GPO or MDM/Intune that invokes desktopimgdownldr.exe with /lockscreenurl pointing to an internal content distribution host and an image file extension (.jpg/.png/.bmp) — this rule does not exempt based on hostname allowlist since no internal host list was provided, so any internal image-URL invocation without a recognized image extension in the path may still alert; tune with a hostname allowlist if internal deployments are common."
+    - "IT-driven bulk desktop branding deployment scripts wrapping desktopimgdownldr.exe in cmd.exe or PowerShell — parent process is not used as an exemption basis here since it is attacker-controllable, so legitimate branding scripts using non-standard or missing file extensions in the URL path may still trigger."
+    - "Any legitimate use of desktopimgdownldr.exe /lockscreenurl referencing a URL without a recognizable file extension (e.g., a dynamic content endpoint) will match the payload-extension branch's negation and could still be flagged depending on the filter_internal_image match."
+level: high

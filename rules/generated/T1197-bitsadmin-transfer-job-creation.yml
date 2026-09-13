@@ -1,0 +1,29 @@
+title: "T1197-BITSAdmin Transfer Job Creation"
+id: c1ebff9d-270e-4d2a-a779-ad6005fa416a
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      Image|endswith: '\bitsadmin.exe'
+    selection_switches:
+      CommandLine|contains: '/transfer'
+    selection_download:
+      CommandLine|contains:
+        - '/Download'
+        - '/addfile'
+    condition: selection_image and selection_switches and selection_download
+falsepositives:
+    - "Legitimate administrative or internal software distribution scripts invoking bitsadmin.exe /transfer /Download for patch or content delivery to internal servers — review the destination URL and file path to distinguish from attacker use of external/non-corporate download sources"
+    - "Software updaters or deployment tooling that shell out to bitsadmin for legacy compatibility (bitsadmin is deprecated but still present and occasionally used by internal tooling)"
+    - "No allowlist of internal URLs or destination paths is encoded in this rule since only two host-limited samples were available; analysts should triage each hit by checking whether the source URL is internal/corporate and whether the destination path/extension is executable or script-based landing in a user-writable directory (%temp%, Downloads, AppData) as a strong maliciousness signal"
+    - "PowerShell Start-BitsTransfer cmdlets or direct COM IBackgroundCopyManager API usage are not covered by this rule since they do not invoke bitsadmin.exe and require separate detection logic"
+level: medium

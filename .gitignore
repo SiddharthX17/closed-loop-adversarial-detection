@@ -14,4 +14,5 @@ terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.backup
 terraform/*.tfvars
-data/enterprise-attack.json
+data/mitre/enterprise-attack.json
+data/atomic-red-team/

@@ -22,7 +22,6 @@
     "T1003.002-credential-hive-access-via-volume-shadow-copy-globalroot-device-path.yml": true,
     "T1003.002-renamed-esentutl-exe-execution-indicating-potential-sam-database-access-via-vss.yml": true,
     "T1036.005-masqueraded-windows-system-binary-executing-from-non-canonical-path.yml": true,
-    "T1036.005-masquerading-binary-named-or-staged-as-system-process-via-scripting-host.yml": true,
     "T1036.005-renamed-windows-system-binary-detected-via-originalfilename-mismatch.yml": true,
     "T1036.005-suspicious-executable-running-from-user-writable-path-spawned-by-svchost.yml": true,
     "T1036.005-system-binary-masquerading-via-execution-from-non-standard-path.yml": true,

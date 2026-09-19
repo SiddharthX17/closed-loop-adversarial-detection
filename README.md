@@ -29,7 +29,7 @@ Full detail on every stage is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 Every validated rule ships as a reviewable pull request with evidence and reasoning attached. The rules that were reviewed and approved for deployment can be found in:
 
 - **Generated rules:** [`rules/generated/`](../../tree/main/rules/generated)
-- **Merged rule PRs:** [search `is:pr is:merged label:detection-rule`](../../pulls?q=is%3Apr+is%3Amerged+label%3Adetection-rule)
+- **Merged rule PRs:** [search `is:pr is:merged label:automated`](../../pulls?q=is%3Apr+is%3Amerged+label%3Aautomated)
 
 ## Built With
 
@@ -83,4 +83,4 @@ Once completed, this includes per-technique coverage, any PR URLs opened, and pe
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE).
+MIT, see [`LICENSE`](LICENSE.txt).

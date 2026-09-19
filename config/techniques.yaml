@@ -6,13 +6,13 @@
 techniques:
   #- T1059.001 # Command and Scripting Interpreter: PowerShell
   
-  - T1053.005 # Scheduled Task/Job: Scheduled Task
+  #- T1053.005 # Scheduled Task/Job: Scheduled Task
 
   #- T1036.005 # Masquerading: Match Legitimate Resource Name or Location
 
-  #- T1003.001 # OS Credential Dumping: LSASS Memory
+  - T1003.001 # OS Credential Dumping: LSASS Memory
 
-  - T1567.003 # Exfiltration Over Web Service: Exfiltration to Text Storage Sites
+  #- T1567.003 # Exfiltration Over Web Service: Exfiltration to Text Storage Sites
 
   #- T1003.002
 
@@ -28,10 +28,14 @@ techniques:
 
   #- T1003.002
 
-  - T1105
+  #- T1105
 
-  - T1547.001
+  #- T1547.001
 
   - T1047
 
-  - T1564.003
+  #- T1564.003
+
+  - T1485
+
+  - T1486

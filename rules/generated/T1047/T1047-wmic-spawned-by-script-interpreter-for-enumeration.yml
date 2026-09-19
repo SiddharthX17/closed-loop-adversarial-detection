@@ -1,0 +1,36 @@
+title: "WMIC Spawned by Script Interpreter for Enumeration"
+id: 832dd777-3c30-4992-88fc-bfb5f7ceea83
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1047/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-19
+tags:
+    - attack.execution
+    - attack.t1047
+    - attack.discovery
+    - attack.t1059
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+        Image|endswith: '\wbem\wmic.exe'
+    selection_parent:
+        ParentImage|endswith:
+            - '\mshta.exe'
+            - '\wscript.exe'
+            - '\cscript.exe'
+            - '\powershell.exe'
+            - '\powershell_ise.exe'
+    filter_known_scripts:
+        ParentCommandLine|contains:
+            - '\logonscripts\'
+            - 'C:\Windows\System32\GroupPolicy\'
+    condition: selection_image and selection_parent and not filter_known_scripts
+falsepositives:
+    - "Legitimate scripted logon or administrative tasks that invoke wmic.exe from wscript.exe/cscript.exe when scripts are staged on a verified, version-controlled deployment share (filtered by script path, not directory keyword)"
+    - "Internal HTA-based administrative tools that legitimately shell out to wmic.exe via mshta.exe — should be exempted only by the specific signed .hta file path or hash, not covered generically here"
+    - "PowerShell-based inventory or asset-management scripts that call wmic.exe for host/user enumeration as part of legitimate IT operations"
+    - "RMM or endpoint management agents that wrap WMIC calls inside script interpreters for inventory collection — should be allowlisted by their own Image/OriginalFileName if observed causing noise"
+level: high

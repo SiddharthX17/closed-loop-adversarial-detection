@@ -31,20 +31,19 @@ COPY config/    config/
 COPY rules/     rules/
 COPY corpus/    corpus/
 
-# MITRE STIX bundle — metadata only, small file, no trimming needed
-COPY data/mitre/ data/mitre/
+# MITRE STIX bundle — metadata only. Fetched at build time instead of
+# vendored in git (was 44MB, stripped from history 2026-09). Source is
+# MITRE's own attack-stix-data repo. Uses stdlib urllib, not curl --
+# python:3.11-slim doesn't ship curl and this avoids adding it.
+RUN mkdir -p data/mitre && \
+    python -c "import urllib.request; urllib.request.urlretrieve('https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json', 'data/mitre/enterprise-attack.json')"
 
-# Atomic Red Team — ONLY the 5 in-scope technique YAML files, not the full
-# repo. We never execute these tests, just feed the YAML procedure text to
-# the LLM, so no scripts/payloads/.git history are needed. Filenames
-# verified against actual local clone via successful build.
-COPY data/atomic-red-team/atomics/T1059.001/T1059.001.yaml data/atomic-red-team/atomics/T1059.001/T1059.001.yaml
-COPY data/atomic-red-team/atomics/T1053.005/T1053.005.yaml data/atomic-red-team/atomics/T1053.005/T1053.005.yaml
-COPY data/atomic-red-team/atomics/T1036.005/T1036.005.yaml data/atomic-red-team/atomics/T1036.005/T1036.005.yaml
-COPY data/atomic-red-team/atomics/T1003.001/T1003.001.yaml data/atomic-red-team/atomics/T1003.001/T1003.001.yaml
-COPY data/atomic-red-team/atomics/T1567.003/T1567.003.yaml data/atomic-red-team/atomics/T1567.003/T1567.003.yaml
-COPY data/atomic-red-team/atomics/T1003.002/T1003.002.yaml data/atomic-red-team/atomics/T1003.002/T1003.002.yaml
-COPY data/atomic-red-team/atomics/T1059.003/T1059.003.yaml data/atomic-red-team/atomics/T1059.003/T1059.003.yaml
+# Atomic Red Team — fetched at build time, driven entirely by
+# config/techniques.yaml (must be copied in before this step runs).
+# Rotating which techniques are in scope is a one-line edit to that
+# file.
+COPY scripts/fetch_atomic_tests.py scripts/fetch_atomic_tests.py
+RUN python scripts/fetch_atomic_tests.py
 
 # ---------------------------------------------------------------------------
 # Runtime

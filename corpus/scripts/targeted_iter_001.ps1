@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   3  |  Feasible: 2  |  Variants: 6
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,207 +10,91 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_832dd777-3c30-4992-88fc-bfb5f7ceea83  (1 rule(s)) ---------------------
-# Intent:    Detect WMI/WMIC invocation spawned from script interpreters (PowerShell, VBScrip
-# Rules:     832dd777-3c30-4992-88fc-bfb5f7ceea83
+# -- Cluster: singleton_26ad0693-16f9-4de2-8086-16e93b214f49  (1 rule(s)) ---------------------
+# Intent:    Attackers use secure deletion utilities (SDelete, Cipher) to irreversibly wipe f
+# Rules:     26ad0693-16f9-4de2-8086-16e93b214f49
 # Archetype: IT admin workflow
 
-$inventoryPath = Join-Path -Path $env:TEMP -ChildPath ('hwinfo_' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.csv')
-Write-Host "[*] Collecting hardware inventory to $inventoryPath"
+$ErrorActionPreference = 'SilentlyContinue'
+$workDir = Join-Path $env:TEMP 'sysadmin_cleanup'
+if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Path $workDir -Force
 
-$biosInfo = @()
-$biosInfo += Get-WmiObject -Class Win32_BIOS | Select-Object Manufacturer, Version, ReleaseDate
+# IT workflow: Secure cleanup of a workstation scheduled for refresh
+# This simulates downloading and executing SDelete for NIST-compliant data sanitization
+cd $workDir
 
-$diskInfo = @()
-$diskInfo += Get-WmiObject -Class Win32_LogicalDisk -Filter "DriveType=3" | Select-Object DeviceID, Size, FreeSpace
+# Download SDelete from official Microsoft Sysinternals source
+$sdelUrl = 'https://download.sysinternals.com/files/SDelete.zip'
+$zipFile = Join-Path $workDir 'SDelete.zip'
+$extractDir = Join-Path $workDir 'sdelete_tools'
 
-$nicInfo = @()
-$nicInfo += Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter "IPEnabled=TRUE" | Select-Object Description, IPAddress, DefaultIPGateway
+Write-Host 'Downloading SDelete from Sysinternals...'
+Invoke-WebRequest -Uri $sdelUrl -OutFile $zipFile -ErrorAction SilentlyContinue | Out-Null
 
-$procInfo = @()
-$procInfo += Get-WmiObject -Class Win32_Process | Select-Object Name, ProcessId, CommandLine | Select-Object -First 20
+if (Test-Path $zipFile) {
+    Expand-Archive -Path $zipFile -DestinationPath $extractDir -Force
 
-Write-Host "[*] BIOS: $(($biosInfo | Measure-Object).Count) records"
-Write-Host "[*] Disks: $(($diskInfo | Measure-Object).Count) records"
-Write-Host "[*] NICs: $(($nicInfo | Measure-Object).Count) records"
-Write-Host "[*] Processes: $(($procInfo | Measure-Object).Count) records"
+    # Create a test file to securely delete (simulating residual data)
+    $testData = Join-Path $workDir 'tempfile.txt'
+    'sensitive data to be securely deleted' | Out-File -FilePath $testData -Encoding ASCII
 
-$inventoryData = @{
-    'BIOS' = $biosInfo
-    'Disks' = $diskInfo
-    'NICs' = $nicInfo
-    'Processes' = $procInfo
+    # Execute SDelete with -accepteula flag for non-interactive operation
+    # This is standard for automated/scheduled sanitization workflows
+    $sdelExe = Get-ChildItem -Path $extractDir -Filter 'sdelete*.exe' -Recurse | Select-Object -First 1
+
+    if ($sdelExe) {
+        Write-Host "Executing secure deletion: $($sdelExe.FullName) -accepteula -p 3 $testData"
+        & $sdelExe.FullName -accepteula -p 3 $testData
+    }
 }
 
-$inventoryData | ConvertTo-Json | Out-File -FilePath $inventoryPath -Force
-Write-Host "[+] Inventory export complete: $inventoryPath"
+# Clean up working directory
+Write-Host 'Cleanup complete.'
+Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
 
-if (Test-Path -Path $inventoryPath) {
-    Remove-Item -Path $inventoryPath -Force -ErrorAction SilentlyContinue
-    Write-Host "[*] Cleaned up temporary inventory file"
-}
-
-# -- Cluster: singleton_832dd777-3c30-4992-88fc-bfb5f7ceea83  (1 rule(s)) ---------------------
-# Intent:    Detect WMI/WMIC invocation spawned from script interpreters (PowerShell, VBScrip
-# Rules:     832dd777-3c30-4992-88fc-bfb5f7ceea83
+# -- Cluster: singleton_26ad0693-16f9-4de2-8086-16e93b214f49  (1 rule(s)) ---------------------
+# Intent:    Attackers use secure deletion utilities (SDelete, Cipher) to irreversibly wipe f
+# Rules:     26ad0693-16f9-4de2-8086-16e93b214f49
 # Archetype: Software installer/updater workflow
 
-$logonScriptDir = 'C:\Windows\System32\GroupPolicy\User\Scripts\Logon'
-$configPath = Join-Path -Path $env:TEMP -ChildPath 'deploy_config.txt'
+$ErrorActionPreference = 'SilentlyContinue'
+$workDir = Join-Path $env:TEMP 'disk_maintenance'
+if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Path $workDir -Force
 
-Write-Host "[*] Software deployment validation initiated"
+cd $workDir
 
-# Create a temporary deployment config file
-@'
-APP_NAME=SecurityAgent
-MIN_RAM=2048
-MIN_DISKSPACE=1024
-'@ | Out-File -FilePath $configPath -Force
+# Software deployment workflow: Post-install disk sanitization
+# This simulates a deployment tool hardening step that securely wipes free space
+# after installing sensitive enterprise software
 
-Write-Host "[*] Checking system prerequisites using WMI"
+Write-Host 'Beginning post-deployment disk sanitization...'
 
-$ramMB = (Get-WmiObject -Class Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory) / 1MB
-Write-Host "[*] System RAM: $([Math]::Round($ramMB, 2)) MB"
+# Create some temporary installer artifacts to simulate real deployment scenario
+$tempInstaller = Join-Path $workDir 'setup_temp.bin'
+$null = New-Item -ItemType File -Path $tempInstaller -Force
 
-$diskInfo = Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='C:'" | Select-Object -ExpandProperty FreeSpace
-Write-Host "[*] C: drive free space: $([Math]::Round($diskInfo / 1GB, 2)) GB"
-
-$osInfo = Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Caption
-Write-Host "[*] Operating System: $osInfo"
-
-$osVersion = Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Version
-Write-Host "[*] OS Version: $osVersion"
-
-Write-Host "[+] Prerequisite validation complete"
-
-if (Test-Path -Path $configPath) {
-    Remove-Item -Path $configPath -Force -ErrorAction SilentlyContinue
-    Write-Host "[*] Cleaned up deployment config file"
+# Write some mock installer data
+1..1000 | ForEach-Object {
+    Add-Content -Path $tempInstaller -Value "Binary payload chunk $_" -ErrorAction SilentlyContinue
 }
 
-# -- Cluster: singleton_832dd777-3c30-4992-88fc-bfb5f7ceea83  (1 rule(s)) ---------------------
-# Intent:    Detect WMI/WMIC invocation spawned from script interpreters (PowerShell, VBScrip
-# Rules:     832dd777-3c30-4992-88fc-bfb5f7ceea83
-# Archetype: User-driven workflow
-
-$vbsScriptPath = Join-Path -Path $env:TEMP -ChildPath 'diag_tool.vbs'
-$reportPath = Join-Path -Path $env:TEMP -ChildPath ('diag_report_' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.txt')
-
-Write-Host "[*] Creating diagnostic VBScript"
-
-$vbsContent = @'
-Set objWMI = GetObject("winmgmts:")
-Set colItems = objWMI.ExecQuery("Select * from Win32_ComputerSystem")
-For Each objItem in colItems
-    WScript.Echo "Computer: " & objItem.Name
-Next
-Set colServices = objWMI.ExecQuery("Select * from Win32_Service WHERE State='Running'")
-WScript.Echo "Running Services: " & colServices.Count
-For Each objSvc in colServices
-    WScript.Echo "  - " & objSvc.Name
-Next
-'@
-
-$vbsContent | Out-File -FilePath $vbsScriptPath -Force
-Write-Host "[*] VBScript created at $vbsScriptPath"
-
-Write-Host "[*] Executing diagnostic VBScript"
-cscript.exe $vbsScriptPath | Out-File -FilePath $reportPath -Force
-
-Write-Host "[*] Diagnostic report saved to $reportPath"
-Write-Host (Get-Content -Path $reportPath | Select-Object -First 10)
-
-if (Test-Path -Path $vbsScriptPath) {
-    Remove-Item -Path $vbsScriptPath -Force -ErrorAction SilentlyContinue
-    Write-Host "[*] Cleaned up VBScript"
-}
-
-if (Test-Path -Path $reportPath) {
-    Remove-Item -Path $reportPath -Force -ErrorAction SilentlyContinue
-    Write-Host "[*] Cleaned up diagnostic report"
-}
-
-# -- Cluster: singleton_633cdbb8-8fac-4949-ab03-893b244c96c0  (1 rule(s)) ---------------------
-# Intent:    Attackers using PowerShell to generate random bytes and write them to files in a
-# Rules:     633cdbb8-8fac-4949-ab03-893b244c96c0
-# Archetype: IT admin workflow
-
-$outputDir = [System.IO.Path]::Combine($env:TEMP, 'crypto_seeds_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
+# Execute Cipher to wipe free space on C: drive
+# /w parameter securely erases free space - legitimate hardening step
+# Using the system drive (C:) is standard for deployment sanitization
+Write-Host 'Executing Cipher.exe /w:C: to sanitize free space...'
 try {
-  # Generate random seed files for backup integrity validation
-  $seedCount = 5
-  $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
-  1..$seedCount | ForEach-Object {
-    $filename = Join-Path $outputDir ("backup_seed_{0:D2}.dat" -f $_)
-    $buffer = New-Object byte[] 256
-    $rng.GetBytes($buffer)
-    [System.IO.File]::WriteAllBytes($filename, $buffer)
-    Write-Host "Created seed file: $(Split-Path $filename -Leaf)"
-  }
-  Write-Host "Seed generation complete. Files stored in: $outputDir"
-} finally {
-  if ($rng) { $rng.Dispose() }
-  if (Test-Path $outputDir) { Remove-Item $outputDir -Recurse -Force }
+    cipher /w:C: | Out-Null
+} catch {
+    # Cipher may fail in container environments; that's expected
+    Write-Host 'Note: Cipher.exe may not fully execute in container/CI environments'
 }
 
-# -- Cluster: singleton_633cdbb8-8fac-4949-ab03-893b244c96c0  (1 rule(s)) ---------------------
-# Intent:    Attackers using PowerShell to generate random bytes and write them to files in a
-# Rules:     633cdbb8-8fac-4949-ab03-893b244c96c0
-# Archetype: Software installer/updater workflow
+# Clean up local working directory
+Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host 'Disk maintenance completed.'
 
-$installDir = [System.IO.Path]::Combine($env:TEMP, 'pkg_install_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -Path $installDir -ItemType Directory -Force | Out-Null
-try {
-  # Package installer entropy validation: creating random validation markers
-  $validationDir = Join-Path $installDir 'validation'
-  New-Item -Path $validationDir -ItemType Directory -Force | Out-Null
-
-  $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
-  $packageIds = @('pkg_app_core', 'pkg_app_plugins', 'pkg_app_config')
-
-  $packageIds | ForEach-Object {
-    $validationMarker = Join-Path $validationDir ("$_.entropy")
-    $randomBuffer = New-Object byte[] 128
-    $rng.GetBytes($randomBuffer)
-    [System.IO.File]::WriteAllBytes($validationMarker, $randomBuffer)
-  }
-
-  if ($rng) { $rng.Dispose() }
-  Write-Host "Package validation entropy markers created successfully"
-} finally {
-  if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
-}
-
-# -- Cluster: singleton_633cdbb8-8fac-4949-ab03-893b244c96c0  (1 rule(s)) ---------------------
-# Intent:    Attackers using PowerShell to generate random bytes and write them to files in a
-# Rules:     633cdbb8-8fac-4949-ab03-893b244c96c0
-# Archetype: Document/file operation workflow
-
-$docDir = [System.IO.Path]::Combine($env:TEMP, 'document_protect_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -Path $docDir -ItemType Directory -Force | Out-Null
-try {
-  # Create document fingerprint/watermark files for DLP tracking
-  $documents = @('financial_report_q3.txt', 'employee_roster.txt', 'project_plan.txt')
-  $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
-
-  $documents | ForEach-Object {
-    $docPath = Join-Path $docDir $_
-    'Confidential document content' | Out-File -FilePath $docPath -Encoding UTF8
-
-    # Append random fingerprint for tracking
-    $fingerprint = New-Object byte[] 64
-    $rng.GetBytes($fingerprint)
-    [System.IO.File]::WriteAllBytes((Join-Path $docDir ("$_.fingerprint")), $fingerprint)
-  }
-
-  if ($rng) { $rng.Dispose() }
-  Write-Host "Document protection fingerprints created"
-} finally {
-  if (Test-Path $docDir) { Remove-Item $docDir -Recurse -Force }
-}
-
-# SKIPPED cluster singleton_a0d8fe1d-6850-4576-8cee-bc43028b6cee: This rule cluster targets ESXi hypervisor management via vim-cmd, which is specific to VMware ESXi environments. GitHub Actions windows-latest runners are standard Windows VMs without ESXi hypervisor management tools or VMware vSphere infrastructure. The vim-cmd executable does not exist on Windows systems—it is an ESXi-only command-line tool. Even if vim-cmd could be installed, it requires an active ESXi infrastructure to enumerate VMs and manage snapshots. There is no legitimate way to generate these detection events on a Windows runner without the underlying VMware hypervisor environment.
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

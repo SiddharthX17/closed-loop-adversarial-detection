@@ -1,0 +1,34 @@
+title: "Sdelete Secure-Delete Execution with -accepteula Flag"
+id: 7cb52374-6b8d-4faf-a3b5-f8079a9c96d6
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1485/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-20
+tags:
+    - attack.impact
+    - attack.t1485
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_flag:
+      CommandLine|contains: '-accepteula'
+    selection_tool:
+      - Image|endswith: '\sdelete.exe'
+      - Image|endswith: '\sdelete64.exe'
+      - OriginalFileName: 'sdelete'
+      - OriginalFileName: 'sdelete64.exe'
+      - OriginalFileName|contains: 'sdelete'
+    filter_trusted_path:
+      Image|startswith:
+        - 'C:\Program Files\Sysinternals\'
+        - 'C:\Program Files (x86)\Sysinternals\'
+        - 'C:\Windows\System32\'
+    condition: selection_flag and selection_tool and not filter_trusted_path
+falsepositives:
+    - "IT administrators or automation scripts legitimately running sdelete.exe with -accepteula from a managed Sysinternals installation path (partially mitigated by the trusted-path filter, but filter should ideally also verify code signature/hash which is not available in this event schema)"
+    - "Software deployment tooling that stages a legitimately signed sdelete.exe under Program Files or System32 for approved disk-wipe/cleanup tasks"
+    - "Security or compliance tooling that bundles sdelete or a similarly named utility as part of endpoint hardening or decommissioning workflows — if run from a non-standard writable path this will still alert and should be investigated case-by-case since path alone does not prove intent"
+    - "Renamed or repackaged sdelete binaries where OriginalFileName PE metadata has been stripped or altered by the attacker, which would evade the OriginalFileName-based matching component of this rule"
+level: high

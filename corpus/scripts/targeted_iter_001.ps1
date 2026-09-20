@@ -10,136 +10,146 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_7cb52374-6b8d-4faf-a3b5-f8079a9c96d6  (1 rule(s)) ---------------------
-# Intent:    Detect use of the SDelete secure-deletion tool with the -accepteula flag, a tech
-# Rules:     7cb52374-6b8d-4faf-a3b5-f8079a9c96d6
+# -- Cluster: singleton_12d7ac2e-e9b8-40d1-af56-b3e42f700ddb  (1 rule(s)) ---------------------
+# Intent:    Detect ransomware or data exfiltration attacks using GPG command-line encryption
+# Rules:     12d7ac2e-e9b8-40d1-af56-b3e42f700ddb
 # Archetype: IT admin workflow
 
-$TempPath = [System.IO.Path]::GetTempPath()
-$TestFile = Join-Path $TempPath "legacy_data_$([System.IO.Path]::GetRandomFileName())"
+# Administrator backing up encrypted audit logs for compliance archival
+$logSource = $env:TEMP + '\audit_logs_2024.txt'
+$encryptedBackup = $env:TEMP + '\audit_logs_2024.gpg'
 
-# Create a temporary file containing non-sensitive test content to be securely deleted
-New-Item -ItemType File -Path $TestFile -Force | Out-Null
-Set-Content -Path $TestFile -Value "Temporary test data for secure deletion audit" | Out-Null
+# Create sample audit log content (simulating real IT operations logs)
+@'
+Event: User logon from 192.168.1.100
+Event: File access on HKLM registry
+Event: Service started: BackupService
+Event: Network connection to internal backup server
+'@ | Out-File -FilePath $logSource -Encoding ASCII
 
-# Download SDelete from Sysinternals if not already present
-$SDeletePath = "$env:ProgramFiles\Sysinternals\sdelete64.exe"
-if (-not (Test-Path $SDeletePath)) {
-    $SDeleteDir = "$env:ProgramFiles\Sysinternals"
-    if (-not (Test-Path $SDeleteDir)) {
-        New-Item -ItemType Directory -Path $SDeleteDir -Force | Out-Null
-    }
-    # Download sdelete64.exe from Microsoft Sysinternals
-    try {
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SDelete.zip" -OutFile "$env:TEMP\sdelete.zip" -TimeoutSec 30
-        Expand-Archive -Path "$env:TEMP\sdelete.zip" -DestinationPath $SDeleteDir -Force
-        Remove-Item "$env:TEMP\sdelete.zip" -Force
-    } catch {
-        # If download fails, skip the test
-        Write-Host "SDelete not available"
-        exit 0
-    }
+# Verify GPG is available on the system
+$gpgPath = 'gpg'
+try {
+    & $gpgPath --version | Out-Null
+} catch {
+    Write-Host "GPG not installed, installing from Chocolatey"
+    # Install GPG if not present
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force | Out-Null
+    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) -ErrorAction SilentlyContinue | Out-Null
+    choco install gnupg -y --no-progress 2>$null | Out-Null
+    $gpgPath = 'gpg'
 }
 
-# Execute SDelete with -accepteula flag for secure deletion (legitimate administrative use)
-if (Test-Path $SDeletePath) {
-    & $SDeletePath -accepteula -p 2 $TestFile | Out-Null
+# Encrypt the audit log using GPG batch mode with symmetric encryption
+# This is a typical administrative backup encryption workflow
+$encryptionPassword = 'ComplexAdminPassword2024'
+& $gpgPath --batch --yes -c --symmetric --passphrase='ComplexAdminPassword2024' --output $encryptedBackup $logSource
+
+if (Test-Path $encryptedBackup) {
+    Write-Host "Audit logs successfully encrypted for secure backup"
 }
 
-# Clean up temporary test file if it still exists
-if (Test-Path $TestFile) {
-    Remove-Item $TestFile -Force -ErrorAction SilentlyContinue
-}
+# Cleanup: Remove unencrypted source and encrypted backup
+Remove-Item -Path $logSource -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $encryptedBackup -Force -ErrorAction SilentlyContinue
 
-# -- Cluster: singleton_7cb52374-6b8d-4faf-a3b5-f8079a9c96d6  (1 rule(s)) ---------------------
-# Intent:    Detect use of the SDelete secure-deletion tool with the -accepteula flag, a tech
-# Rules:     7cb52374-6b8d-4faf-a3b5-f8079a9c96d6
+# -- Cluster: singleton_12d7ac2e-e9b8-40d1-af56-b3e42f700ddb  (1 rule(s)) ---------------------
+# Intent:    Detect ransomware or data exfiltration attacks using GPG command-line encryption
+# Rules:     12d7ac2e-e9b8-40d1-af56-b3e42f700ddb
 # Archetype: Software installer/updater workflow
 
-$SysinternalsPath = "$env:ProgramFiles\Sysinternals"
+# Automated deployment encryption: securing application configuration packages
+$configDir = $env:TEMP + '\app_deployment'
+$configFile = $configDir + '\database_config.ini'
+$encryptedConfig = $configDir + '\database_config.ini.gpg'
 
-# Ensure Sysinternals directory exists for tool inventory
-if (-not (Test-Path $SysinternalsPath)) {
-    New-Item -ItemType Directory -Path $SysinternalsPath -Force | Out-Null
+New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+
+# Create sample application configuration (simulating real deployment config)
+@'
+[database]
+host=db-prod-01.internal.local
+port=5432
+db_name=productiondb
+[api]
+endpoint=https://api.internal.local/v1
+'@ | Out-File -FilePath $configFile -Encoding ASCII
+
+# Verify GPG availability
+$gpgPath = 'gpg'
+try {
+    & $gpgPath --version | Out-Null
+} catch {
+    Write-Host "GPG not installed, installing from Chocolatey"
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force | Out-Null
+    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) -ErrorAction SilentlyContinue | Out-Null
+    choco install gnupg -y --no-progress 2>$null | Out-Null
+    $gpgPath = 'gpg'
 }
 
-# Check for 32-bit sdelete variant
-$SDelete32Path = Join-Path $SysinternalsPath "sdelete.exe"
-$SDelete64Path = Join-Path $SysinternalsPath "sdelete64.exe"
+# Encrypt configuration using GPG in batch mode (typical CI/CD pipeline pattern)
+# The --batch flag ensures non-interactive operation, required for automated deployment
+& $gpgPath --batch --yes -c --symmetric --passphrase='DeploymentSecret2024' --output $encryptedConfig $configFile
 
-# Attempt to download and install sdelete tools for secure-deletion capability
-if (-not (Test-Path $SDelete64Path) -and -not (Test-Path $SDelete32Path)) {
-    try {
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SDelete.zip" -OutFile "$env:TEMP\sdelete_pkg.zip" -TimeoutSec 30
-        Expand-Archive -Path "$env:TEMP\sdelete_pkg.zip" -DestinationPath $SysinternalsPath -Force
-        Remove-Item "$env:TEMP\sdelete_pkg.zip" -Force
-    } catch {
-        exit 0
-    }
+if (Test-Path $encryptedConfig) {
+    Write-Host "Configuration package encrypted successfully"
 }
 
-# Create a test file in a temporary location to verify the tool
-$TestFilePath = Join-Path $env:TEMP "maintenance_cache_$([guid]::NewGuid().ToString().Substring(0,8)).tmp"
-New-Item -ItemType File -Path $TestFilePath -Force | Out-Null
-Set-Content -Path $TestFilePath -Value "Cache for maintenance verification"
+# Cleanup encrypted artifacts
+Remove-Item -Path $configFile -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $encryptedConfig -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $configDir -Force -ErrorAction SilentlyContinue
 
-# Execute with -accepteula for automated deployment scenarios where user interaction is not possible
-if (Test-Path $SDelete64Path) {
-    & $SDelete64Path -accepteula -p 1 $TestFilePath | Out-Null
-} elseif (Test-Path $SDelete32Path) {
-    & $SDelete32Path -accepteula -p 1 $TestFilePath | Out-Null
+# -- Cluster: singleton_12d7ac2e-e9b8-40d1-af56-b3e42f700ddb  (1 rule(s)) ---------------------
+# Intent:    Detect ransomware or data exfiltration attacks using GPG command-line encryption
+# Rules:     12d7ac2e-e9b8-40d1-af56-b3e42f700ddb
+# Archetype: Document/file operation workflow
+
+# User encrypting sensitive financial documents for secure storage
+$documentsDir = $env:TEMP + '\financial_docs'
+$sourceDocument = $documentsDir + '\Q4_expense_report.txt'
+$encryptedDoc = $documentsDir + '\Q4_expense_report.txt.gpg'
+
+New-Item -ItemType Directory -Path $documentsDir -Force | Out-Null
+
+# Create sample sensitive document (simulating real confidential business document)
+@'
+Q4 EXPENSE REPORT - CONFIDENTIAL
+
+Travel expenses: $4,500
+Client entertainment: $1,200
+Equipment purchases: $3,800
+Conference registration: $2,100
+Total: $11,600
+
+Department Manager: John Smith
+Cost Center: MKTG-401
+'@ | Out-File -FilePath $sourceDocument -Encoding ASCII
+
+# Verify GPG availability
+$gpgPath = 'gpg'
+try {
+    & $gpgPath --version | Out-Null
+} catch {
+    Write-Host "GPG not installed, installing from Chocolatey"
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force | Out-Null
+    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) -ErrorAction SilentlyContinue | Out-Null
+    choco install gnupg -y --no-progress 2>$null | Out-Null
+    $gpgPath = 'gpg'
 }
 
-# Ensure test file is removed
-if (Test-Path $TestFilePath) {
-    Remove-Item $TestFilePath -Force -ErrorAction SilentlyContinue
+# Encrypt the sensitive document using GPG symmetric encryption
+# User provides passphrase inline in batch mode for automated document protection workflow
+& $gpgPath --batch --yes -c --symmetric --passphrase='SecureDocumentPassword' --output $encryptedDoc $sourceDocument
+
+if (Test-Path $encryptedDoc) {
+    Write-Host "Sensitive document encrypted and ready for secure storage"
 }
 
-# -- Cluster: singleton_7cb52374-6b8d-4faf-a3b5-f8079a9c96d6  (1 rule(s)) ---------------------
-# Intent:    Detect use of the SDelete secure-deletion tool with the -accepteula flag, a tech
-# Rules:     7cb52374-6b8d-4faf-a3b5-f8079a9c96d6
-# Archetype: User-driven workflow
-
-# User-initiated secure cleanup of temporary sensitive files
-$SysinternalsPath = "$env:ProgramFiles\Sysinternals"
-
-# Verify Sysinternals directory structure
-if (-not (Test-Path $SysinternalsPath)) {
-    New-Item -ItemType Directory -Path $SysinternalsPath -Force | Out-Null
-}
-
-# Define paths for 64-bit variant (modern systems)
-$SDelete64Path = Join-Path $SysinternalsPath "sdelete64.exe"
-
-# Download SDelete if not present
-if (-not (Test-Path $SDelete64Path)) {
-    try {
-        $ProgressPreference = 'SilentlyContinue'
-        $SDeleteZip = "$env:TEMP\sdelete_download.zip"
-        Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SDelete.zip" -OutFile $SDeleteZip -TimeoutSec 30
-        Expand-Archive -Path $SDeleteZip -DestinationPath $SysinternalsPath -Force
-        Remove-Item $SDeleteZip -Force
-    } catch {
-        exit 0
-    }
-}
-
-# Create a file to be securely deleted (simulating user cleanup of sensitive documents)
-$UserTempFile = Join-Path $env:TEMP "budget_draft_$([guid]::NewGuid().ToString().Substring(0,8)).txt"
-New-Item -ItemType File -Path $UserTempFile -Force | Out-Null
-Set-Content -Path $UserTempFile -Value "Preliminary budget figures"
-
-# Execute SDelete with -accepteula flag for secure, permanent deletion
-if (Test-Path $SDelete64Path) {
-    & $SDelete64Path -accepteula -p 3 $UserTempFile | Out-Null
-}
-
-# Verify cleanup
-if (Test-Path $UserTempFile) {
-    Remove-Item $UserTempFile -Force -ErrorAction SilentlyContinue
-}
+# Cleanup: remove original unencrypted document and temporary encryption
+Remove-Item -Path $sourceDocument -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $encryptedDoc -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $documentsDir -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

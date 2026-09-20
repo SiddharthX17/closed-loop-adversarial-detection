@@ -1,0 +1,32 @@
+title: "T1485 - Secure Delete Utility Execution (SDelete/Cipher Wipe)"
+id: 26ad0693-16f9-4de2-8086-16e93b214f49
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1485/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-20
+tags:
+    - attack.impact
+    - attack.t1485
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_sdelete_name:
+        Image|endswith:
+          - '\sdelete.exe'
+          - '\sdelete64.exe'
+          - '\sdelete64a.exe'
+    selection_sdelete_origfilename:
+        OriginalFileName: 'sdelete.c'
+    selection_sdelete_flag:
+        CommandLine|contains: '-accepteula'
+    selection_cipher_wipe:
+        Image|endswith: '\cipher.exe'
+        CommandLine|contains: '/w'
+    condition: ((selection_sdelete_name or selection_sdelete_origfilename) and selection_sdelete_flag) or selection_cipher_wipe
+falsepositives:
+    - "Legitimate IT/sysadmin use of Sysinternals SDelete or cipher /w for disk sanitization prior to decommissioning, re-imaging, or compliance-driven data wiping — should be scoped to verified signed binaries/known-good hashes launched by authorized administration accounts or deployment tooling rather than excluded by path, since attackers stage these same tools in arbitrary user-writable directories."
+    - "Security or compliance auditing tools that legitimately invoke cipher.exe with /w as part of scheduled sanitization jobs."
+    - "Scripting-host parent processes (mshta.exe, wscript.exe, cscript.exe) spawning sdelete are not filtered here since ParentImage/ParentCommandLine are treated only as supporting context, not required conditions; legacy login scripts using these interpreters to launch legitimate cleanup utilities could still trigger this rule and should be reviewed case by case rather than blanket-excluded."
+level: high

@@ -1,0 +1,44 @@
+title: "GPG Batch Symmetric Encryption With Inline Passphrase"
+id: 12d7ac2e-e9b8-40d1-af56-b3e42f700ddb
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1486/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-20
+tags:
+    - attack.impact
+    - attack.t1486
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_gpg_binary:
+      - Image|endswith:
+          - '\gpg.exe'
+          - '\gpg2.exe'
+      - OriginalFileName:
+          - 'gpg.exe'
+          - 'gpg2.exe'
+    selection_cmdline:
+      CommandLine|contains: 'gpg'
+    selection_noninteractive:
+      CommandLine|contains:
+        - '--batch'
+    selection_confirm:
+      CommandLine|contains:
+        - '--yes'
+        - ' -y '
+    selection_symmetric:
+      CommandLine|contains:
+        - '-c '
+        - '--symmetric'
+    selection_passphrase:
+      CommandLine|contains:
+        - '--passphrase'
+    condition: (selection_gpg_binary or selection_cmdline) and selection_noninteractive and selection_confirm and selection_symmetric and selection_passphrase
+falsepositives:
+    - "Legitimate scripted/automated GPG use such as backup jobs or secure file-transfer scripts that supply --batch --yes -c --passphrase for unattended operation; distinguish these by validating the digital signature and known script hash of the invoking automation rather than by path or parent process, since path/parent are attacker-influenceable"
+    - "Any interactive user-session launch of this exact flag combination should be treated as high-confidence malicious rather than filtered, since interactive GPG use rarely requires --batch/--yes"
+    - "IT/security teams conducting authorized red-team or atomic-test exercises against test files (e.g. test.txt) — this is not filtered at the rule level since baking in test-path exemptions would create a trivial bypass; resolve via change-management/authorized-testing exception lists maintained outside the detection logic"
+    - "LOLBin proxy execution (mshta.exe, rundll32.exe) used to launch the gpg command is not required by this rule and is intentionally not filtered on, since the anchor is the gpg invocation itself regardless of which process launched it"
+level: high

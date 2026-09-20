@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 2
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,90 +10,136 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_26ad0693-16f9-4de2-8086-16e93b214f49  (1 rule(s)) ---------------------
-# Intent:    Attackers use secure deletion utilities (SDelete, Cipher) to irreversibly wipe f
-# Rules:     26ad0693-16f9-4de2-8086-16e93b214f49
+# -- Cluster: singleton_7cb52374-6b8d-4faf-a3b5-f8079a9c96d6  (1 rule(s)) ---------------------
+# Intent:    Detect use of the SDelete secure-deletion tool with the -accepteula flag, a tech
+# Rules:     7cb52374-6b8d-4faf-a3b5-f8079a9c96d6
 # Archetype: IT admin workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
-$workDir = Join-Path $env:TEMP 'sysadmin_cleanup'
-if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force }
-$null = New-Item -ItemType Directory -Path $workDir -Force
+$TempPath = [System.IO.Path]::GetTempPath()
+$TestFile = Join-Path $TempPath "legacy_data_$([System.IO.Path]::GetRandomFileName())"
 
-# IT workflow: Secure cleanup of a workstation scheduled for refresh
-# This simulates downloading and executing SDelete for NIST-compliant data sanitization
-cd $workDir
+# Create a temporary file containing non-sensitive test content to be securely deleted
+New-Item -ItemType File -Path $TestFile -Force | Out-Null
+Set-Content -Path $TestFile -Value "Temporary test data for secure deletion audit" | Out-Null
 
-# Download SDelete from official Microsoft Sysinternals source
-$sdelUrl = 'https://download.sysinternals.com/files/SDelete.zip'
-$zipFile = Join-Path $workDir 'SDelete.zip'
-$extractDir = Join-Path $workDir 'sdelete_tools'
-
-Write-Host 'Downloading SDelete from Sysinternals...'
-Invoke-WebRequest -Uri $sdelUrl -OutFile $zipFile -ErrorAction SilentlyContinue | Out-Null
-
-if (Test-Path $zipFile) {
-    Expand-Archive -Path $zipFile -DestinationPath $extractDir -Force
-
-    # Create a test file to securely delete (simulating residual data)
-    $testData = Join-Path $workDir 'tempfile.txt'
-    'sensitive data to be securely deleted' | Out-File -FilePath $testData -Encoding ASCII
-
-    # Execute SDelete with -accepteula flag for non-interactive operation
-    # This is standard for automated/scheduled sanitization workflows
-    $sdelExe = Get-ChildItem -Path $extractDir -Filter 'sdelete*.exe' -Recurse | Select-Object -First 1
-
-    if ($sdelExe) {
-        Write-Host "Executing secure deletion: $($sdelExe.FullName) -accepteula -p 3 $testData"
-        & $sdelExe.FullName -accepteula -p 3 $testData
+# Download SDelete from Sysinternals if not already present
+$SDeletePath = "$env:ProgramFiles\Sysinternals\sdelete64.exe"
+if (-not (Test-Path $SDeletePath)) {
+    $SDeleteDir = "$env:ProgramFiles\Sysinternals"
+    if (-not (Test-Path $SDeleteDir)) {
+        New-Item -ItemType Directory -Path $SDeleteDir -Force | Out-Null
+    }
+    # Download sdelete64.exe from Microsoft Sysinternals
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SDelete.zip" -OutFile "$env:TEMP\sdelete.zip" -TimeoutSec 30
+        Expand-Archive -Path "$env:TEMP\sdelete.zip" -DestinationPath $SDeleteDir -Force
+        Remove-Item "$env:TEMP\sdelete.zip" -Force
+    } catch {
+        # If download fails, skip the test
+        Write-Host "SDelete not available"
+        exit 0
     }
 }
 
-# Clean up working directory
-Write-Host 'Cleanup complete.'
-Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+# Execute SDelete with -accepteula flag for secure deletion (legitimate administrative use)
+if (Test-Path $SDeletePath) {
+    & $SDeletePath -accepteula -p 2 $TestFile | Out-Null
+}
 
-# -- Cluster: singleton_26ad0693-16f9-4de2-8086-16e93b214f49  (1 rule(s)) ---------------------
-# Intent:    Attackers use secure deletion utilities (SDelete, Cipher) to irreversibly wipe f
-# Rules:     26ad0693-16f9-4de2-8086-16e93b214f49
+# Clean up temporary test file if it still exists
+if (Test-Path $TestFile) {
+    Remove-Item $TestFile -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_7cb52374-6b8d-4faf-a3b5-f8079a9c96d6  (1 rule(s)) ---------------------
+# Intent:    Detect use of the SDelete secure-deletion tool with the -accepteula flag, a tech
+# Rules:     7cb52374-6b8d-4faf-a3b5-f8079a9c96d6
 # Archetype: Software installer/updater workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
-$workDir = Join-Path $env:TEMP 'disk_maintenance'
-if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force }
-$null = New-Item -ItemType Directory -Path $workDir -Force
+$SysinternalsPath = "$env:ProgramFiles\Sysinternals"
 
-cd $workDir
-
-# Software deployment workflow: Post-install disk sanitization
-# This simulates a deployment tool hardening step that securely wipes free space
-# after installing sensitive enterprise software
-
-Write-Host 'Beginning post-deployment disk sanitization...'
-
-# Create some temporary installer artifacts to simulate real deployment scenario
-$tempInstaller = Join-Path $workDir 'setup_temp.bin'
-$null = New-Item -ItemType File -Path $tempInstaller -Force
-
-# Write some mock installer data
-1..1000 | ForEach-Object {
-    Add-Content -Path $tempInstaller -Value "Binary payload chunk $_" -ErrorAction SilentlyContinue
+# Ensure Sysinternals directory exists for tool inventory
+if (-not (Test-Path $SysinternalsPath)) {
+    New-Item -ItemType Directory -Path $SysinternalsPath -Force | Out-Null
 }
 
-# Execute Cipher to wipe free space on C: drive
-# /w parameter securely erases free space - legitimate hardening step
-# Using the system drive (C:) is standard for deployment sanitization
-Write-Host 'Executing Cipher.exe /w:C: to sanitize free space...'
-try {
-    cipher /w:C: | Out-Null
-} catch {
-    # Cipher may fail in container environments; that's expected
-    Write-Host 'Note: Cipher.exe may not fully execute in container/CI environments'
+# Check for 32-bit sdelete variant
+$SDelete32Path = Join-Path $SysinternalsPath "sdelete.exe"
+$SDelete64Path = Join-Path $SysinternalsPath "sdelete64.exe"
+
+# Attempt to download and install sdelete tools for secure-deletion capability
+if (-not (Test-Path $SDelete64Path) -and -not (Test-Path $SDelete32Path)) {
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SDelete.zip" -OutFile "$env:TEMP\sdelete_pkg.zip" -TimeoutSec 30
+        Expand-Archive -Path "$env:TEMP\sdelete_pkg.zip" -DestinationPath $SysinternalsPath -Force
+        Remove-Item "$env:TEMP\sdelete_pkg.zip" -Force
+    } catch {
+        exit 0
+    }
 }
 
-# Clean up local working directory
-Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'Disk maintenance completed.'
+# Create a test file in a temporary location to verify the tool
+$TestFilePath = Join-Path $env:TEMP "maintenance_cache_$([guid]::NewGuid().ToString().Substring(0,8)).tmp"
+New-Item -ItemType File -Path $TestFilePath -Force | Out-Null
+Set-Content -Path $TestFilePath -Value "Cache for maintenance verification"
+
+# Execute with -accepteula for automated deployment scenarios where user interaction is not possible
+if (Test-Path $SDelete64Path) {
+    & $SDelete64Path -accepteula -p 1 $TestFilePath | Out-Null
+} elseif (Test-Path $SDelete32Path) {
+    & $SDelete32Path -accepteula -p 1 $TestFilePath | Out-Null
+}
+
+# Ensure test file is removed
+if (Test-Path $TestFilePath) {
+    Remove-Item $TestFilePath -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_7cb52374-6b8d-4faf-a3b5-f8079a9c96d6  (1 rule(s)) ---------------------
+# Intent:    Detect use of the SDelete secure-deletion tool with the -accepteula flag, a tech
+# Rules:     7cb52374-6b8d-4faf-a3b5-f8079a9c96d6
+# Archetype: User-driven workflow
+
+# User-initiated secure cleanup of temporary sensitive files
+$SysinternalsPath = "$env:ProgramFiles\Sysinternals"
+
+# Verify Sysinternals directory structure
+if (-not (Test-Path $SysinternalsPath)) {
+    New-Item -ItemType Directory -Path $SysinternalsPath -Force | Out-Null
+}
+
+# Define paths for 64-bit variant (modern systems)
+$SDelete64Path = Join-Path $SysinternalsPath "sdelete64.exe"
+
+# Download SDelete if not present
+if (-not (Test-Path $SDelete64Path)) {
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        $SDeleteZip = "$env:TEMP\sdelete_download.zip"
+        Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SDelete.zip" -OutFile $SDeleteZip -TimeoutSec 30
+        Expand-Archive -Path $SDeleteZip -DestinationPath $SysinternalsPath -Force
+        Remove-Item $SDeleteZip -Force
+    } catch {
+        exit 0
+    }
+}
+
+# Create a file to be securely deleted (simulating user cleanup of sensitive documents)
+$UserTempFile = Join-Path $env:TEMP "budget_draft_$([guid]::NewGuid().ToString().Substring(0,8)).txt"
+New-Item -ItemType File -Path $UserTempFile -Force | Out-Null
+Set-Content -Path $UserTempFile -Value "Preliminary budget figures"
+
+# Execute SDelete with -accepteula flag for secure, permanent deletion
+if (Test-Path $SDelete64Path) {
+    & $SDelete64Path -accepteula -p 3 $UserTempFile | Out-Null
+}
+
+# Verify cleanup
+if (Test-Path $UserTempFile) {
+    Remove-Item $UserTempFile -Force -ErrorAction SilentlyContinue
+}
 
 
 # ===========================================================================

@@ -1,0 +1,35 @@
+title: "PowerShell History Disabling or Clearing via PSReadLine/History File Removal"
+id: 669211d0-5de4-4f96-bff6-5e7fe466553f
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1070/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-21
+tags:
+    - attack.stealth
+    - attack.t1070.003
+    - attack.defense-evasion
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_psreadline_disable:
+      CommandLine|contains: 'Set-PSReadLineOption'
+      CommandLine|contains:
+        - 'AddToHistoryHandler'
+        - 'HistorySaveStyle'
+    selection_savenothing:
+      CommandLine|contains: 'SaveNothing'
+    selection_history_file_delete:
+      CommandLine|contains:
+        - 'ConsoleHost_history.txt'
+        - '.bash_history'
+        - '.zsh_history'
+    selection_clear_history_cmdlet:
+      CommandLine|contains: 'Clear-History'
+    condition: selection_psreadline_disable or (selection_psreadline_disable and selection_savenothing) or selection_history_file_delete or selection_clear_history_cmdlet
+falsepositives:
+    - "Legitimate administrative or developer PowerShell profile customization that invokes Set-PSReadLineOption or HistorySaveStyle during interactive session startup — cannot be reliably distinguished from malicious use via CommandLine alone without correlating to profile-load context"
+    - "User-initiated privacy-motivated clearing of PowerShell or shell history (Clear-History, deletion of ConsoleHost_history.txt/.bash_history/.zsh_history) unrelated to any attack — ambiguous and should be corroborated with surrounding suspicious activity (e.g., LOLBin proxy chains, unusual parent processes) rather than suppressed"
+    - "Automated deployment or configuration management scripts that intentionally disable history logging for compliance or security hardening reasons"
+level: high

@@ -117,6 +117,10 @@
     "47a539d1-61b9-4364-bf49-a68bc2a95ef0": {
       "runs_seen": 1,
       "rule_generated": false
+    },
+    "66fb0bc1-3c3f-47e9-a298-550ecfefacbc": {
+      "runs_seen": 1,
+      "rule_generated": false
     }
   },
   "T1003.002": {
@@ -147,10 +151,30 @@
     "0fd48ef7-d890-4e93-a533-f7dedd5191d3": {
       "runs_seen": 1,
       "rule_generated": true
+    },
+    "c107778c-dcf5-47c5-af2e-1d058a3df3ea": {
+      "runs_seen": 1,
+      "rule_generated": true
     }
   },
   "T1564.003": {
     "f151ee37-9e2b-47e6-80e4-550b9f999b7a": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1485": {
+    "1207ddff-f25b-41b3-aa0e-7c26d2b546d1": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "476419b5-aebf-4366-a131-ae3e8dae5fc2": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1486": {
+    "ab3f793f-2dcc-4da5-9c71-34988307263f": {
       "runs_seen": 1,
       "rule_generated": true
     }

@@ -3,32 +3,15 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_8af420ec-3464-406e-aa32-0ff39808feab",
-      "singleton_37b9adf5-1251-44bc-97fe-42cc239603b5",
-      "singleton_e0ccd616-16f2-4203-af74-0fda2efd9835",
-      "singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9",
-      "singleton_5543fe68-119f-4334-8553-2c92a2d1ab1a"
+      "singleton_26ad0693-16f9-4de2-8086-16e93b214f49"
     ],
     "archetype_tags": [
-      "certutil",
-      "commandline",
-      "explorer",
-      "mshta",
-      "parent_process",
-      "powershell",
-      "registry",
-      "regsvr32",
-      "scheduled_task",
-      "script_host"
+      "commandline"
     ],
     "behavioral_intents": [
-      "Adversaries creating scheduled tasks via PowerShell cmdlets or script hosts to establish persistence or scheduled execution of malicious payloads.",
-      "Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download files from remote servers, typically as part of malware delivery or data exfiltration workflows.",
-      "Attacker persistence via registry Run/RunOnce keys pointing to application updaters (Teams, Google Update, VS Code, Slack) that execute on logon",
-      "Detect mshta.exe as a parent process executing shell commands through inline VBScript or JavaScript, which is a known technique for script-based process injection and code execution.",
-      "Detect the use of scripting hosts (PowerShell, cmd, wscript, mshta, regsvr32) with window-hiding or shell-object invocation parameters that are commonly used to execute code covertly."
+      "Attackers use secure deletion utilities (SDelete, Cipher) to irreversibly wipe files and tracks after data exfiltration or lateral movement."
     ],
-    "committed_at": 1784961548.7227612,
+    "committed_at": 1789899548.8096397,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

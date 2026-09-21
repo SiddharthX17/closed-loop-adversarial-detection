@@ -179,6 +179,10 @@ resource "google_cloud_run_v2_service" "pipeline_service" {
           }
         }
       }
+      env {
+        name  = "PIPELINE_DEBUG"
+        value = "1"
+      }
     }
 
     # Pipeline runs can take a while (LLM calls + defender retries).

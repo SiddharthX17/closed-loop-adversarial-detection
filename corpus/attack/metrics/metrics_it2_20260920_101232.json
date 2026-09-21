@@ -1,0 +1,10 @@
+{
+  "iteration": 2,
+  "timestamp": "2026-09-20T10:12:32Z",
+  "techniques": [],
+  "total_techniques": 0,
+  "covered_techniques": 0,
+  "coverage_rate": 0.0,
+  "mean_recall": 0.0,
+  "mean_fp_rate": 0.0
+}

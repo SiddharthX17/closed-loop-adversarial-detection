@@ -25,6 +25,7 @@ import yaml
 import hashlib
 import anthropic
 import random
+from pipeline.llm_retry import create_with_retry
 
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
@@ -401,8 +402,8 @@ def _build_full_prompt(
 
 def _call_llm(prompt: str, client: anthropic.Anthropic) -> dict | None:
     try:
-        response = client.messages.create(
-            model=MODEL,
+        response = create_with_retry(
+            client,
             max_tokens=2048,
             temperature=TEMPERATURE,
             messages=[{"role": "user", "content": prompt}],

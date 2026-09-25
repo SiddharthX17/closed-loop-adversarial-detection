@@ -4,6 +4,7 @@ import os
 import random
 import anthropic
 from datetime import datetime, timezone
+from pipeline.llm_retry import create_with_retry
 from dotenv import load_dotenv
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.data.atomic_cleaner import CleanedAtomicTest
@@ -479,7 +480,8 @@ def interpret_procedure(
     )
 
     try:
-        response = client.messages.create(
+        response = create_with_retry(
+            client,
             model="claude-sonnet-4-6",
             max_tokens=1024,
             temperature=0,

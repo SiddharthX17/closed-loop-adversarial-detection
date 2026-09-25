@@ -183,6 +183,7 @@ def assemble_rule_yaml(parsed: dict, technique_id: str) -> str:
         f"title: {_quote_yaml_string(parsed['title'])}",
         f"id: {rule_id}",
         "status: experimental",
+        f"description: {_quote_yaml_string(parsed['description'])}",
         "references:",
         f"    - {_mitre_reference(technique_id)}",
         f"author: {_quote_yaml_string(AUTHOR)}",

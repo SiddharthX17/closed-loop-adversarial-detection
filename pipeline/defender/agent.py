@@ -12,6 +12,7 @@ import os
 import uuid
 import re
 import anthropic
+from pipeline.llm_retry import create_with_retry
 
 from dataclasses import dataclass, field
 from datetime import date
@@ -221,7 +222,8 @@ def _call_llm(system_prompt: str, user_message: str, client: anthropic.Anthropic
     Returns the parsed dict (matching DEFENDER_OUTPUT_SCHEMA), or None on failure.
     """
     try:
-        response = client.messages.create(
+        response = create_with_retry(
+            client,
             model=MODEL,
             max_tokens=4096,
             system=[

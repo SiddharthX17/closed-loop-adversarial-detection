@@ -4,6 +4,7 @@ import os
 import random
 import anthropic
 from datetime import datetime, timezone
+from pipeline.llm_retry import create_with_retry
 from dotenv import load_dotenv
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.data.atomic_cleaner import CleanedAtomicTest
@@ -198,7 +199,7 @@ _FALLBACK_RESULT = {
 }
 
 
-_PARTIAL_MATCH_FIELDS = {"CommandLine", "ParentCommandLine"}
+_PARTIAL_MATCH_FIELDS = {"CommandLine", "ParentCommandLine", "Details"}
 _PARTIAL_MATCH_MIN_TOKENS = 2  # at least 2 tokens must appear
 
 # ─── Counter ──────────────────────────────────────────────────────────────────
@@ -239,15 +240,16 @@ def _extract_json(raw: str) -> str:
 def _ground_details(v: str, procedure_text: str) -> bool:
     """
     Fallback check for Details, tried only after the normal verbatim/
-    basename checks already failed. Handles the case where Details holds
-    a Sigma-convention-formatted registry value (e.g. 'DWORD (0x00000001)'
-    or 'QWORD (0x...)') that legitimately can never appear verbatim in
-    procedure_text, which states the raw command argument instead
-    (e.g. '/d 1'). Extracts the hex payload and checks whether its
-    decimal or hex form appears anywhere in the source text. Plain-string
-    Details values (e.g. a persistence payload path) never reach this —
-    they already ground normally via the existing verbatim/basename checks
-    above, same as any other field.
+    basename/partial-token checks already failed. Handles the case where
+    Details holds a Sigma-convention-formatted registry value (e.g.
+    'DWORD (0x00000001)' or 'QWORD (0x...)') that legitimately can never
+    appear verbatim in procedure_text, which states the raw command
+    argument instead (e.g. '/d 1'). Extracts the hex payload and checks
+    whether its decimal or hex form appears anywhere in the source text.
+    Plain-string Details values (e.g. a persistence payload command) are
+    now caught upstream by the partial-token check, since Details was
+    added to _PARTIAL_MATCH_FIELDS — they only reach this hex-specific
+    fallback if that check also fails.
     """
     match = re.search(r"0x([0-9a-fA-F]+)", v)
     if not match:
@@ -478,7 +480,8 @@ def interpret_procedure(
     )
 
     try:
-        response = client.messages.create(
+        response = create_with_retry(
+            client,
             model="claude-sonnet-4-6",
             max_tokens=1024,
             temperature=0,

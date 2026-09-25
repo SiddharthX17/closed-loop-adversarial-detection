@@ -53,6 +53,7 @@ DEFENDER_OUTPUT_SCHEMA = {
     "additionalProperties": False,
     "properties": {
         "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
         "level": {
             "type": "string",
             "enum": ["informational", "low", "medium", "high", "critical"],
@@ -77,7 +78,7 @@ DEFENDER_OUTPUT_SCHEMA = {
             "items": {"type": "string"},
         },
     },
-    "required": ["title", "level", "tags", "logsource", "detection", "falsepositives"],
+    "required": ["title", "description", "level", "tags", "logsource", "detection", "falsepositives"],
 }
 
 
@@ -530,6 +531,9 @@ def build_defender_user_message(
         "Metadata:\n"
         "  Title: concise and descriptive — also the basis for the rule's filename\n"
         f"  ({technique_id}-<short-description>), so keep it tight.\n\n"
+        "  Description: 1-2 plain-English sentences stating what the rule detects\n"
+        "  and why it's suspicious — SigmaHQ convention. State the behavior, don't\n"
+        "  just reword the title, and don't restate the evidence events verbatim.\n\n"
         "  Tags: include at minimum the tactic tag and the technique tag —\n"
         f"  e.g. 'attack.{tactic.lower().replace(' ', '-')}' and\n"
         f"  'attack.{technique_id.lower()}'.\n\n"

@@ -10,529 +10,542 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
+# -- Cluster: singleton_c12c92fd-051f-41b1-b5d4-374f4a02275c  (1 rule(s)) ---------------------
+# Intent:    Remote command execution through Service Control Manager (SCM) service host spaw
+# Rules:     c12c92fd-051f-41b1-b5d4-374f4a02275c
+# Archetype: IT admin workflow
 
-# -- Cluster: singleton_8af420ec-3464-406e-aa32-0ff39808feab  (1 rule(s)) ---------------------
-# Intent:    Adversaries creating scheduled tasks via PowerShell cmdlets or script hosts to e
-# Rules:     8af420ec-3464-406e-aa32-0ff39808feab
-# Archetype: Software installer/updater workflow
+$tempDir = [System.IO.Path]::GetTempPath()
+$logFile = Join-Path $tempDir "inventory_$(Get-Random).log"
+$scriptFile = Join-Path $tempDir "config_scan_$(Get-Random).ps1"
 
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Software installation workflow creating scheduled task for automated updates
-# This mimics how legitimate management tools set up maintenance tasks
-
-$taskFolder = 'SoftwareUpdates'
-$taskName = 'AutoUpdateCheck'
-$scriptPath = Join-Path $env:ProgramData 'Updates'
-$logFile = Join-Path $scriptPath 'update_check.log'
-
-# Create the supporting directory structure
-if (-not (Test-Path $scriptPath)) {
-    New-Item -ItemType Directory -Path $scriptPath | Out-Null
-}
-
-# Create a temporary maintenance script
-$maintenanceScript = Join-Path $scriptPath 'update_maintenance.ps1'
-$scriptContent = @'
-# Log file location
-$logPath = '{0}'
-Add-Content -Path $logPath -Value "Update check executed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-'@ -f $logFile
-
-Set-Content -Path $maintenanceScript -Value $scriptContent -Encoding UTF8
-
-try {
-    # Use schtasks.exe to create the scheduled task (common in installer workflows)
-    $action = 'powershell.exe'
-    $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$maintenanceScript`""
-
-    $createTaskCmd = @(
-        'schtasks.exe',
-        '/create',
-        '/tn', "\$taskFolder\$taskName",
-        '/tr', "$action $arguments",
-        '/sc', 'weekly',
-        '/d', 'SUN',
-        '/st', '03:00:00',
-        '/ru', 'NT AUTHORITY\SYSTEM',
-        '/f',
-        '/z'
-    )
-
-    & $createTaskCmd 2>&1 | Out-Null
-
-    # Verify task creation
-    $existingTask = schtasks.exe /query /tn "\$taskFolder\$taskName" /fo list 2>&1
-    if ($existingTask -notlike '*ERROR*') {
-        Write-Host "Task created via installer workflow: $taskName"
-    }
-
-    # Clean up
-    schtasks.exe /delete /tn "\$taskFolder\$taskName" /f 2>&1 | Out-Null
-    Remove-Item -Path $maintenanceScript -Force -ErrorAction SilentlyContinue | Out-Null
-    Remove-Item -Path $scriptPath -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
-}
-catch {
-    Write-Host "Error during software update task setup: $_"
-    Remove-Item -Path $scriptPath -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
-}
-
-Write-Host 'Software update scheduling workflow completed'
-
-# -- Cluster: singleton_8af420ec-3464-406e-aa32-0ff39808feab  (1 rule(s)) ---------------------
-# Intent:    Adversaries creating scheduled tasks via PowerShell cmdlets or script hosts to e
-# Rules:     8af420ec-3464-406e-aa32-0ff39808feab
-# Archetype: User-driven workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# User workflow: creating a scheduled task for daily report generation
-# This mimics how administrative users or scripts set up personal automation
-
-$reportDir = Join-Path $env:TEMP 'daily_reports'
-$taskName = 'DailyReportGeneration'
-
-# Create report directory
-if (-not (Test-Path $reportDir)) {
-    New-Item -ItemType Directory -Path $reportDir | Out-Null
-}
-
-# Create report generation script in a standard location
-$reportScript = Join-Path $reportDir 'generate_report.ps1'
-$reportScriptContent = @'
-Param([string]$OutputPath)
-$timestamp = Get-Date -Format 'yyyy-MM-dd'
-$reportFile = Join-Path $OutputPath "report_$timestamp.csv"
-Get-WmiObject -Class Win32_LogicalDisk | Select-Object Name, Size, FreeSpace | Export-Csv -Path $reportFile -NoTypeInformation
+# Create a realistic inventory scanning script
+$inventoryScript = @'
+# Enterprise inventory collection
+$results = @{}
+$targetServer = $env:COMPUTERNAME
+$results.Hostname = $targetServer
+$results.OSVersion = (Get-CimInstance Win32_OperatingSystem).Caption
+$results.InstalledApps = @(Get-CimInstance Win32_Product | Select-Object Name, Version)
+Write-Host "Inventory collection complete"
 '@
 
-Set-Content -Path $reportScript -Value $reportScriptContent -Encoding UTF8
+Set-Content -Path $scriptFile -Value $inventoryScript
 
+# Simulate SCM executing a PowerShell command with admin share references
+# This models legitimate enterprise configuration management pulling from admin shares
 try {
-    # Create the scheduled task using schtasks
-    $pwshPath = 'powershell.exe'
-    $scriptArg = "-NoProfile -ExecutionPolicy Bypass -File `"$reportScript`" -OutputPath `"$reportDir`""
+    # Reference admin shares in the command line (as would appear in remote admin scenario)
+    & powershell.exe -NoProfile -Command "Write-Host 'Checking system shares'; Get-ChildItem -Path $scriptFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host 'Found config file' }"
 
-    $taskCmd = @(
-        'schtasks.exe',
-        '/create',
-        '/tn', '\\UserMaintenance\\DailyReporting',
-        '/tr', "$pwshPath $scriptArg",
-        '/sc', 'daily',
-        '/st', '06:00:00',
-        '/ru', 'NT AUTHORITY\SYSTEM',
-        '/f'
-    )
-
-    & $taskCmd 2>&1 | Out-Null
-
-    # Verify creation
-    $checkTask = schtasks.exe /query /tn '\\UserMaintenance\\DailyReporting' /fo list 2>&1
-    if ($checkTask -notlike '*ERROR*') {
-        Write-Host "Daily report task created successfully"
-    }
-
-    # Clean up
-    schtasks.exe /delete /tn '\\UserMaintenance\\DailyReporting' /f 2>&1 | Out-Null
-    Remove-Item -Path $reportDir -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
+    # Simulate command execution with /q /c pattern (quiet mode)
+    & cmd.exe /q /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptFile *>> $logFile
+} catch {
+    Write-Host "Configuration scan process completed"
 }
-catch {
-    Write-Host "Error during report task creation: $_"
-    Remove-Item -Path $reportDir -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
-}
-
-Write-Host 'User report scheduling workflow completed'
-
-# -- Cluster: singleton_37b9adf5-1251-44bc-97fe-42cc239603b5  (1 rule(s)) ---------------------
-# Intent:    Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download fi
-# Rules:     37b9adf5-1251-44bc-97fe-42cc239603b5
-# Archetype: IT admin workflow
-
-# Certificate authority CRL validation for compliance audit
-$tempDir = [System.IO.Path]::GetTempPath()
-$crlPath = Join-Path $tempDir 'root_crl.crl'
-
-try {
-    # Retrieve CRL from internal PKI endpoint (simulated with localhost for testing)
-    # This represents a real admin validating certificate chains during infrastructure maintenance
-    & certutil.exe -urlcache -split -f 'http://localhost:8080/certsrv/certca.crl' $crlPath
-
-    # Also validate with https PKI endpoint
-    & certutil.exe -urlcache -f 'https://localhost:8443/pki/root.crl' $crlPath
-
-    # Clean up
-    Remove-Item -Force $crlPath -ErrorAction SilentlyContinue
-}
-catch {
-    # Network endpoint may not be available in test environment, which is expected
-    Remove-Item -Force $crlPath -ErrorAction SilentlyContinue
-}
-
-Write-Host 'Certificate authority validation complete'
-
-# -- Cluster: singleton_37b9adf5-1251-44bc-97fe-42cc239603b5  (1 rule(s)) ---------------------
-# Intent:    Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download fi
-# Rules:     37b9adf5-1251-44bc-97fe-42cc239603b5
-# Archetype: Software installer/updater workflow
-
-# Enterprise patch management via BitsAdmin (SCCM distribution point)
-$tempDir = [System.IO.Path]::GetTempPath()
-$updateFile = Join-Path $tempDir 'patch_q4_2024.exe'
-$jobName = 'EnterprisePatchJob'
-
-try {
-    # Create a BitsAdmin transfer job simulating patch distribution
-    # In production, this would connect to an actual SCCM endpoint
-    & bitsadmin.exe /create /download /priority normal $jobName
-
-    # Add file transfer from enterprise SCCM server
-    & bitsadmin.exe /addfile $jobName 'https://sccm.internal.corp.local/content/patch.exe' $updateFile
-
-    # Add a second file from WSUS endpoint
-    $wsusFile = Join-Path $tempDir 'wsus_manifest.xml'
-    & bitsadmin.exe /addfile $jobName 'https://wsus.internal.corp.local/updates/manifest.xml' $wsusFile
-
-    # In real deployment, /resume would start the transfer
-    # & bitsadmin.exe /resume $jobName
-
-    # Clean up the job
-    & bitsadmin.exe /complete $jobName -ErrorAction SilentlyContinue
-    & bitsadmin.exe /remove $jobName -ErrorAction SilentlyContinue
-
-    # Clean up temporary files
-    Remove-Item -Force $updateFile -ErrorAction SilentlyContinue
-    Remove-Item -Force $wsusFile -ErrorAction SilentlyContinue
-}
-catch {
-    & bitsadmin.exe /remove $jobName -ErrorAction SilentlyContinue
-    Remove-Item -Force $updateFile -ErrorAction SilentlyContinue
-    Remove-Item -Force $wsusFile -ErrorAction SilentlyContinue
-}
-
-Write-Host 'Enterprise patch transfer workflow completed'
-
-# -- Cluster: singleton_37b9adf5-1251-44bc-97fe-42cc239603b5  (1 rule(s)) ---------------------
-# Intent:    Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download fi
-# Rules:     37b9adf5-1251-44bc-97fe-42cc239603b5
-# Archetype: User-driven workflow
-
-# Certificate validation troubleshooting - OCSP status checking
-$tempDir = [System.IO.Path]::GetTempPath()
-$certPath = Join-Path $tempDir 'server_cert.crt'
-$ocspResponse = Join-Path $tempDir 'ocsp_response.bin'
-
-try {
-    # Retrieve OCSP response for certificate validation during SSL troubleshooting
-    # Simulates a user or support team validating certificate chain integrity
-    & certutil.exe -urlcache -split -f 'http://ocsp.digicert.com/ocsp' $ocspResponse
-
-    # Also attempt OCSP validation via https endpoint
-    & certutil.exe -urlcache -f 'https://ocsp.internal.corp.local/ocsp/check' $ocspResponse
-
-    # Download certificate details for validation
-    & certutil.exe -urlcache -split -f 'https://pki.example.corp.local/cert' $certPath
-
-    # Verify the certificate file if it was downloaded
-    if (Test-Path $certPath) {
-        & certutil.exe -verify -urlfetch $certPath
-    }
-
-    # Clean up
-    Remove-Item -Force $certPath -ErrorAction SilentlyContinue
-    Remove-Item -Force $ocspResponse -ErrorAction SilentlyContinue
-}
-catch {
-    Remove-Item -Force $certPath -ErrorAction SilentlyContinue
-    Remove-Item -Force $ocspResponse -ErrorAction SilentlyContinue
-}
-
-Write-Host 'Certificate validation workflow completed'
-
-# -- Cluster: singleton_e0ccd616-16f2-4203-af74-0fda2efd9835  (1 rule(s)) ---------------------
-# Intent:    Attacker persistence via registry Run/RunOnce keys pointing to application updat
-# Rules:     e0ccd616-16f2-4203-af74-0fda2efd9835
-# Archetype: Software installer/updater workflow
-
-$regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-$appName = 'VSCodeUpdate'
-$updaterPath = 'C:\Program Files\Microsoft VS Code\update.exe'
-
-# Create a temporary directory structure to simulate VSCode installation
-$tempDir = Join-Path -Path $env:TEMP -ChildPath ('vscode_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $tempDir -ChildPath 'bin') -Force | Out-Null
-
-# Create a stub executable to represent the updater
-$stubPath = Join-Path $tempDir -ChildPath 'bin\update.exe'
-Copy-Item -Path (Get-Command cmd.exe).Path -Destination $stubPath -Force
-
-# Simulate the updater registration in the Run key
-$registryValue = $stubPath
-Reg.exe add $regPath /v $appName /d $registryValue /f | Out-Null
-
-# Wait briefly to allow Sysmon to capture the event
-Start-Sleep -Milliseconds 500
-
-# Clean up: remove the registry entry
-Reg.exe delete $regPath /v $appName /f 2>$null | Out-Null
-
-# Clean up: remove the temporary directory
-Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_e0ccd616-16f2-4203-af74-0fda2efd9835  (1 rule(s)) ---------------------
-# Intent:    Attacker persistence via registry Run/RunOnce keys pointing to application updat
-# Rules:     e0ccd616-16f2-4203-af74-0fda2efd9835
-# Archetype: IT admin workflow
-
-$regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-$appName = 'GoogleUpdate'
-$updaterPath = 'C:\Program Files (x86)\Google\Update\GoogleUpdate.exe'
-
-# Create a temporary directory structure to represent Google Update installation
-$tempDir = Join-Path -Path $env:TEMP -ChildPath ('googleupdate_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-# Create a stub executable
-$stubPath = Join-Path $tempDir -ChildPath 'GoogleUpdate.exe'
-Copy-Item -Path (Get-Command cmd.exe).Path -Destination $stubPath -Force
-
-# Register the updater in the Run key using native registry API
-$registryValue = $stubPath
-Reg.exe add $regPath /v $appName /d $registryValue /f | Out-Null
-
-# Wait for Sysmon to capture the event
-Start-Sleep -Milliseconds 500
-
-# Remove the registry entry (cleanup)
-Reg.exe delete $regPath /v $appName /f 2>$null | Out-Null
-
-# Clean up temporary directory
-Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_e0ccd616-16f2-4203-af74-0fda2efd9835  (1 rule(s)) ---------------------
-# Intent:    Attacker persistence via registry Run/RunOnce keys pointing to application updat
-# Rules:     e0ccd616-16f2-4203-af74-0fda2efd9835
-# Archetype: User-driven workflow
-
-$regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-$appName = 'SlackAutoUpdate'
-$updaterPath = 'C:\Program Files\Slack\Slack.exe'
-
-# Simulate Slack installation by creating a temporary directory structure
-$tempDir = Join-Path -Path $env:TEMP -ChildPath ('slack_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-# Create a stub executable to represent Slack.exe
-$stubPath = Join-Path $tempDir -ChildPath 'Slack.exe'
-Copy-Item -Path (Get-Command cmd.exe).Path -Destination $stubPath -Force
-
-# Register Slack in the Run key
-$registryValue = $stubPath
-Reg.exe add $regPath /v $appName /d $registryValue /f | Out-Null
-
-# Allow time for Sysmon to record the event
-Start-Sleep -Milliseconds 500
-
-# Clean up: remove the registry entry
-Reg.exe delete $regPath /v $appName /f 2>$null | Out-Null
-
-# Clean up: remove the temporary directory
-Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9  (1 rule(s)) ---------------------
-# Intent:    Detect mshta.exe as a parent process executing shell commands through inline VBS
-# Rules:     dfe49bba-8f75-4a19-8464-8a87b03c4ca9
-# Archetype: IT admin workflow
-
-$tempDir = [System.IO.Path]::GetTempPath()
-$diagScript = Join-Path $tempDir "hw_diagnostic.hta"
-
-# Create a legitimate HTML Application that invokes system diagnostics via VBScript
-$htaContent = @'
-<html>
-<head>
-<title>System Diagnostic Tool</title>
-</head>
-<body>
-<h2>Running Hardware Diagnostics</h2>
-<script language="VBScript">
-Dim shell, osInfo, diskInfo
-Set shell = CreateObject("wscript.shell")
-Set osInfo = shell.Exec("cmd /c systeminfo")
-Set diskInfo = shell.Exec("cmd /c wmic logicaldisk get name,size,freespace")
-MsgBox "Diagnostics complete", 0, "System Health Check"
-</script>
-</body>
-</html>
-'@
-
-Set-Content -Path $diagScript -Value $htaContent -Force
-
-# Execute the HTA file which will spawn as an mshta.exe parent process
-# The script execution will trigger Sysmon process creation events
-$process = Start-Process -FilePath "mshta.exe" -ArgumentList $diagScript -PassThru -Wait -ErrorAction SilentlyContinue
 
 # Clean up
-Remove-Item -Path $diagScript -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $scriptFile -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $logFile -Force -ErrorAction SilentlyContinue
 
-Write-Host "Hardware diagnostic workflow completed"
+# SKIPPED variant 'Software installer/updater workflow': blocked pattern: cmd batch syntax ('echo off')
 
-# -- Cluster: singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9  (1 rule(s)) ---------------------
-# Intent:    Detect mshta.exe as a parent process executing shell commands through inline VBS
-# Rules:     dfe49bba-8f75-4a19-8464-8a87b03c4ca9
-# Archetype: Software installer/updater workflow
-
-$tempDir = [System.IO.Path]::GetTempPath()
-$installerHta = Join-Path $tempDir "app_installer_check.hta"
-
-# Create an installer pre-flight check HTA that uses VBScript to validate system
-$installerContent = @'
-<html>
-<head>
-<title>Application Pre-Install Validation</title>
-</head>
-<body>
-<h2>Validating Installation Prerequisites</h2>
-<script language="VBScript">
-Dim shell, regQuery, installResult
-Set shell = CreateObject("wscript.shell")
-
-regQuery = shell.Exec("cmd /c reg query HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion")
-installResult = shell.Run("cmd /c echo Installation prerequisites validated", 0)
-
-Dim fso
-Set fso = CreateObject("Scripting.FileSystemObject")
-if fso.FolderExists("C:\\Windows\\System32") then
-  shell.Run "cmd /c echo System directory check passed", 0
-end if
-</script>
-</body>
-</html>
-'@
-
-Set-Content -Path $installerHta -Value $installerContent -Force
-
-# Execute the installer pre-flight validation through mshta
-$process = Start-Process -FilePath "mshta.exe" -ArgumentList $installerHta -PassThru -Wait -ErrorAction SilentlyContinue
-
-# Clean up installer check file
-Remove-Item -Path $installerHta -Force -ErrorAction SilentlyContinue
-
-Write-Host "Application pre-install validation completed"
-
-# -- Cluster: singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9  (1 rule(s)) ---------------------
-# Intent:    Detect mshta.exe as a parent process executing shell commands through inline VBS
-# Rules:     dfe49bba-8f75-4a19-8464-8a87b03c4ca9
+# -- Cluster: singleton_c12c92fd-051f-41b1-b5d4-374f4a02275c  (1 rule(s)) ---------------------
+# Intent:    Remote command execution through Service Control Manager (SCM) service host spaw
+# Rules:     c12c92fd-051f-41b1-b5d4-374f4a02275c
 # Archetype: User-driven workflow
 
 $tempDir = [System.IO.Path]::GetTempPath()
-$configHta = Join-Path $tempDir "network_config_tool.hta"
+$backupScript = Join-Path $tempDir "backup_verify_$(Get-Random).ps1"
+$logPath = Join-Path $tempDir "backup_log_$(Get-Random).txt"
 
-# Create a legitimate user-facing HTML Application GUI tool for network configuration
-$configContent = @'
-<html>
-<head>
-<title>Network Configuration Utility</title>
-<style>
-body { font-family: Arial; margin: 20px; }
-input { padding: 5px; margin: 5px; }
-</style>
-</head>
-<body>
-<h2>Network Settings Manager</h2>
-<button onclick="CheckNetwork()">Check Network Status</button>
-<script language="VBScript">
-Sub CheckNetwork()
-  Dim shell, netstat
-  Set shell = CreateObject("wscript.shell")
-  Set netstat = shell.Exec("cmd /c ipconfig /all")
-  Dim gateway
-  Set gateway = shell.Exec("cmd /c route print")
-  MsgBox "Network check completed. Review Event Viewer for details.", 0, "Network Status"
-End Sub
-</script>
-</body>
-</html>
+# Create a backup verification script that accesses network resources
+$backupContent = @'
+# Backup verification workflow
+$configFile = "C:\\ProgramData\\BackupConfig.ini"
+if (Test-Path -Path $configFile) {
+    Write-Host "Backup configuration found"
+    Get-Content -Path $configFile -ErrorAction SilentlyContinue | Select-Object -First 5
+}
+Write-Host "Backup verification complete"
 '@
 
-Set-Content -Path $configHta -Value $configContent -Force
+Set-Content -Path $backupScript -Value $backupContent
 
-# User opens the network configuration HTA from their applications folder
-# This triggers mshta.exe as parent with inline VBScript execution
-$process = Start-Process -FilePath "mshta.exe" -ArgumentList $configHta -PassThru -Wait -ErrorAction SilentlyContinue
+try {
+    # Simulate application accessing admin shares for backup/restore operations
+    # This models backup software or remote access tools that spawn shells
+    & powershell.exe -NoProfile -Command "Write-Host 'Accessing shared resources'; Write-Host 'Connecting to \\\\$env:COMPUTERNAME\\ipc$'"
 
-# Clean up the configuration tool
-Remove-Item -Path $configHta -Force -ErrorAction SilentlyContinue
+    # Execute verification with quiet command execution
+    & cmd.exe /q /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File $backupScript *>> $logPath
+} catch {
+    Write-Host "Backup workflow completed"
+}
 
-Write-Host "Network configuration tool workflow completed"
+# Clean up
+Remove-Item -Path $backupScript -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
+# -- Cluster: singleton_4151c10e-1ee4-4a75-8cba-d32c20451715  (1 rule(s)) ---------------------
+# Intent:    Remote PowerShell session management and command invocation via cmdlet, which at
+# Rules:     4151c10e-1ee4-4a75-8cba-d32c20451715
+# Archetype: IT admin workflow
 
-# -- Cluster: singleton_5543fe68-119f-4334-8553-2c92a2d1ab1a  (1 rule(s)) ---------------------
-# Intent:    Detect the use of scripting hosts (PowerShell, cmd, wscript, mshta, regsvr32) wi
-# Rules:     5543fe68-119f-4334-8553-2c92a2d1ab1a
-# Archetype: Software installer/updater workflow
-
-# Software update process: common in managed enterprise environments
-# Uses minimized window during dependency checking phase
-
-$updateScript = $env:TEMP + '\update_checker.ps1'
-
-$scriptContent = @'
-# Dependency and compatibility check - runs with minimized window during updates
-Write-Host "Checking application dependencies..."
-$modules = @('Posh-Git', 'PSReadLine')
-foreach ($module in $modules) {
-    if (Get-Module -ListAvailable -Name $module) {
-        Write-Host "Module $module is installed"
-    } else {
-        Write-Host "Module $module not found"
+# IT admin: enable remote PowerShell and connect to server for agent deployment
+$serverList = @('Server01.corp.local', 'Server02.corp.local')
+foreach ($server in $serverList) {
+    Write-Host "Initializing remote management for $server"
+    try {
+        # Verify WinRM service is running
+        $winrmStatus = Get-Service WinRM -ComputerName $server -ErrorAction SilentlyContinue
+        if ($winrmStatus.Status -ne 'Running') {
+            Write-Host "WinRM not running on $server, attempting to enable"
+        }
+        # Establish a remote session to deploy monitoring agent
+        $session = New-PSSession -ComputerName $server -ErrorAction Stop
+        if ($session) {
+            Write-Host "Session created for $server"
+            # Verify remote session connectivity with a simple query
+            $remoteInfo = Invoke-Command -Session $session -ScriptBlock { Get-ComputerInfo -Property WindowsVersion } -ErrorAction SilentlyContinue
+            if ($remoteInfo) {
+                Write-Host "Successfully verified remote connectivity"
+            }
+            Remove-PSSession -Session $session
+        }
+    } catch {
+        Write-Host "Unable to reach $server - continuing with next target"
     }
 }
-Write-Host "Dependency check complete"
-'@
+Write-Host "Remote management verification complete"
 
-Set-Content -Path $updateScript -Value $scriptContent
+# -- Cluster: singleton_4151c10e-1ee4-4a75-8cba-d32c20451715  (1 rule(s)) ---------------------
+# Intent:    Remote PowerShell session management and command invocation via cmdlet, which at
+# Rules:     4151c10e-1ee4-4a75-8cba-d32c20451715
+# Archetype: Software installer/updater workflow
 
-# Run with minimized window - typical for background update processes
-powershell.exe -WindowStyle Minimized -File $updateScript
+$deploymentTargets = @('AppServer01', 'AppServer02')
+$updateScript = {
+    Get-Process | Where-Object { $_.Name -eq 'w3wp' } | Select-Object Name, Id | Out-Null
+    $lastRestart = (Get-Date) - (New-TimeSpan -Seconds ([Environment]::TickCount / 1000))
+    if ($lastRestart -lt (Get-Date).AddDays(-30)) {
+        Write-Host 'IIS process is running and service status is nominal'
+    }
+}
+foreach ($target in $deploymentTargets) {
+    try {
+        Write-Host "Deploying configuration update to $target"
+        # Create a remote session for deployment
+        $pssession = New-PSSession -ComputerName $target -ErrorAction Stop
+        if ($pssession) {
+            # Execute the maintenance script on the remote system
+            Invoke-Command -Session $pssession -ScriptBlock $updateScript -ErrorAction SilentlyContinue
+            Write-Host "Configuration deployed to $target"
+            Remove-PSSession -Session $pssession
+        }
+    } catch {
+        Write-Host "Deployment to $target failed - may be offline"
+    }
+}
+Write-Host "Deployment cycle completed"
 
-# Cleanup
-Remove-Item -Path $updateScript -Force
-Write-Host "Update check finished"
-
-# -- Cluster: singleton_5543fe68-119f-4334-8553-2c92a2d1ab1a  (1 rule(s)) ---------------------
-# Intent:    Detect the use of scripting hosts (PowerShell, cmd, wscript, mshta, regsvr32) wi
-# Rules:     5543fe68-119f-4334-8553-2c92a2d1ab1a
+# -- Cluster: singleton_4151c10e-1ee4-4a75-8cba-d32c20451715  (1 rule(s)) ---------------------
+# Intent:    Remote PowerShell session management and command invocation via cmdlet, which at
+# Rules:     4151c10e-1ee4-4a75-8cba-d32c20451715
 # Archetype: User-driven workflow
 
-# User automation: batch file organization using WScript.Shell COM interface
-# Common for users automating file operations across shared drives
+# Support workflow: connect to server for interactive troubleshooting
+$targetServer = 'ProdApp01.corp.local'
+Write-Host "Initiating remote troubleshooting session for $targetServer"
+try {
+    # Create a new remote PowerShell session
+    $remoteSession = New-PSSession -ComputerName $targetServer -ErrorAction Stop
+    if ($remoteSession) {
+        Write-Host "Session established. Running diagnostic queries..."
+        # Execute diagnostic commands in the remote session
+        Invoke-Command -Session $remoteSession -ScriptBlock {
+            Write-Host "Collecting system diagnostics"
+            Get-Process | Where-Object { $_.WorkingSet -gt 500MB } | Select-Object Name, Id, WorkingSet
+            Get-EventLog -LogName System -Newest 10 -EntryType Error | Select-Object TimeGenerated, Source, EventID
+            Get-NetAdapter | Select-Object Name, Status, LinkSpeed
+        } -ErrorAction SilentlyContinue
+        Write-Host "Diagnostic data collected successfully"
+        # Simulate analyst review of data
+        Write-Host "Analysis complete - no critical issues detected"
+        Remove-PSSession -Session $remoteSession
+        Write-Host "Remote session closed"
+    }
+} catch {
+    Write-Host "Cannot establish session to $targetServer - verify network connectivity"
+}
+Write-Host "Troubleshooting workflow complete"
 
-$wscriptFile = $env:TEMP + '\organize_files.vbs'
+# -- Cluster: singleton_633f1304-073f-44a3-aa18-0c65e541d521  (1 rule(s)) ---------------------
+# Intent:    Detect when Windows scripting engines (PowerShell, VBScript, JScript, HTA) spawn
+# Rules:     633f1304-073f-44a3-aa18-0c65e541d521
+# Archetype: IT admin workflow
 
-$vbsContent = @'
-Set WshShell = CreateObject("WScript.Shell")
-Set objShell = CreateObject("Shell.Application")
+$adminScript = @'
+Param([string]$targetSubnet = '192.168.1.0')
 
-' Create folder for organization if needed
-strPath = WshShell.ExpandEnvironmentStrings("%TEMP%") & "\organized"
-Set objFolder = objShell.NameSpace(WshShell.ExpandEnvironmentStrings("%TEMP%"))
+# Network diagnostics for infrastructure audit
+$logPath = Join-Path $env:TEMP 'network_diagnostics.log'
 
-WScript.Echo "File organization utility initialized"
-WScript.Echo "User home directory: " & WshShell.SpecialFolders("MyDocuments")
-WScript.Echo "Organization utility ready"
-'@
+# Test DNS resolution on multiple hosts
+@('8.8.8.8', 'google.com', 'localhost') | ForEach-Object {
+    nslookup $_ 2>&1 | Out-File -Append $logPath
+}
 
-Set-Content -Path $wscriptFile -Value $vbsContent -Encoding ASCII
+# Ping gateway for connectivity verification
+ping -n 2 127.0.0.1 2>&1 | Out-File -Append $logPath
 
-# Execute using wscript.exe - standard for user automation scripts
-cscript.exe $wscriptFile
+# Query ARP table for network segment mapping
+arp -a 2>&1 | Out-File -Append $logPath
+
+# Enumerate local network resources
+net view 2>&1 | Out-File -Append $logPath
+
+# Generate summary report
+Write-Output "Network diagnostics completed. Results: $logPath" | Out-File -Append $logPath
 
 # Cleanup
-Remove-Item -Path $wscriptFile -Force
-Write-Host "File organization script completed"
+Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+'@
+
+# Execute the diagnostic script
+PowerShell.exe -NoProfile -ExecutionPolicy Bypass -Command $adminScript
+
+# -- Cluster: singleton_633f1304-073f-44a3-aa18-0c65e541d521  (1 rule(s)) ---------------------
+# Intent:    Detect when Windows scripting engines (PowerShell, VBScript, JScript, HTA) spawn
+# Rules:     633f1304-073f-44a3-aa18-0c65e541d521
+# Archetype: Software installer/updater workflow
+
+$wshScript = @'
+' Network connectivity validation for enterprise software deployment
+Dim objWshNet, strComputer, arrServers, i
+Set objWshNet = CreateObject("WScript.Network")
+strComputer = objWshNet.ComputerName
+
+' Query network configuration
+CreateObject("WScript.Shell").Exec "nslookup localhost"
+CreateObject("WScript.Shell").Exec "ping -n 1 127.0.0.1"
+CreateObject("WScript.Shell").Exec "arp -a"
+CreateObject("WScript.Shell").Exec "net view"
+CreateObject("WScript.Shell").Exec "net group"
+'@
+
+$vbsPath = Join-Path $env:TEMP 'deploy_validation.vbs'
+Set-Content -Path $vbsPath -Value $wshScript -Encoding ASCII
+
+# Execute via cscript for legitimate deployment validation
+cscript.exe //NoLogo $vbsPath 2>&1 | Out-Null
+
+# Cleanup
+Remove-Item -Path $vbsPath -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_633f1304-073f-44a3-aa18-0c65e541d521  (1 rule(s)) ---------------------
+# Intent:    Detect when Windows scripting engines (PowerShell, VBScript, JScript, HTA) spawn
+# Rules:     633f1304-073f-44a3-aa18-0c65e541d521
+# Archetype: User-driven workflow
+
+# Discover network printers and shared resources
+$networkScript = {
+    param([string]$subnet = '192.168.1')
+
+    # Resolve hostname to IP
+    Write-Output "Checking network connectivity..."
+    nslookup localhost 2>&1 | Out-Null
+
+    # Test ICMP to gateway
+    ping -n 1 127.0.0.1 2>&1 | Out-Null
+
+    # Display current ARP cache
+    Write-Output "ARP table:"
+    arp -a 2>&1 | Out-Null
+
+    # Enumerate available shares on network
+    Write-Output "Searching network resources..."
+    net view 2>&1 | Out-Null
+
+    # Check group memberships for resource access
+    net group 2>&1 | Out-Null
+}
+
+# Execute discovery workflow
+Invoke-Command -ScriptBlock $networkScript
+
+# -- Cluster: singleton_929b0684-1bd5-4930-b9d9-0167e1dc4012  (1 rule(s)) ---------------------
+# Intent:    Detect reconnaissance of Active Directory domain objects via ADSI/PowerShell cmd
+# Rules:     929b0684-1bd5-4930-b9d9-0167e1dc4012
+# Archetype: IT admin workflow
+
+# Create a temporary directory for script files
+$tempDir = [System.IO.Path]::GetTempPath()
+$scriptPath = Join-Path -Path $tempDir -ChildPath "domain_audit_$(Get-Random).vbs"
+
+# Create a VBScript that uses ADSI to enumerate domain information
+# This mimics what an IT admin might do for compliance reporting
+$vbScriptContent = @'
+Set objADOConnection = CreateObject("ADODB.Connection")
+Set objADOCommand = CreateObject("ADODB.Command")
+objADOConnection.Provider = "ADsDSOObject"
+objADOConnection.Open "Active Directory Provider"
+
+Set objADOCommand.ActiveConnection = objADOConnection
+objADOCommand.CommandText = "<LDAP://CN=Users,DC=corp,DC=example,DC=com>;(objectClass=user);cn;subtree"
+
+Set objRecordSet = objADOCommand.Execute
+WScript.Echo "Domain users enumerated for audit purposes"
+'@
+
+# Write the VBScript to disk
+$vbScriptContent | Out-File -FilePath $scriptPath -Encoding ASCII -Force
+
+try {
+    # Execute the VBScript using cscript.exe (common script host)
+    # This generates the process creation event with ADSI keywords in command line context
+    & cscript.exe $scriptPath //Nologo 2>&1 | Out-Null
+
+    # Also invoke via PowerShell with direct ADSI code to capture alternative pattern
+    # This represents a sysadmin running ad-hoc domain queries
+    $domainRoot = [ADSI]"LDAP://RootDSE"
+    if ($null -ne $domainRoot.defaultNamingContext) {
+        $searcher = New-Object System.DirectoryServices.DirectorySearcher
+        $searcher.SearchRoot = [ADSI]"LDAP://$($domainRoot.defaultNamingContext)"
+        $searcher.Filter = "(objectCategory=computer)"
+        $searcher.SizeLimit = 5
+        $results = $searcher.FindAll()
+        # Legitimate query for inventory purposes
+    }
+} finally {
+    # Cleanup
+    if (Test-Path -LiteralPath $scriptPath) {
+        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# -- Cluster: singleton_929b0684-1bd5-4930-b9d9-0167e1dc4012  (1 rule(s)) ---------------------
+# Intent:    Detect reconnaissance of Active Directory domain objects via ADSI/PowerShell cmd
+# Rules:     929b0684-1bd5-4930-b9d9-0167e1dc4012
+# Archetype: Software installer/updater workflow
+
+$tempDir = [System.IO.Path]::GetTempPath()
+$wsScriptPath = Join-Path -Path $tempDir -ChildPath "config_discovery_$(Get-Random).js"
+
+# JavaScript-based configuration discovery script (executable via wscript.exe)
+# Represents automated provisioning that checks OU membership and GPO links
+$jsContent = @'
+var objADOConnection = new ActiveXObject("ADODB.Connection");
+var objADOCommand = new ActiveXObject("ADODB.Command");
+objADOConnection.Provider = "ADsDSOObject";
+objADOConnection.Open("Active Directory Provider");
+objADOCommand.ActiveConnection = objADOConnection;
+// Query for group policy links to determine applicable policies
+objADOCommand.CommandText = "<LDAP://CN=Policies,CN=System,DC=corp,DC=example,DC=com>;(objectClass=groupPolicyContainer);displayName;subtree";
+var objRecordSet = objADOCommand.Execute();
+WScript.Echo("Configuration discovery: gplink evaluation completed");
+'@
+
+$jsContent | Out-File -FilePath $wsScriptPath -Encoding ASCII -Force
+
+try {
+    # Execute via wscript.exe - common script host for configuration automation
+    & wscript.exe $wsScriptPath //Nologo 2>&1 | Out-Null
+
+    # PowerShell-based alternative: Query domain OUs for provisioning decisions
+    # This would appear in automated provisioning workflows
+    try {
+        $rootDse = [ADSI]"LDAP://RootDSE"
+        if ($null -ne $rootDse) {
+            $domainDN = $rootDse.defaultNamingContext
+            $ouSearcher = New-Object System.DirectoryServices.DirectorySearcher
+            $ouSearcher.SearchRoot = [ADSI]"LDAP://$domainDN"
+            $ouSearcher.Filter = "(objectCategory=organizationalUnit)"
+            $ouSearcher.SizeLimit = 10
+            $ouResults = $ouSearcher.FindAll()
+            # Results used for OU-based policy application
+        }
+    } catch {
+        # Domain context not available - expected on isolated systems
+    }
+} finally {
+    if (Test-Path -LiteralPath $wsScriptPath) {
+        Remove-Item -LiteralPath $wsScriptPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# -- Cluster: singleton_929b0684-1bd5-4930-b9d9-0167e1dc4012  (1 rule(s)) ---------------------
+# Intent:    Detect reconnaissance of Active Directory domain objects via ADSI/PowerShell cmd
+# Rules:     929b0684-1bd5-4930-b9d9-0167e1dc4012
+# Archetype: User-driven workflow
+
+$tempDir = [System.IO.Path]::GetTempPath()
+$dllPath = Join-Path -Path $tempDir -ChildPath "netconfig_$(Get-Random).dll"
+$scriptPath = Join-Path -Path $tempDir -ChildPath "query_domain_$(Get-Random).ps1"
+
+# Create a PowerShell script that queries domain users and groups
+# This simulates what IT staff might do for user provisioning or troubleshooting
+$psScriptContent = @'
+try {
+    $domainRoot = [ADSI]"LDAP://RootDSE"
+    if ($null -ne $domainRoot.defaultNamingContext) {
+        # Query for domain users - common for IT support
+        $userSearcher = New-Object System.DirectoryServices.DirectorySearcher
+        $userSearcher.SearchRoot = [ADSI]"LDAP://$($domainRoot.defaultNamingContext)"
+        $userSearcher.Filter = "(&(objectClass=user)(objectCategory=person))"
+        $userSearcher.SizeLimit = 3
+        $users = $userSearcher.FindAll()
+
+        # Query for groups - used for membership verification
+        $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher
+        $groupSearcher.SearchRoot = [ADSI]"LDAP://$($domainRoot.defaultNamingContext)"
+        $groupSearcher.Filter = "(objectCategory=group)"
+        $groupSearcher.SizeLimit = 3
+        $groups = $groupSearcher.FindAll()
+    }
+} catch {
+    # Expected if not in domain context
+}
+'@
+
+$psScriptContent | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
+
+try {
+    # Invoke the PowerShell script in a subprocess to generate process creation event
+    # Using rundll32.exe as intermediary simulates certain admin tooling patterns
+    & powershell.exe -NoProfile -NonInteractive -File $scriptPath 2>&1 | Out-Null
+
+    # Alternative: Direct invocation of ADSI queries via PowerShell
+    # This represents IT staff running ad-hoc troubleshooting commands
+    try {
+        $rootDse = [ADSI]"LDAP://RootDSE"
+        if ($null -ne $rootDse) {
+            $dnRoot = $rootDse.defaultNamingContext
+            # Direct search for domain users
+            $userSearch = New-Object System.DirectoryServices.DirectorySearcher
+            $userSearch.SearchRoot = [ADSI]"LDAP://$dnRoot"
+            $userSearch.Filter = "(objectCategory=person)"
+            $userSearch.SizeLimit = 5
+            $userList = $userSearch.FindAll()
+        }
+    } catch {
+        # Domain unavailable - expected in non-domain environments
+    }
+} finally {
+    if (Test-Path -LiteralPath $scriptPath) {
+        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path -LiteralPath $dllPath) {
+        Remove-Item -LiteralPath $dllPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# -- Cluster: singleton_b484c489-9d61-4427-8373-b3a0ea54cefd  (1 rule(s)) ---------------------
+# Intent:    Detect script hosts (wscript.exe, cscript.exe) launched from user-writable direc
+# Rules:     b484c489-9d61-4427-8373-b3a0ea54cefd
+# Archetype: IT admin workflow
+
+$tempDir = $env:TEMP
+$scriptName = 'inventory_check_' + [guid]::NewGuid().ToString().Substring(0, 8) + '.vbs'
+$scriptPath = Join-Path $tempDir $scriptName
+
+# Create a benign system inventory VBScript
+$vbsContent = @'
+On Error Resume Next
+Set objWMIService = GetObject("winmgmts:")
+Set colItems = objWMIService.ExecQuery("SELECT * FROM Win32_LogicalDisk")
+For Each objItem in colItems
+    WScript.Echo "Drive: " & objItem.Name & " Space: " & objItem.Size
+Next
+Set colItems = objWMIService.ExecQuery("SELECT * FROM Win32_OperatingSystem")
+For Each objItem in colItems
+    WScript.Echo "OS: " & objItem.Caption
+Next
+'@
+
+Set-Content -Path $scriptPath -Value $vbsContent -Encoding ASCII
+
+# Execute the script via wscript.exe
+Start-Process -FilePath 'C:\Windows\System32\wscript.exe' -ArgumentList @($scriptPath, '/nologo') -NoNewWindow -Wait
+
+# Cleanup
+Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_b484c489-9d61-4427-8373-b3a0ea54cefd  (1 rule(s)) ---------------------
+# Intent:    Detect script hosts (wscript.exe, cscript.exe) launched from user-writable direc
+# Rules:     b484c489-9d61-4427-8373-b3a0ea54cefd
+# Archetype: Software installer/updater workflow
+
+$appDataPath = $env:APPDATA
+$appDir = Join-Path $appDataPath 'EnterpriseApp_Installer'
+
+if (-not (Test-Path $appDir)) {
+    New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+}
+
+# Create a configuration validation script
+$scriptName = 'validate_install.vbs'
+$scriptPath = Join-Path $appDir $scriptName
+
+$vbsContent = @'
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+Set objWSHShell = CreateObject("WScript.Shell")
+
+strComputerName = objWSHShell.ExpandEnvironmentStrings("%COMPUTERNAME%")
+strUserName = objWSHShell.ExpandEnvironmentStrings("%USERNAME%")
+
+Set objFile = objFSO.CreateTextFile(objWSHShell.ExpandEnvironmentStrings("%APPDATA%\\EnterpriseApp_Installer\\install.log"), True)
+objFile.WriteLine "Installation validation at " & Now()
+objFile.WriteLine "Computer: " & strComputerName
+objFile.WriteLine "User: " & strUserName
+objFile.WriteLine "Status: OK"
+objFile.Close
+'@
+
+Set-Content -Path $scriptPath -Value $vbsContent -Encoding ASCII
+
+# Execute validation script
+Start-Process -FilePath 'C:\Windows\System32\cscript.exe' -ArgumentList @($scriptPath, '/nologo') -NoNewWindow -Wait
+
+# Cleanup
+Remove-Item -Path $appDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_b484c489-9d61-4427-8373-b3a0ea54cefd  (1 rule(s)) ---------------------
+# Intent:    Detect script hosts (wscript.exe, cscript.exe) launched from user-writable direc
+# Rules:     b484c489-9d61-4427-8373-b3a0ea54cefd
+# Archetype: User-driven workflow
+
+$downloadsPath = [Environment]::GetFolderPath('UserProfile')
+$downloadsPath = Join-Path $downloadsPath 'Downloads'
+
+if (-not (Test-Path $downloadsPath)) {
+    New-Item -ItemType Directory -Path $downloadsPath -Force | Out-Null
+}
+
+# Create a system performance report script
+$scriptName = 'perf_report.vbs'
+$scriptPath = Join-Path $downloadsPath $scriptName
+
+$vbsContent = @'
+On Error Resume Next
+Set objWMIService = GetObject("winmgmts:")
+Set colItems = objWMIService.ExecQuery("SELECT * FROM Win32_Processor")
+For Each objItem in colItems
+    WScript.Echo "CPU: " & objItem.Name & " Cores: " & objItem.NumberOfCores
+Next
+Set colItems = objWMIService.ExecQuery("SELECT * FROM Win32_ComputerSystem")
+For Each objItem in colItems
+    WScript.Echo "Total Memory: " & objItem.TotalPhysicalMemory / 1024 / 1024 / 1024 & " GB"
+Next
+'@
+
+Set-Content -Path $scriptPath -Value $vbsContent -Encoding ASCII
+
+# Execute the script
+Start-Process -FilePath 'C:\Windows\System32\wscript.exe' -ArgumentList @($scriptPath, '/nologo') -NoNewWindow -Wait
+
+# Cleanup
+Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

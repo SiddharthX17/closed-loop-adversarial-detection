@@ -2,6 +2,7 @@
   "coverage": {
     "T1003.001": true,
     "T1003.002": true,
+    "T1036.003": true,
     "T1036.005": true,
     "T1053.005": true,
     "T1059.001": true,
@@ -24,6 +25,7 @@
     "T1003.001-potential-lsass-memory-dump-via-rdrleakdiag.yml": true,
     "T1003.002-credential-hive-access-via-volume-shadow-copy-globalroot-device-path.yml": true,
     "T1003.002-renamed-esentutl-exe-execution-indicating-potential-sam-database-access-via-vss.yml": true,
+    "T1036.003-renamed-system-utility-executing-via-pe-metadata-mismatch.yml": true,
     "T1036.005-masqueraded-windows-system-binary-executing-from-non-canonical-path.yml": true,
     "T1036.005-renamed-windows-system-binary-detected-via-originalfilename-mismatch.yml": true,
     "T1036.005-suspicious-executable-running-from-user-writable-path-spawned-by-svchost.yml": true,

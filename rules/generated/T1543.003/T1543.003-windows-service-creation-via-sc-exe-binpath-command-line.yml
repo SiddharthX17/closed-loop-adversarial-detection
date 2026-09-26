@@ -1,0 +1,33 @@
+title: "Windows Service Creation via sc.exe binPath Command Line"
+id: 492f4bf6-4c5a-4f29-8d10-23de4501622d
+status: experimental
+description: "Detects invocation of sc.exe/sc create with a binPath= argument regardless of the invoking shell or parent process, indicating registration of a new Windows service for persistence or privilege escalation under SYSTEM context."
+references:
+    - https://attack.mitre.org/techniques/T1543/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.persistence
+    - attack.privilege-escalation
+    - attack.t1543.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_create:
+      CommandLine|contains|all:
+        - 'create'
+        - 'binPath'
+    selection_scregex:
+      CommandLine|re: '(?i)\bsc(\.exe)?\b.*\bcreate\b'
+    filter_signed_installer:
+      Image|endswith:
+        - '\msiexec.exe'
+      CommandLine|contains: 'Program Files'
+    condition: selection_create and selection_scregex and not filter_signed_installer
+falsepositives:
+    - "Legitimate software installation or patching that creates a Windows service via sc.exe or PowerShell service cmdlets during deployment, especially where the invoking process is a verified signed installer targeting a Program Files path."
+    - "RMM/endpoint-management or orchestration tooling that legitimately creates monitoring or agent services via sc.exe/PowerShell, which is not filtered here since no environment-specific allowlist of signed agent binaries was available — validate the created service's binPath target and the invoking process's signing identity before triage."
+    - "Administrative scripts or scheduled maintenance tasks that call sc.exe create as part of routine service configuration changes."
+    - "Services registered with a svchost.exe -k <group> binPath using a group name absent from the host's registered SvcHost group list — not implemented as a separate filter/selection here since registry cross-referencing is outside single-event process_creation scope, but should be reviewed manually for masquerading service names."
+level: medium

@@ -1,0 +1,36 @@
+title: "T1018 - Scripting Engine Spawning Network Discovery Commands"
+id: 633f1304-073f-44a3-aa18-0c65e541d521
+status: experimental
+description: "Detects a scripting host (mshta, wscript, cscript, or powershell) invoking shell or discovery utilities such as nslookup, ping, arp, or net against IP addresses, consistent with scripted subnet sweeping for remote system discovery."
+references:
+    - https://attack.mitre.org/techniques/T1018/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.discovery
+    - attack.t1018
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+      ParentImage|endswith:
+        - '\mshta.exe'
+        - '\wscript.exe'
+        - '\cscript.exe'
+        - '\powershell.exe'
+    selection_discovery:
+      CommandLine|contains:
+        - 'nslookup'
+        - 'ping '
+        - 'arp '
+        - 'net view'
+        - 'net group'
+    selection_ip_pattern:
+      CommandLine|re: '\d{1,3}\.\d{1,3}\.\d{1,3}\.'
+    condition: selection_parent and selection_discovery and selection_ip_pattern
+falsepositives:
+    - "IT administration or monitoring scripts that loop nslookup/ping/net view across subnets from cmd.exe or powershell.exe for legitimate inventory or health-check purposes"
+    - "Help desk or network troubleshooting scripts invoked via a scripting host that check connectivity to specific internal IPs"
+    - "Legitimate mshta/wscript-based internal automation that happens to invoke network utilities against IP addresses as part of environment validation"
+level: medium

@@ -1,0 +1,37 @@
+title: "T1021.002 - Command Interpreter Spawned by SCM Service Host"
+id: c12c92fd-051f-41b1-b5d4-374f4a02275c
+status: experimental
+description: "Detects a command interpreter (cmd.exe or powershell.exe) spawned directly by svchost.exe hosting the netsvcs service group, indicating a remotely-created service (e.g. via PsExec or sc.exe over ADMIN$) executing an attacker-supplied command. Supporting conditions for UNC redirection to administrative shares or silent cmd wrapper syntax raise confidence without limiting detection to a single tool."
+references:
+    - https://attack.mitre.org/techniques/T1021/002/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.lateral-movement
+    - attack.t1021.002
+    - attack.execution
+    - attack.t1569.002
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+      ParentImage|endswith: '\svchost.exe'
+      ParentCommandLine|contains: 'netsvcs'
+      Image|endswith:
+        - '\cmd.exe'
+        - '\powershell.exe'
+        - '\powershell_ise.exe'
+    supporting_unc:
+      CommandLine|contains:
+        - '\ADMIN$\'
+        - '\C$\'
+        - '\IPC$\'
+    supporting_wrapper:
+      CommandLine|contains: '/Q /c'
+    condition: selection_parent and (supporting_unc or supporting_wrapper or 1 of supporting_*) or selection_parent
+falsepositives:
+    - "Legitimate remote management/software deployment tools (SCCM, RMM agents, patch management systems) that create services via SCM and spawn command interpreters under svchost.exe -k netsvcs for maintenance scripts — not filtered here because the parentage itself is the detection signal; investigate by correlating the child Image's own binary path/hash against a documented allow-listed deployment agent rather than exempting the parent relationship."
+    - "Internal diagnostic or logging scripts that redirect command output to ADMIN$/C$ UNC paths for centralized log collection — rare in legitimate environments but possible if a documented diagnostics server is in use; should be validated against an allow-listed destination host and approved command set rather than blanket-exempted."
+    - "Software packaging or silent installation scripts using the /Q /c cmd.exe wrapper style — this condition alone is not required for a match and is only supporting context, so its legitimate use elsewhere does not trigger the rule by itself."
+level: high

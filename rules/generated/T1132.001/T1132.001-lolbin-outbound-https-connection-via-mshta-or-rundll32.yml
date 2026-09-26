@@ -1,0 +1,31 @@
+title: "LOLBin Outbound HTTPS Connection via mshta or rundll32"
+id: 60e31fac-1809-4dd0-8c29-7e7b1638d56d
+status: experimental
+description: "Detects mshta.exe or rundll32.exe initiating outbound network connections over standard web ports, which is atypical for these binaries and may indicate encoded C2 traffic disguised as normal HTTPS/DNS traffic."
+references:
+    - https://attack.mitre.org/techniques/T1132/001/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.command-and-control
+    - attack.t1132.001
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection_image:
+      Image|endswith:
+        - '\mshta.exe'
+        - '\rundll32.exe'
+    selection_conn:
+      Initiated: 'true'
+      DestinationPort:
+        - 80
+        - 443
+        - 53
+    condition: selection_image and selection_conn
+falsepositives:
+    - "Legitimate enterprise HTA-based internal tools or installer/config workflows that invoke mshta.exe with network-hosted content"
+    - "rundll32.exe used to invoke legitimate control panel applets, DLL-based update mechanisms, or licensing checks that require outbound network access"
+    - "Corporate proxy, CDN, or software update infrastructure contacted by these binaries — should be handled via a maintained hostname allowlist rather than excluding the process or parent process, since both are attacker-controllable"
+level: medium

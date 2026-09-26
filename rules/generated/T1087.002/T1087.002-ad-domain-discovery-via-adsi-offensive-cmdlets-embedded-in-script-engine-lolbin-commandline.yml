@@ -1,0 +1,43 @@
+title: "AD Domain Discovery via ADSI/Offensive Cmdlets Embedded in Script-Engine LOLBin CommandLine"
+id: 929b0684-1bd5-4930-b9d9-0167e1dc4012
+status: experimental
+description: "Detects mshta.exe, rundll32.exe, cscript.exe, or wscript.exe command lines that embed ADSI/LDAP directory-service query syntax (adsisearcher, DirectorySearcher, objectcategory=, gplink) or known offensive AD discovery cmdlet names (Get-DomainUser, Get-NetUser, etc.) intended for a spawned PowerShell process, indicating hidden enumeration of domain accounts/OUs for lateral movement planning."
+references:
+    - https://attack.mitre.org/techniques/T1087/002/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.discovery
+    - attack.t1087.002
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_lolbin:
+        Image|endswith:
+            - '\mshta.exe'
+            - '\rundll32.exe'
+            - '\cscript.exe'
+            - '\wscript.exe'
+    selection_adsi:
+        CommandLine|contains:
+            - 'adsisearcher'
+            - 'DirectorySearcher'
+            - 'objectcategory='
+            - 'gplink'
+            - '[ADSI]'
+    selection_cmdlets:
+        CommandLine|contains:
+            - 'Get-DomainUser'
+            - 'Get-DomainComputer'
+            - 'Get-DomainGroup'
+            - 'Get-DomainOU'
+            - 'Get-NetUser'
+            - 'Get-NetGroup'
+            - 'Get-NetComputer'
+    condition: selection_lolbin and (selection_adsi or selection_cmdlets)
+falsepositives:
+    - "Legitimate AD administration, auditing, or GPO reporting scripts that construct ADSI/DirectorySearcher/gplink query strings which happen to be launched or referenced via a script-engine LOLBin wrapper (uncommon but possible in some internal automation)"
+    - "Authorized red-team or penetration-testing engagements using PowerView or similar offensive AD discovery frameworks (Get-DomainUser, Get-NetUser, etc.) launched via script-engine wrappers — cannot be reliably distinguished from malicious use by field values alone; correlate with an external allowlist of authorized hosts/users rather than loosening this match"
+    - "Software installers or internal automation legitimately using mshta/rundll32/cscript/wscript as script launchers is common, but such benign usage does not typically embed ADSI/LDAP query syntax or offensive AD cmdlet names in the same command line, so this pairing keeps false positives comparatively rare"
+level: high

@@ -1,0 +1,28 @@
+title: "WinRM PSRemoting Cmdlets Invoked via CommandLine"
+id: 4151c10e-1ee4-4a75-8cba-d32c20451715
+status: experimental
+description: "Detects command lines containing WinRM remoting cmdlets (Enable-PSRemoting, Invoke-Command, New-PSSession, Enter-PSSession) regardless of the invoking process image, catching both direct PowerShell execution and cases where PowerShell is launched indirectly via a scripting engine such as mshta with the cmdlet embedded in an inline command string."
+references:
+    - https://attack.mitre.org/techniques/T1021/006/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.lateral-movement
+    - attack.t1021.006
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_cmd:
+      CommandLine|contains:
+        - 'Enable-PSRemoting'
+        - 'Invoke-Command'
+        - 'New-PSSession'
+        - 'Enter-PSSession'
+    condition: selection_cmd
+falsepositives:
+    - "Legitimate remote administration by IT staff using Invoke-Command, Enter-PSSession, New-PSSession, or Enable-PSRemoting from admin workstations or jump hosts"
+    - "IT automation/orchestration tooling (SCCM, DSC, Ansible, custom deployment scripts) that programmatically invoke PowerShell remoting cmdlets as part of routine configuration management"
+    - "Scheduled scripts or CI/CD pipelines that use PowerShell remoting to manage fleets of servers"
+    - "This rule intentionally does not require Image=powershell.exe so it also catches cases where the cmdlet text is embedded in a command line passed to a scripting engine (e.g. mshta, wscript, cscript, rundll32) rather than executed directly by powershell.exe; correlate with expected admin accounts/hosts or an unusual parent process to raise confidence rather than assuming malicious intent from command line alone"
+level: medium

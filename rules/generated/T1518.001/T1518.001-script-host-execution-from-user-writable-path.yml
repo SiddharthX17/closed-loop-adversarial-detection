@@ -1,0 +1,32 @@
+title: "Script Host Execution From User-Writable Path"
+id: b484c489-9d61-4427-8373-b3a0ea54cefd
+status: experimental
+description: "Detects wscript.exe or cscript.exe executing a script file staged in a user-writable location such as Public, Downloads, Temp, or AppData, which is a common pattern for attacker-staged discovery or evasion scripts (e.g. security software enumeration) that require restricted system directories to be avoided."
+references:
+    - https://attack.mitre.org/techniques/T1518/001/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.discovery
+    - attack.t1518.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      Image|endswith:
+        - '\wscript.exe'
+        - '\cscript.exe'
+    selection_path:
+      CommandLine|contains:
+        - '\Public\'
+        - '\Downloads\'
+        - '\AppData\'
+        - '\Temp\'
+        - ':\Windows\Temp\'
+    condition: selection_image and selection_path
+falsepositives:
+    - "Legitimate helpdesk or user-run utility scripts staged in Public, Downloads, Temp, or AppData folders"
+    - "Software installers or logon scripts that stage temporary VBScript/JScript files in Temp or AppData before execution"
+    - "IT asset management tooling that happens to invoke scripts from these same writable locations (not filtered here since Image is a generic script host, not a distinguishing signed agent path)"
+level: medium

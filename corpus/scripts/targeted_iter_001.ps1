@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   3  |  Feasible: 3  |  Variants: 9
+# Clusters:   4  |  Feasible: 4  |  Variants: 10
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,332 +10,406 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_6410bf60-1ae1-439d-9b68-ed303601110c  (1 rule(s)) ---------------------
-# Intent:    Attackers use SDelete (Secure Delete) to irreversibly wipe files and cover track
-# Rules:     6410bf60-1ae1-439d-9b68-ed303601110c
+# -- Cluster: singleton_492f4bf6-4c5a-4f29-8d10-23de4501622d  (1 rule(s)) ---------------------
+# Intent:    Detect Windows service creation with custom binary path specifications via sc.ex
+# Rules:     492f4bf6-4c5a-4f29-8d10-23de4501622d
 # Archetype: IT admin workflow
 
-$tempDir = [System.IO.Path]::GetTempPath()
-$sdeleteDir = Join-Path $tempDir 'Sysinternals'
-if (-not (Test-Path $sdeleteDir)) {
-  New-Item -ItemType Directory -Path $sdeleteDir -Force | Out-Null
-}
-$sdeleteZip = Join-Path $sdeleteDir 'SDelete.zip'
-$sdeleteExe = Join-Path $sdeleteDir 'sdelete.exe'
-$testFile = Join-Path $sdeleteDir 'sensitive_temp_data.txt'
-
+$serviceName = 'MonitoringAgent'
+$binPath = Join-Path $env:ProgramFiles 'MonitoringAgent\agent.exe'
+$tempDir = Join-Path $env:TEMP 'ma_install_tmp'
+New-Item -ItemType Directory -Path $tempDir -ErrorAction SilentlyContinue | Out-Null
 try {
-  if (-not (Test-Path $sdeleteExe)) {
-    Add-Type -AssemblyName System.Net.Http
-    $httpClient = New-Object System.Net.Http.HttpClient
-    try {
-      $response = $httpClient.GetAsync('https://download.sysinternals.com/files/SDelete.zip').Result
-      if ($response.IsSuccessStatusCode) {
-        $content = $response.Content.ReadAsByteArrayAsync().Result
-        [System.IO.File]::WriteAllBytes($sdeleteZip, $content)
+    # Create a mock monitoring agent executable
+    $agentPath = Join-Path $tempDir 'agent.exe'
+    Copy-Item -Path $env:SystemRoot\System32\notepad.exe -Destination $agentPath -Force
 
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($sdeleteZip, $sdeleteDir)
-      }
-    } finally {
-      $httpClient.Dispose()
-    }
-  }
+    # Create Program Files subdirectory structure
+    $programFilesDir = Join-Path $env:ProgramFiles 'MonitoringAgent'
+    New-Item -ItemType Directory -Path $programFilesDir -ErrorAction SilentlyContinue | Out-Null
 
-  if (Test-Path $sdeleteExe) {
-    'Confidential audit log data to be securely deleted' | Out-File $testFile -Encoding UTF8 -Force
+    # Deploy the agent binary
+    Copy-Item -Path $agentPath -Destination $binPath -Force
 
-    $proc = Start-Process -FilePath $sdeleteExe -ArgumentList '-accepteula', '-p', '2', $testFile -NoNewWindow -PassThru -Wait
+    # Administrator creates the service with sc.exe specifying the binary path
+    $scArgs = @('create', $serviceName, "binPath=$binPath")
+    & sc.exe @scArgs | Out-Null
 
-    if ($proc.ExitCode -eq 0) {
-      Write-Host 'Secure deletion completed successfully'
-    }
-  }
+    # Verify service was created
+    Get-Service -Name $serviceName -ErrorAction SilentlyContinue | Out-Null
 } finally {
-  if (Test-Path $sdeleteDir) {
-    Remove-Item -Path $sdeleteDir -Recurse -Force -ErrorAction SilentlyContinue
-  }
+    # Cleanup: remove service and binaries
+    & sc.exe delete $serviceName 2>$null
+    $programFilesDir = Join-Path $env:ProgramFiles 'MonitoringAgent'
+    if (Test-Path $programFilesDir) { Remove-Item -Path $programFilesDir -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $tempDir) { Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# -- Cluster: singleton_6410bf60-1ae1-439d-9b68-ed303601110c  (1 rule(s)) ---------------------
-# Intent:    Attackers use SDelete (Secure Delete) to irreversibly wipe files and cover track
-# Rules:     6410bf60-1ae1-439d-9b68-ed303601110c
+# -- Cluster: singleton_492f4bf6-4c5a-4f29-8d10-23de4501622d  (1 rule(s)) ---------------------
+# Intent:    Detect Windows service creation with custom binary path specifications via sc.ex
+# Rules:     492f4bf6-4c5a-4f29-8d10-23de4501622d
 # Archetype: Software installer/updater workflow
 
-$tempDir = [System.IO.Path]::GetTempPath()
-$maintenanceDir = Join-Path $tempDir 'MaintenanceAgent'
-if (-not (Test-Path $maintenanceDir)) {
-  New-Item -ItemType Directory -Path $maintenanceDir -Force | Out-Null
-}
-
-$sdelete64Exe = Join-Path $maintenanceDir 'sdelete64.exe'
-$cacheDir = Join-Path $maintenanceDir 'cache'
-if (-not (Test-Path $cacheDir)) {
-  New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
-}
-
-$cacheFile1 = Join-Path $cacheDir 'update_package_v3.2.1.tmp'
-$cacheFile2 = Join-Path $cacheDir 'install_credentials.tmp'
+$serviceName = 'EnterpriseSync'
+$programFilesDir = Join-Path $env:ProgramFiles 'EnterpriseSyncSvc'
+$tempMsiDir = Join-Path $env:TEMP 'msi_installer_tmp'
+New-Item -ItemType Directory -Path $tempMsiDir -ErrorAction SilentlyContinue | Out-Null
+New-Item -ItemType Directory -Path $programFilesDir -ErrorAction SilentlyContinue | Out-Null
 
 try {
-  if (-not (Test-Path $sdelete64Exe)) {
-    Add-Type -AssemblyName System.Net.Http
-    $httpClient = New-Object System.Net.Http.HttpClient
-    try {
-      $response = $httpClient.GetAsync('https://download.sysinternals.com/files/SDelete.zip').Result
-      if ($response.IsSuccessStatusCode) {
-        $content = $response.Content.ReadAsByteArrayAsync().Result
-        $zipPath = Join-Path $maintenanceDir 'SDelete.zip'
-        [System.IO.File]::WriteAllBytes($zipPath, $content)
+    # Create a dummy service binary to deploy
+    $serviceBinary = Join-Path $programFilesDir 'sync.exe'
+    Copy-Item -Path $env:SystemRoot\System32\svchost.exe -Destination $serviceBinary -Force
 
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $maintenanceDir)
-        Remove-Item $zipPath -Force
-      }
-    } finally {
-      $httpClient.Dispose()
-    }
-  }
+    # Simulate MSI installer custom action that calls sc.exe to register service
+    # This represents actual MSI behavior during enterprise software deployment
+    $installScript = Join-Path $tempMsiDir 'install_action.ps1'
+    $serviceConfig = "binPath=$serviceBinary"
+    Add-Content -Path $installScript -Value "& sc.exe create $serviceName $serviceConfig"
 
-  if (Test-Path $sdelete64Exe) {
-    'update cache data' | Out-File $cacheFile1 -Encoding UTF8 -Force
-    'temporary credentials' | Out-File $cacheFile2 -Encoding UTF8 -Force
+    # Execute installation script (representing custom action execution)
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installScript
 
-    $proc = Start-Process -FilePath $sdelete64Exe -ArgumentList '-accepteula', '-q', $cacheDir -NoNewWindow -PassThru -Wait
-  }
+    # Verify service exists
+    $svcTest = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($svcTest) { Write-Host 'Service registered' }
 } finally {
-  if (Test-Path $maintenanceDir) {
-    Remove-Item -Path $maintenanceDir -Recurse -Force -ErrorAction SilentlyContinue
-  }
+    # Cleanup: remove service and installation artifacts
+    & sc.exe delete $serviceName 2>$null
+    if (Test-Path $programFilesDir) { Remove-Item -Path $programFilesDir -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $tempMsiDir) { Remove-Item -Path $tempMsiDir -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# -- Cluster: singleton_6410bf60-1ae1-439d-9b68-ed303601110c  (1 rule(s)) ---------------------
-# Intent:    Attackers use SDelete (Secure Delete) to irreversibly wipe files and cover track
-# Rules:     6410bf60-1ae1-439d-9b68-ed303601110c
+# -- Cluster: singleton_6b623cb7-8185-495a-8286-fc84fe5defc4  (1 rule(s)) ---------------------
+# Intent:    Attackers running ntdsutil.exe or wbadmin.exe with command lines referencing NTD
+# Rules:     6b623cb7-8185-495a-8286-fc84fe5defc4
+# Archetype: IT admin workflow
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Simulate legitimate AD database maintenance workflow
+# ntdsutil.exe is commonly invoked by sysadmins to inspect NTDS.dit metadata
+
+$ntdsPath = 'C:\\Windows\\ntds'
+$ntdsFile = Join-Path $ntdsPath 'ntds.dit'
+
+# Check if running on a domain controller (NTDS.dit would exist)
+if (Test-Path $ntdsFile) {
+    Write-Host '[+] Detected NTDS.dit - performing database diagnostics'
+
+    # Use ntdsutil.exe to invoke legitimate diagnostic modes
+    # These command sequences are standard for DC maintenance
+    @'
+activate instance ntds
+fail
+quit
+quit
+'@ | cmd /c 'ntdsutil.exe' 2>&1 | Out-Null
+
+    # Query NTDS properties via command line
+    $queryScript = @'
+activate instance ntds
+db
+integ
+quit
+quit
+'@
+    $queryScript | cmd /c 'ntdsutil.exe' 2>&1 | Out-Null
+
+    Write-Host '[+] NTDS diagnostics completed'
+}
+
+# Simulate legitimate registry inspection for system hive backup verification
+# Administrators periodically validate that system hive backups are accessible
+$systemHivePath = 'HKLM:\\SYSTEM'
+
+try {
+    $systemHiveTest = Get-Item -Path $systemHivePath -ErrorAction Stop
+    Write-Host '[+] System registry hive accessibility verified'
+} catch {
+    Write-Host '[!] System hive not accessible'
+}
+
+# Simulate wbadmin listing backup metadata that references both NTDS and system state
+# This is normal operational querying of backup catalog
+if ((cmd /c 'where.exe wbadmin' 2>$null)) {
+    Write-Host '[+] Checking Windows Backup status'
+    cmd /c 'wbadmin get versions' 2>&1 | Out-Null
+    cmd /c 'wbadmin get items -version:01/20/2024-15:30' 2>&1 | Out-Null
+}
+
+Write-Host '[+] System maintenance diagnostics completed'
+
+# -- Cluster: singleton_6b623cb7-8185-495a-8286-fc84fe5defc4  (1 rule(s)) ---------------------
+# Intent:    Attackers running ntdsutil.exe or wbadmin.exe with command lines referencing NTD
+# Rules:     6b623cb7-8185-495a-8286-fc84fe5defc4
+# Archetype: Software installer/updater workflow
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Pre-patch validation workflow
+# Enterprise patch and compliance tools verify backup integrity before system updates
+
+Write-Host '[*] Starting pre-patch backup validation'
+
+# Simulate a patch deployment tool validating backup inclusion
+$backupValidationScript = @'
+echo Validating backup profile for critical system state...
+wbadmin get versions
+echo Checking NTDS database backup status...
+wbadmin get items -version:01/20/2024-15:30
+echo Validation complete
+'@
+
+$backupValidationScript | cmd /c 2>&1 | Out-Null
+
+# Simulate compliance checker looking for NTDS backup inclusion
+Write-Host '[*] Compliance check: NTDS database backup inclusion'
+
+$ntdsBackupCheck = @'
+activate instance ntds
+db
+integ
+quit
+quit
+'@
+
+$ntdsBackupCheck | cmd /c 'ntdsutil.exe' 2>&1 | Out-Null
+
+# Verify system hive is backed up (required for bare-metal recovery)
+Write-Host '[*] Verifying system hive backup state'
+
+$systemHivePath = 'C:\\Windows\\System32\\config\\system'
+if (Test-Path $systemHivePath) {
+    Write-Host '[+] System hive present at expected location'
+
+    # Query backup tool for system hive inclusion
+    cmd /c 'wbadmin get items -version:01/20/2024-15:30' 2>&1 | Out-Null
+}
+
+# Simulate Windows Update preparation that validates recovery tools
+Write-Host '[*] Pre-patch readiness: testing backup recovery availability'
+
+$recoveryCheckScript = @'
+wbadmin get versions
+echo Recovery validation completed
+'@
+
+$recoveryCheckScript | cmd /c 2>&1 | Out-Null
+
+Write-Host '[+] Pre-patch validation workflow completed'
+
+# -- Cluster: singleton_2f12a30f-52e8-439f-8615-5fe49b15e280  (1 rule(s)) ---------------------
+# Intent:    Detect execution of system utilities that have been renamed or spoofed via PE me
+# Rules:     2f12a30f-52e8-439f-8615-5fe49b15e280
+# Archetype: IT admin workflow
+
+# IT admin copying system tools to a working directory for isolated diagnostics
+$workDir = Join-Path $env:TEMP 'diag_20240115'
+New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+
+try {
+    # Copy legitimate system utilities to working directory for isolated analysis
+    Copy-Item -Path 'C:\Windows\System32\cmd.exe' -Destination (Join-Path $workDir 'cmd.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\powershell.exe' -Destination (Join-Path $workDir 'powershell.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\certutil.exe' -Destination (Join-Path $workDir 'certutil.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\rundll32.exe' -Destination (Join-Path $workDir 'rundll32.exe') -Force
+
+    # Execute copied tools to verify they function correctly in isolated context
+    # Administrator needs to verify diagnostic tools work from alternate location
+    & (Join-Path $workDir 'cmd.exe') /c 'echo System diagnostic check' > $null
+    & (Join-Path $workDir 'powershell.exe') -NoProfile -Command 'Write-Host "Diagnostic verification"' > $null
+
+    # Verify certutil can list certificate store (common admin diagnostic)
+    & (Join-Path $workDir 'certutil.exe') -silent -verifyctl > $null 2>&1
+
+    # Verify rundll32 can list loaded modules (system health check)
+    & (Join-Path $workDir 'rundll32.exe') shell32.dll,ShellAbout > $null 2>&1
+}
+finally {
+    # Clean up working directory
+    Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_2f12a30f-52e8-439f-8615-5fe49b15e280  (1 rule(s)) ---------------------
+# Intent:    Detect execution of system utilities that have been renamed or spoofed via PE me
+# Rules:     2f12a30f-52e8-439f-8615-5fe49b15e280
+# Archetype: Software installer/updater workflow
+
+# Software installer extracting and verifying system dependencies
+$installTemp = Join-Path $env:TEMP 'InstallVerify_runtime'
+New-Item -ItemType Directory -Path $installTemp -Force | Out-Null
+
+try {
+    # Installer extracts copies of common system utilities for dependency verification
+    Copy-Item -Path 'C:\Windows\System32\powershell.exe' -Destination (Join-Path $installTemp 'powershell.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\wscript.exe' -Destination (Join-Path $installTemp 'wscript.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\cscript.exe' -Destination (Join-Path $installTemp 'cscript.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\regsvr32.exe' -Destination (Join-Path $installTemp 'regsvr32.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\mshta.exe' -Destination (Join-Path $installTemp 'mshta.exe') -Force
+
+    # Pre-flight checks: verify PowerShell functionality
+    & (Join-Path $installTemp 'powershell.exe') -NoProfile -Command '[Environment]::OSVersion.VersionString' | Out-Null
+
+    # Verify scripting host availability
+    & (Join-Path $installTemp 'wscript.exe') -version > $null 2>&1
+    & (Join-Path $installTemp 'cscript.exe') -version > $null 2>&1
+
+    # Verify COM registration tools work
+    & (Join-Path $installTemp 'regsvr32.exe') /n /i /s oleaut32.dll > $null 2>&1
+
+    # Verify HTML Application support
+    & (Join-Path $installTemp 'mshta.exe') about: > $null 2>&1
+}
+finally {
+    # Clean up installer temporary directory
+    Remove-Item -Path $installTemp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_2f12a30f-52e8-439f-8615-5fe49b15e280  (1 rule(s)) ---------------------
+# Intent:    Detect execution of system utilities that have been renamed or spoofed via PE me
+# Rules:     2f12a30f-52e8-439f-8615-5fe49b15e280
+# Archetype: User-driven workflow
+
+# Portable/USB-based utilities deployed from network share or removable media
+$portableDir = Join-Path $env:TEMP 'PortableTools'
+New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
+
+try {
+    # User/administrator has deployed portable copies of utilities on network share
+    Copy-Item -Path 'C:\Windows\System32\cmd.exe' -Destination (Join-Path $portableDir 'cmd.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\powershell.exe' -Destination (Join-Path $portableDir 'powershell.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\certutil.exe' -Destination (Join-Path $portableDir 'certutil.exe') -Force
+    Copy-Item -Path 'C:\Windows\System32\rundll32.exe' -Destination (Join-Path $portableDir 'rundll32.exe') -Force
+
+    # User runs utilities from portable location
+    $cmdPath = Join-Path $portableDir 'cmd.exe'
+    $psPath = Join-Path $portableDir 'powershell.exe'
+    $certPath = Join-Path $portableDir 'certutil.exe'
+    $rundllPath = Join-Path $portableDir 'rundll32.exe'
+
+    # Execute portable cmd for system information gathering
+    & $cmdPath /c 'systeminfo' | Out-Null
+
+    # Execute portable PowerShell for configuration audit
+    & $psPath -NoProfile -Command 'Get-ComputerInfo' | Out-Null
+
+    # Execute portable certutil for certificate backup
+    & $certPath -silent -backup -f 'C:\Windows\Temp\cert_backup.sst' > $null 2>&1
+
+    # Execute portable rundll32 for shell operations
+    & $rundllPath shell32.dll,ShellAbout > $null 2>&1
+
+    # Clean up certificate backup
+    Remove-Item -Path 'C:\Windows\Temp\cert_backup.sst' -Force -ErrorAction SilentlyContinue
+}
+finally {
+    # Clean up portable tools directory
+    Remove-Item -Path $portableDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_36117427-aafe-4292-ba43-6b0b67e0592e  (1 rule(s)) ---------------------
+# Intent:    Dumping LSA secrets and sensitive security policy data from the registry using r
+# Rules:     36117427-aafe-4292-ba43-6b0b67e0592e
+# Archetype: IT admin workflow
+
+# Legitimate scenario: backup security registry hive before applying policy changes
+# IT administrators routinely export registry hives for configuration management and disaster recovery
+
+$backupDir = Join-Path -Path $env:TEMP -ChildPath "registry_backup_$(Get-Random)"
+New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+
+try {
+    # Export the SECURITY hive as part of system policy backup procedure
+    # This is a standard practice before major policy deployments
+    $securityBackup = Join-Path -Path $backupDir -ChildPath "SECURITY.reg"
+    & reg.exe save "HKLM\SECURITY" $securityBackup /y 2>&1 | Out-Null
+
+    # Export the POLICY hive
+    $policyBackup = Join-Path -Path $backupDir -ChildPath "POLICY.reg"
+    & reg.exe save "HKLM\SECURITY\Policy" $policyBackup /y 2>&1 | Out-Null
+
+    # Verify the exports completed
+    if ((Test-Path $securityBackup) -and (Test-Path $policyBackup)) {
+        Write-Host "Registry backup completed successfully"
+    }
+}
+finally {
+    # Clean up the backup directory
+    Remove-Item -Path $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_36117427-aafe-4292-ba43-6b0b67e0592e  (1 rule(s)) ---------------------
+# Intent:    Dumping LSA secrets and sensitive security policy data from the registry using r
+# Rules:     36117427-aafe-4292-ba43-6b0b67e0592e
+# Archetype: Software installer/updater workflow
+
+# Legitimate scenario: compliance monitoring tool capturing security baseline
+# Enterprise security and compliance tools routinely export registry hives to verify
+# system state against policy baselines
+
+$complianceDir = Join-Path -Path $env:TEMP -ChildPath "compliance_check_$(Get-Random)"
+New-Item -ItemType Directory -Path $complianceDir -Force | Out-Null
+
+try {
+    # System compliance tool captures security policy configuration
+    # for audit and baseline verification purposes
+    $policyExport = Join-Path -Path $complianceDir -ChildPath "security_policy.reg"
+    & reg.exe save "HKLM\SECURITY\Policy\Secrets" $policyExport /y 2>&1 | Out-Null
+
+    # Capture password policy settings for compliance report
+    $passwordPolicy = Join-Path -Path $complianceDir -ChildPath "password_policy.reg"
+    & reg.exe save "HKLM\SECURITY\Policy\PolAdtEv" $passwordPolicy /y 2>&1 | Out-Null
+
+    # Simulate compliance tool processing the exported data
+    if ((Test-Path $policyExport) -and (Test-Path $passwordPolicy)) {
+        $fileCount = @(Get-ChildItem -Path $complianceDir -File).Count
+        Write-Host "Captured $fileCount policy artifacts for compliance baseline"
+    }
+}
+finally {
+    # Clean up exported data
+    Remove-Item -Path $complianceDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_36117427-aafe-4292-ba43-6b0b67e0592e  (1 rule(s)) ---------------------
+# Intent:    Dumping LSA secrets and sensitive security policy data from the registry using r
+# Rules:     36117427-aafe-4292-ba43-6b0b67e0592e
 # Archetype: Document/file operation workflow
 
-$tempDir = [System.IO.Path]::GetTempPath()
-$workDir = Join-Path $tempDir 'DocumentSanitization'
-if (-not (Test-Path $workDir)) {
-  New-Item -ItemType Directory -Path $workDir -Force | Out-Null
-}
+# Legitimate scenario: system diagnostics collection for support/troubleshooting
+# IT support routinely collects registry exports as part of diagnostic bundles
+# to help troubleshoot security policy or authentication issues
 
-$sdeleteExe = Join-Path $workDir 'sdelete.exe'
-$docDir = Join-Path $workDir 'expired_documents'
-if (-not (Test-Path $docDir)) {
-  New-Item -ItemType Directory -Path $docDir -Force | Out-Null
-}
-
-$expiredDoc1 = Join-Path $docDir 'Q1_2023_Report.txt'
-$expiredDoc2 = Join-Path $docDir 'Contractor_NDA_2022.txt'
+$diagnosticsDir = Join-Path -Path $env:TEMP -ChildPath "diag_bundle_$(Get-Random)"
+New-Item -ItemType Directory -Path $diagnosticsDir -Force | Out-Null
 
 try {
-  if (-not (Test-Path $sdeleteExe)) {
-    Add-Type -AssemblyName System.Net.Http
-    $httpClient = New-Object System.Net.Http.HttpClient
-    try {
-      $response = $httpClient.GetAsync('https://download.sysinternals.com/files/SDelete.zip').Result
-      if ($response.IsSuccessStatusCode) {
-        $content = $response.Content.ReadAsByteArrayAsync().Result
-        $zipPath = Join-Path $workDir 'SDelete.zip'
-        [System.IO.File]::WriteAllBytes($zipPath, $content)
+    # Create subdirectory for registry exports
+    $regExportDir = Join-Path -Path $diagnosticsDir -ChildPath "registry_exports"
+    New-Item -ItemType Directory -Path $regExportDir -Force | Out-Null
 
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $workDir)
-        Remove-Item $zipPath -Force
-      }
-    } finally {
-      $httpClient.Dispose()
-    }
-  }
+    # Export security hive for diagnostics troubleshooting
+    $securityExport = Join-Path -Path $regExportDir -ChildPath "SECURITY.hive"
+    & reg.exe save "HKLM\SECURITY" $securityExport /y 2>&1 | Out-Null
 
-  if (Test-Path $sdeleteExe) {
-    'Quarterly report 2023 - retention period expired' | Out-File $expiredDoc1 -Encoding UTF8 -Force
-    'Contractor agreement - contract concluded in 2022' | Out-File $expiredDoc2 -Encoding UTF8 -Force
+    # Export security policies for diagnosis
+    $policiesExport = Join-Path -Path $regExportDir -ChildPath "POLICY.hive"
+    & reg.exe save "HKLM\SECURITY\Policy" $policiesExport /y 2>&1 | Out-Null
 
-    $proc = Start-Process -FilePath $sdeleteExe -ArgumentList '-accepteula', '-p', '3', $expiredDoc1 -NoNewWindow -PassThru -Wait
-    if (Test-Path $expiredDoc2) {
-      $proc = Start-Process -FilePath $sdeleteExe -ArgumentList '-accepteula', '-p', '3', $expiredDoc2 -NoNewWindow -PassThru -Wait
-    }
-  }
-} finally {
-  if (Test-Path $workDir) {
-    Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
-  }
+    # Create summary of captured diagnostics
+    $summaryFile = Join-Path -Path $diagnosticsDir -ChildPath "README.txt"
+    @"System Diagnostics Bundle
+Created: $(Get-Date)
+Contents: Registry exports for security policy troubleshooting
+"@ | Out-File -FilePath $summaryFile -Encoding ASCII
+
+    Write-Host "Diagnostic bundle created with system configuration snapshots"
 }
-
-# -- Cluster: singleton_f519892c-4d3a-48c8-ba36-b8811b3ba8e7  (1 rule(s)) ---------------------
-# Intent:    Disable or suppress PowerShell command history and transcript logging to hide co
-# Rules:     f519892c-4d3a-48c8-ba36-b8811b3ba8e7
-# Archetype: IT admin workflow
-
-$profilePath = $profile.CurrentUserAllHosts
-if (-not (Test-Path (Split-Path $profilePath))) {
-    New-Item -ItemType Directory -Path (Split-Path $profilePath) -Force | Out-Null
+finally {
+    # Remove diagnostic bundle
+    Remove-Item -Path $diagnosticsDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-
-$profileContent = @'
-# Enterprise PowerShell profile for standardized hardening
-# Disable local command history in favor of centralized transcript logging
-Set-PSReadLineOption -HistorySaveStyle SaveNothing
-Set-PSReadLineOption -HistoryNoDuplicates:$true
-Set-PSReadLineOption -CommandValidationHandler {
-    param([System.Management.Automation.Language.CommandAst]$CommandAst)
-    # Audit-grade history management
-}
-'@
-
-Add-Content -Path $profilePath -Value $profileContent -ErrorAction SilentlyContinue
-
-# Verify the setting applied
-$PSReadLineOptions = Get-PSReadLineOption
-Write-Host "Profile hardening applied. HistorySaveStyle: $($PSReadLineOptions.HistorySaveStyle)"
-
-# Clean up: Remove the profile additions
-if (Test-Path $profilePath) {
-    Remove-Item -Path $profilePath -Force -ErrorAction SilentlyContinue
-}
-
-Start-Sleep -Milliseconds 500
-
-# -- Cluster: singleton_f519892c-4d3a-48c8-ba36-b8811b3ba8e7  (1 rule(s)) ---------------------
-# Intent:    Disable or suppress PowerShell command history and transcript logging to hide co
-# Rules:     f519892c-4d3a-48c8-ba36-b8811b3ba8e7
-# Archetype: User-driven workflow
-
-# User configuring PowerShell environment for secure credential handling
-$tempHistorySuppression = @{
-    HistorySaveStyle = 'SaveNothing'
-    HistoryNoDuplicates = $true
-    MaximumHistoryCount = 32
-}
-
-foreach ($key in $tempHistorySuppression.Keys) {
-    Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue
-}
-
-Write-Host "Configuring secure PowerShell session"
-$currentSettings = Get-PSReadLineOption | Select-Object HistorySaveStyle, HistoryNoDuplicates
-Write-Host "Current HistorySaveStyle: $($currentSettings.HistorySaveStyle)"
-
-# Simulate typical developer activity: running commands that would normally be logged
-Get-ChildItem -Path $env:TEMP | Select-Object -First 5
-Get-Process pwsh -ErrorAction SilentlyContinue | Select-Object Name, Id
-
-Start-Sleep -Milliseconds 300
-
-# -- Cluster: singleton_f519892c-4d3a-48c8-ba36-b8811b3ba8e7  (1 rule(s)) ---------------------
-# Intent:    Disable or suppress PowerShell command history and transcript logging to hide co
-# Rules:     f519892c-4d3a-48c8-ba36-b8811b3ba8e7
-# Archetype: Software installer/updater workflow
-
-$configPath = Join-Path -Path $env:PROGRAMDATA -ChildPath 'PowerShellConfig'
-if (-not (Test-Path $configPath)) {
-    New-Item -ItemType Directory -Path $configPath -Force | Out-Null
-}
-
-$configFile = Join-Path -Path $configPath -ChildPath 'bootstrap-config.ps1'
-$bootstrapConfig = @'
-# Automated deployment bootstrap configuration
-# Centralized logging is handled by deployment agent
-# Disable local PSReadLine history to prevent redundant logs
-
-try {
-    Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction Stop
-    Set-PSReadLineOption -HistoryNoDuplicates -ErrorAction Stop
-} catch {
-    Write-Warning "Failed to configure PSReadLine: $_"
-}
-
-# Enable transcript logging to centralized location instead
-$transcriptPath = Join-Path -Path $env:PROGRAMDATA -ChildPath 'Logs' | Join-Path -ChildPath 'powershell_transcript.txt'
-if (-not (Test-Path (Split-Path $transcriptPath))) {
-    New-Item -ItemType Directory -Path (Split-Path $transcriptPath) -Force | Out-Null
-}
-Start-Transcript -Path $transcriptPath -Append -ErrorAction SilentlyContinue
-'@
-
-Set-Content -Path $configFile -Value $bootstrapConfig -Force
-
-# Execute the bootstrap config
-& $configFile
-
-$readlineConfig = Get-PSReadLineOption
-Write-Host "Bootstrap deployment complete. History setting: $($readlineConfig.HistorySaveStyle)"
-
-Stop-Transcript -ErrorAction SilentlyContinue
-
-# Clean up bootstrap artifacts
-Remove-Item -Path $configFile -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $configPath -Force -ErrorAction SilentlyContinue
-
-Start-Sleep -Milliseconds 300
-
-# -- Cluster: singleton_60e31fac-1809-4dd0-8c29-7e7b1638d56d  (1 rule(s)) ---------------------
-# Intent:    Detects LOLBin tools (mshta.exe, rundll32.exe) initiating outbound network conne
-# Rules:     60e31fac-1809-4dd0-8c29-7e7b1638d56d
-# Archetype: IT admin workflow
-
-$htaFile = Join-Path $env:TEMP "network_diag_$(Get-Random).hta"
-$htaContent = @"
-<html>
-<head><title>Network Diagnostics</title></head>
-<body>
-<script language="VBScript">
-Set objShell = CreateObject("WScript.Shell")
-Set objExec = objShell.Exec("cmd /c nslookup microsoft.com 8.8.8.8")
-WScript.Echo "DNS lookup executed"
-self.close
-</script>
-</body>
-</html>
-"@
-Set-Content -Path $htaFile -Value $htaContent -Force
-Start-Process -FilePath "mshta.exe" -ArgumentList $htaFile -Wait -NoNewWindow
-Start-Sleep -Milliseconds 500
-Remove-Item -Path $htaFile -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_60e31fac-1809-4dd0-8c29-7e7b1638d56d  (1 rule(s)) ---------------------
-# Intent:    Detects LOLBin tools (mshta.exe, rundll32.exe) initiating outbound network conne
-# Rules:     60e31fac-1809-4dd0-8c29-7e7b1638d56d
-# Archetype: Software installer/updater workflow
-
-$dllPath = Join-Path $env:TEMP "sysutil_$(Get-Random).dll"
-[System.IO.File]::WriteAllBytes($dllPath, [byte[]](0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00))
-$proxyUri = [System.Net.WebProxy]::New()
-$proxyUri.IsBypassed('https://api.github.com') | Out-Null
-$webClient = New-Object System.Net.ServicePointManager
-$webClient.SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-Start-Process -FilePath "rundll32.exe" -ArgumentList "$dllPath,UpdateCheck" -NoNewWindow -Wait -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 300
-Remove-Item -Path $dllPath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_60e31fac-1809-4dd0-8c29-7e7b1638d56d  (1 rule(s)) ---------------------
-# Intent:    Detects LOLBin tools (mshta.exe, rundll32.exe) initiating outbound network conne
-# Rules:     60e31fac-1809-4dd0-8c29-7e7b1638d56d
-# Archetype: User-driven workflow
-
-$htaFile = Join-Path $env:TEMP "webutil_$(Get-Random).hta"
-$htaContent = @"
-<html>
-<head><title>Online Help Utility</title></head>
-<body>
-<h1>Loading content...</h1>
-<script language="VBScript">
-Set objHttp = CreateObject("MSXML2.XMLHTTP.3.0")
-On Error Resume Next
-objHttp.Open "GET", "http://www.example.com/help", False
-objHttp.Send
-Set objHttp = Nothing
-self.close
-</script>
-</body>
-</html>
-"@
-Set-Content -Path $htaFile -Value $htaContent -Force
-Start-Process -FilePath "mshta.exe" -ArgumentList $htaFile -Wait -NoNewWindow
-Start-Sleep -Milliseconds 500
-Remove-Item -Path $htaFile -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

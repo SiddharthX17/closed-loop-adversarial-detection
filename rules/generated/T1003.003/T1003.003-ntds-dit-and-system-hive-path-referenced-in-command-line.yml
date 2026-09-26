@@ -1,0 +1,29 @@
+title: "NTDS.dit and SYSTEM Hive Path Referenced in Command Line"
+id: 6b623cb7-8185-495a-8286-fc84fe5defc4
+status: experimental
+description: "Detects a process command line referencing the NTDS.dit Active Directory database file, which enables offline extraction of domain account credential material outside of legitimate AD backup tooling; confidence increases when the SYSTEM registry hive path is also referenced in the same invocation."
+references:
+    - https://attack.mitre.org/techniques/T1003/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.credential-access
+    - attack.t1003.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_ntds:
+        CommandLine|contains: 'ntds.dit'
+    selection_system_hive:
+        CommandLine|contains: 'System32\config\SYSTEM'
+    filter_known_tools:
+        Image|endswith:
+            - '\ntdsutil.exe'
+            - '\wbadmin.exe'
+    condition: (selection_ntds or selection_system_hive) and not filter_known_tools
+falsepositives:
+    - "Legitimate Active Directory backup, restore, or disaster-recovery operations performed via ntdsutil.exe or wbadmin.exe (filtered by Image path in this rule)"
+    - "Forensic or IR tooling that legitimately copies or reads ntds.dit and SYSTEM hive during authorized investigations, which will still trigger this rule and should be tuned per environment"
+    - "Third-party AD migration, auditing, or backup tools that reference ntds.dit or the SYSTEM hive path in their command-line arguments without using the exempted Microsoft binaries"
+level: critical

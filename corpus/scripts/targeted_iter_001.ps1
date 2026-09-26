@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   3  |  Feasible: 3  |  Variants: 9
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,146 +10,332 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_12d7ac2e-e9b8-40d1-af56-b3e42f700ddb  (1 rule(s)) ---------------------
-# Intent:    Detect ransomware or data exfiltration attacks using GPG command-line encryption
-# Rules:     12d7ac2e-e9b8-40d1-af56-b3e42f700ddb
+# -- Cluster: singleton_6410bf60-1ae1-439d-9b68-ed303601110c  (1 rule(s)) ---------------------
+# Intent:    Attackers use SDelete (Secure Delete) to irreversibly wipe files and cover track
+# Rules:     6410bf60-1ae1-439d-9b68-ed303601110c
 # Archetype: IT admin workflow
 
-# Administrator backing up encrypted audit logs for compliance archival
-$logSource = $env:TEMP + '\audit_logs_2024.txt'
-$encryptedBackup = $env:TEMP + '\audit_logs_2024.gpg'
+$tempDir = [System.IO.Path]::GetTempPath()
+$sdeleteDir = Join-Path $tempDir 'Sysinternals'
+if (-not (Test-Path $sdeleteDir)) {
+  New-Item -ItemType Directory -Path $sdeleteDir -Force | Out-Null
+}
+$sdeleteZip = Join-Path $sdeleteDir 'SDelete.zip'
+$sdeleteExe = Join-Path $sdeleteDir 'sdelete.exe'
+$testFile = Join-Path $sdeleteDir 'sensitive_temp_data.txt'
 
-# Create sample audit log content (simulating real IT operations logs)
-@'
-Event: User logon from 192.168.1.100
-Event: File access on HKLM registry
-Event: Service started: BackupService
-Event: Network connection to internal backup server
-'@ | Out-File -FilePath $logSource -Encoding ASCII
-
-# Verify GPG is available on the system
-$gpgPath = 'gpg'
 try {
-    & $gpgPath --version | Out-Null
-} catch {
-    Write-Host "GPG not installed, installing from Chocolatey"
-    # Install GPG if not present
-    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force | Out-Null
-    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) -ErrorAction SilentlyContinue | Out-Null
-    choco install gnupg -y --no-progress 2>$null | Out-Null
-    $gpgPath = 'gpg'
+  if (-not (Test-Path $sdeleteExe)) {
+    Add-Type -AssemblyName System.Net.Http
+    $httpClient = New-Object System.Net.Http.HttpClient
+    try {
+      $response = $httpClient.GetAsync('https://download.sysinternals.com/files/SDelete.zip').Result
+      if ($response.IsSuccessStatusCode) {
+        $content = $response.Content.ReadAsByteArrayAsync().Result
+        [System.IO.File]::WriteAllBytes($sdeleteZip, $content)
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($sdeleteZip, $sdeleteDir)
+      }
+    } finally {
+      $httpClient.Dispose()
+    }
+  }
+
+  if (Test-Path $sdeleteExe) {
+    'Confidential audit log data to be securely deleted' | Out-File $testFile -Encoding UTF8 -Force
+
+    $proc = Start-Process -FilePath $sdeleteExe -ArgumentList '-accepteula', '-p', '2', $testFile -NoNewWindow -PassThru -Wait
+
+    if ($proc.ExitCode -eq 0) {
+      Write-Host 'Secure deletion completed successfully'
+    }
+  }
+} finally {
+  if (Test-Path $sdeleteDir) {
+    Remove-Item -Path $sdeleteDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 
-# Encrypt the audit log using GPG batch mode with symmetric encryption
-# This is a typical administrative backup encryption workflow
-$encryptionPassword = 'ComplexAdminPassword2024'
-& $gpgPath --batch --yes -c --symmetric --passphrase='ComplexAdminPassword2024' --output $encryptedBackup $logSource
-
-if (Test-Path $encryptedBackup) {
-    Write-Host "Audit logs successfully encrypted for secure backup"
-}
-
-# Cleanup: Remove unencrypted source and encrypted backup
-Remove-Item -Path $logSource -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $encryptedBackup -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_12d7ac2e-e9b8-40d1-af56-b3e42f700ddb  (1 rule(s)) ---------------------
-# Intent:    Detect ransomware or data exfiltration attacks using GPG command-line encryption
-# Rules:     12d7ac2e-e9b8-40d1-af56-b3e42f700ddb
+# -- Cluster: singleton_6410bf60-1ae1-439d-9b68-ed303601110c  (1 rule(s)) ---------------------
+# Intent:    Attackers use SDelete (Secure Delete) to irreversibly wipe files and cover track
+# Rules:     6410bf60-1ae1-439d-9b68-ed303601110c
 # Archetype: Software installer/updater workflow
 
-# Automated deployment encryption: securing application configuration packages
-$configDir = $env:TEMP + '\app_deployment'
-$configFile = $configDir + '\database_config.ini'
-$encryptedConfig = $configDir + '\database_config.ini.gpg'
+$tempDir = [System.IO.Path]::GetTempPath()
+$maintenanceDir = Join-Path $tempDir 'MaintenanceAgent'
+if (-not (Test-Path $maintenanceDir)) {
+  New-Item -ItemType Directory -Path $maintenanceDir -Force | Out-Null
+}
 
-New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+$sdelete64Exe = Join-Path $maintenanceDir 'sdelete64.exe'
+$cacheDir = Join-Path $maintenanceDir 'cache'
+if (-not (Test-Path $cacheDir)) {
+  New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+}
 
-# Create sample application configuration (simulating real deployment config)
-@'
-[database]
-host=db-prod-01.internal.local
-port=5432
-db_name=productiondb
-[api]
-endpoint=https://api.internal.local/v1
-'@ | Out-File -FilePath $configFile -Encoding ASCII
+$cacheFile1 = Join-Path $cacheDir 'update_package_v3.2.1.tmp'
+$cacheFile2 = Join-Path $cacheDir 'install_credentials.tmp'
 
-# Verify GPG availability
-$gpgPath = 'gpg'
 try {
-    & $gpgPath --version | Out-Null
-} catch {
-    Write-Host "GPG not installed, installing from Chocolatey"
-    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force | Out-Null
-    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) -ErrorAction SilentlyContinue | Out-Null
-    choco install gnupg -y --no-progress 2>$null | Out-Null
-    $gpgPath = 'gpg'
+  if (-not (Test-Path $sdelete64Exe)) {
+    Add-Type -AssemblyName System.Net.Http
+    $httpClient = New-Object System.Net.Http.HttpClient
+    try {
+      $response = $httpClient.GetAsync('https://download.sysinternals.com/files/SDelete.zip').Result
+      if ($response.IsSuccessStatusCode) {
+        $content = $response.Content.ReadAsByteArrayAsync().Result
+        $zipPath = Join-Path $maintenanceDir 'SDelete.zip'
+        [System.IO.File]::WriteAllBytes($zipPath, $content)
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $maintenanceDir)
+        Remove-Item $zipPath -Force
+      }
+    } finally {
+      $httpClient.Dispose()
+    }
+  }
+
+  if (Test-Path $sdelete64Exe) {
+    'update cache data' | Out-File $cacheFile1 -Encoding UTF8 -Force
+    'temporary credentials' | Out-File $cacheFile2 -Encoding UTF8 -Force
+
+    $proc = Start-Process -FilePath $sdelete64Exe -ArgumentList '-accepteula', '-q', $cacheDir -NoNewWindow -PassThru -Wait
+  }
+} finally {
+  if (Test-Path $maintenanceDir) {
+    Remove-Item -Path $maintenanceDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 
-# Encrypt configuration using GPG in batch mode (typical CI/CD pipeline pattern)
-# The --batch flag ensures non-interactive operation, required for automated deployment
-& $gpgPath --batch --yes -c --symmetric --passphrase='DeploymentSecret2024' --output $encryptedConfig $configFile
-
-if (Test-Path $encryptedConfig) {
-    Write-Host "Configuration package encrypted successfully"
-}
-
-# Cleanup encrypted artifacts
-Remove-Item -Path $configFile -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $encryptedConfig -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $configDir -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_12d7ac2e-e9b8-40d1-af56-b3e42f700ddb  (1 rule(s)) ---------------------
-# Intent:    Detect ransomware or data exfiltration attacks using GPG command-line encryption
-# Rules:     12d7ac2e-e9b8-40d1-af56-b3e42f700ddb
+# -- Cluster: singleton_6410bf60-1ae1-439d-9b68-ed303601110c  (1 rule(s)) ---------------------
+# Intent:    Attackers use SDelete (Secure Delete) to irreversibly wipe files and cover track
+# Rules:     6410bf60-1ae1-439d-9b68-ed303601110c
 # Archetype: Document/file operation workflow
 
-# User encrypting sensitive financial documents for secure storage
-$documentsDir = $env:TEMP + '\financial_docs'
-$sourceDocument = $documentsDir + '\Q4_expense_report.txt'
-$encryptedDoc = $documentsDir + '\Q4_expense_report.txt.gpg'
+$tempDir = [System.IO.Path]::GetTempPath()
+$workDir = Join-Path $tempDir 'DocumentSanitization'
+if (-not (Test-Path $workDir)) {
+  New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+}
 
-New-Item -ItemType Directory -Path $documentsDir -Force | Out-Null
+$sdeleteExe = Join-Path $workDir 'sdelete.exe'
+$docDir = Join-Path $workDir 'expired_documents'
+if (-not (Test-Path $docDir)) {
+  New-Item -ItemType Directory -Path $docDir -Force | Out-Null
+}
 
-# Create sample sensitive document (simulating real confidential business document)
-@'
-Q4 EXPENSE REPORT - CONFIDENTIAL
+$expiredDoc1 = Join-Path $docDir 'Q1_2023_Report.txt'
+$expiredDoc2 = Join-Path $docDir 'Contractor_NDA_2022.txt'
 
-Travel expenses: $4,500
-Client entertainment: $1,200
-Equipment purchases: $3,800
-Conference registration: $2,100
-Total: $11,600
-
-Department Manager: John Smith
-Cost Center: MKTG-401
-'@ | Out-File -FilePath $sourceDocument -Encoding ASCII
-
-# Verify GPG availability
-$gpgPath = 'gpg'
 try {
-    & $gpgPath --version | Out-Null
+  if (-not (Test-Path $sdeleteExe)) {
+    Add-Type -AssemblyName System.Net.Http
+    $httpClient = New-Object System.Net.Http.HttpClient
+    try {
+      $response = $httpClient.GetAsync('https://download.sysinternals.com/files/SDelete.zip').Result
+      if ($response.IsSuccessStatusCode) {
+        $content = $response.Content.ReadAsByteArrayAsync().Result
+        $zipPath = Join-Path $workDir 'SDelete.zip'
+        [System.IO.File]::WriteAllBytes($zipPath, $content)
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $workDir)
+        Remove-Item $zipPath -Force
+      }
+    } finally {
+      $httpClient.Dispose()
+    }
+  }
+
+  if (Test-Path $sdeleteExe) {
+    'Quarterly report 2023 - retention period expired' | Out-File $expiredDoc1 -Encoding UTF8 -Force
+    'Contractor agreement - contract concluded in 2022' | Out-File $expiredDoc2 -Encoding UTF8 -Force
+
+    $proc = Start-Process -FilePath $sdeleteExe -ArgumentList '-accepteula', '-p', '3', $expiredDoc1 -NoNewWindow -PassThru -Wait
+    if (Test-Path $expiredDoc2) {
+      $proc = Start-Process -FilePath $sdeleteExe -ArgumentList '-accepteula', '-p', '3', $expiredDoc2 -NoNewWindow -PassThru -Wait
+    }
+  }
+} finally {
+  if (Test-Path $workDir) {
+    Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# -- Cluster: singleton_f519892c-4d3a-48c8-ba36-b8811b3ba8e7  (1 rule(s)) ---------------------
+# Intent:    Disable or suppress PowerShell command history and transcript logging to hide co
+# Rules:     f519892c-4d3a-48c8-ba36-b8811b3ba8e7
+# Archetype: IT admin workflow
+
+$profilePath = $profile.CurrentUserAllHosts
+if (-not (Test-Path (Split-Path $profilePath))) {
+    New-Item -ItemType Directory -Path (Split-Path $profilePath) -Force | Out-Null
+}
+
+$profileContent = @'
+# Enterprise PowerShell profile for standardized hardening
+# Disable local command history in favor of centralized transcript logging
+Set-PSReadLineOption -HistorySaveStyle SaveNothing
+Set-PSReadLineOption -HistoryNoDuplicates:$true
+Set-PSReadLineOption -CommandValidationHandler {
+    param([System.Management.Automation.Language.CommandAst]$CommandAst)
+    # Audit-grade history management
+}
+'@
+
+Add-Content -Path $profilePath -Value $profileContent -ErrorAction SilentlyContinue
+
+# Verify the setting applied
+$PSReadLineOptions = Get-PSReadLineOption
+Write-Host "Profile hardening applied. HistorySaveStyle: $($PSReadLineOptions.HistorySaveStyle)"
+
+# Clean up: Remove the profile additions
+if (Test-Path $profilePath) {
+    Remove-Item -Path $profilePath -Force -ErrorAction SilentlyContinue
+}
+
+Start-Sleep -Milliseconds 500
+
+# -- Cluster: singleton_f519892c-4d3a-48c8-ba36-b8811b3ba8e7  (1 rule(s)) ---------------------
+# Intent:    Disable or suppress PowerShell command history and transcript logging to hide co
+# Rules:     f519892c-4d3a-48c8-ba36-b8811b3ba8e7
+# Archetype: User-driven workflow
+
+# User configuring PowerShell environment for secure credential handling
+$tempHistorySuppression = @{
+    HistorySaveStyle = 'SaveNothing'
+    HistoryNoDuplicates = $true
+    MaximumHistoryCount = 32
+}
+
+foreach ($key in $tempHistorySuppression.Keys) {
+    Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue
+}
+
+Write-Host "Configuring secure PowerShell session"
+$currentSettings = Get-PSReadLineOption | Select-Object HistorySaveStyle, HistoryNoDuplicates
+Write-Host "Current HistorySaveStyle: $($currentSettings.HistorySaveStyle)"
+
+# Simulate typical developer activity: running commands that would normally be logged
+Get-ChildItem -Path $env:TEMP | Select-Object -First 5
+Get-Process pwsh -ErrorAction SilentlyContinue | Select-Object Name, Id
+
+Start-Sleep -Milliseconds 300
+
+# -- Cluster: singleton_f519892c-4d3a-48c8-ba36-b8811b3ba8e7  (1 rule(s)) ---------------------
+# Intent:    Disable or suppress PowerShell command history and transcript logging to hide co
+# Rules:     f519892c-4d3a-48c8-ba36-b8811b3ba8e7
+# Archetype: Software installer/updater workflow
+
+$configPath = Join-Path -Path $env:PROGRAMDATA -ChildPath 'PowerShellConfig'
+if (-not (Test-Path $configPath)) {
+    New-Item -ItemType Directory -Path $configPath -Force | Out-Null
+}
+
+$configFile = Join-Path -Path $configPath -ChildPath 'bootstrap-config.ps1'
+$bootstrapConfig = @'
+# Automated deployment bootstrap configuration
+# Centralized logging is handled by deployment agent
+# Disable local PSReadLine history to prevent redundant logs
+
+try {
+    Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction Stop
+    Set-PSReadLineOption -HistoryNoDuplicates -ErrorAction Stop
 } catch {
-    Write-Host "GPG not installed, installing from Chocolatey"
-    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force | Out-Null
-    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) -ErrorAction SilentlyContinue | Out-Null
-    choco install gnupg -y --no-progress 2>$null | Out-Null
-    $gpgPath = 'gpg'
+    Write-Warning "Failed to configure PSReadLine: $_"
 }
 
-# Encrypt the sensitive document using GPG symmetric encryption
-# User provides passphrase inline in batch mode for automated document protection workflow
-& $gpgPath --batch --yes -c --symmetric --passphrase='SecureDocumentPassword' --output $encryptedDoc $sourceDocument
-
-if (Test-Path $encryptedDoc) {
-    Write-Host "Sensitive document encrypted and ready for secure storage"
+# Enable transcript logging to centralized location instead
+$transcriptPath = Join-Path -Path $env:PROGRAMDATA -ChildPath 'Logs' | Join-Path -ChildPath 'powershell_transcript.txt'
+if (-not (Test-Path (Split-Path $transcriptPath))) {
+    New-Item -ItemType Directory -Path (Split-Path $transcriptPath) -Force | Out-Null
 }
+Start-Transcript -Path $transcriptPath -Append -ErrorAction SilentlyContinue
+'@
 
-# Cleanup: remove original unencrypted document and temporary encryption
-Remove-Item -Path $sourceDocument -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $encryptedDoc -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $documentsDir -Force -ErrorAction SilentlyContinue
+Set-Content -Path $configFile -Value $bootstrapConfig -Force
+
+# Execute the bootstrap config
+& $configFile
+
+$readlineConfig = Get-PSReadLineOption
+Write-Host "Bootstrap deployment complete. History setting: $($readlineConfig.HistorySaveStyle)"
+
+Stop-Transcript -ErrorAction SilentlyContinue
+
+# Clean up bootstrap artifacts
+Remove-Item -Path $configFile -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $configPath -Force -ErrorAction SilentlyContinue
+
+Start-Sleep -Milliseconds 300
+
+# -- Cluster: singleton_60e31fac-1809-4dd0-8c29-7e7b1638d56d  (1 rule(s)) ---------------------
+# Intent:    Detects LOLBin tools (mshta.exe, rundll32.exe) initiating outbound network conne
+# Rules:     60e31fac-1809-4dd0-8c29-7e7b1638d56d
+# Archetype: IT admin workflow
+
+$htaFile = Join-Path $env:TEMP "network_diag_$(Get-Random).hta"
+$htaContent = @"
+<html>
+<head><title>Network Diagnostics</title></head>
+<body>
+<script language="VBScript">
+Set objShell = CreateObject("WScript.Shell")
+Set objExec = objShell.Exec("cmd /c nslookup microsoft.com 8.8.8.8")
+WScript.Echo "DNS lookup executed"
+self.close
+</script>
+</body>
+</html>
+"@
+Set-Content -Path $htaFile -Value $htaContent -Force
+Start-Process -FilePath "mshta.exe" -ArgumentList $htaFile -Wait -NoNewWindow
+Start-Sleep -Milliseconds 500
+Remove-Item -Path $htaFile -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_60e31fac-1809-4dd0-8c29-7e7b1638d56d  (1 rule(s)) ---------------------
+# Intent:    Detects LOLBin tools (mshta.exe, rundll32.exe) initiating outbound network conne
+# Rules:     60e31fac-1809-4dd0-8c29-7e7b1638d56d
+# Archetype: Software installer/updater workflow
+
+$dllPath = Join-Path $env:TEMP "sysutil_$(Get-Random).dll"
+[System.IO.File]::WriteAllBytes($dllPath, [byte[]](0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00))
+$proxyUri = [System.Net.WebProxy]::New()
+$proxyUri.IsBypassed('https://api.github.com') | Out-Null
+$webClient = New-Object System.Net.ServicePointManager
+$webClient.SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+Start-Process -FilePath "rundll32.exe" -ArgumentList "$dllPath,UpdateCheck" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 300
+Remove-Item -Path $dllPath -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_60e31fac-1809-4dd0-8c29-7e7b1638d56d  (1 rule(s)) ---------------------
+# Intent:    Detects LOLBin tools (mshta.exe, rundll32.exe) initiating outbound network conne
+# Rules:     60e31fac-1809-4dd0-8c29-7e7b1638d56d
+# Archetype: User-driven workflow
+
+$htaFile = Join-Path $env:TEMP "webutil_$(Get-Random).hta"
+$htaContent = @"
+<html>
+<head><title>Online Help Utility</title></head>
+<body>
+<h1>Loading content...</h1>
+<script language="VBScript">
+Set objHttp = CreateObject("MSXML2.XMLHTTP.3.0")
+On Error Resume Next
+objHttp.Open "GET", "http://www.example.com/help", False
+objHttp.Send
+Set objHttp = Nothing
+self.close
+</script>
+</body>
+</html>
+"@
+Set-Content -Path $htaFile -Value $htaContent -Force
+Start-Process -FilePath "mshta.exe" -ArgumentList $htaFile -Wait -NoNewWindow
+Start-Sleep -Milliseconds 500
+Remove-Item -Path $htaFile -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

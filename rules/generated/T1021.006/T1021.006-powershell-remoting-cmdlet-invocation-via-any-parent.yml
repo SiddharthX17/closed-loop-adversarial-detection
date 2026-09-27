@@ -1,0 +1,27 @@
+title: "T1021.006 - PowerShell Remoting Cmdlet Invocation via Any Parent"
+id: 85bfb341-e093-4e14-8882-68305c7ab78d
+status: experimental
+description: "Detects command lines invoking PowerShell WinRM remoting cmdlets (Invoke-Command, New-PSSession, Enter-PSSession) together with a remote target parameter, regardless of which process (powershell.exe or a wrapping LOLBin such as mshta.exe) carries the command line, since attackers may embed the remoting invocation inside another process's command line rather than launching powershell.exe directly."
+references:
+    - https://attack.mitre.org/techniques/T1021/006/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-27
+tags:
+    - attack.lateral-movement
+    - attack.t1021.006
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_cmdlet:
+        CommandLine|contains:
+            - 'Invoke-Command'
+            - 'New-PSSession'
+            - 'Enter-PSSession'
+    condition: selection_cmdlet
+falsepositives:
+    - "Legitimate IT/help desk remote administration using Enter-PSSession or Invoke-Command directly from powershell.exe against a target host for troubleshooting"
+    - "Configuration management and orchestration tooling (e.g., PowerShell DSC pull clients, custom deployment scripts, Ansible winrm connection plugin) that invokes these cmdlets directly"
+    - "Scheduled automation/reporting scripts that fan out commands to multiple hosts via Invoke-Command -ComputerName"
+    - "This rule intentionally does not require -ComputerName/-Session or a powershell.exe image match, since the observed attack embeds the cmdlet inside an mshta.exe command line rather than a direct PowerShell process invocation; this broadens matching to any process whose command line contains the cmdlet name, increasing recall for obfuscated wrapping at the cost of matching cmdlet names appearing in non-executable contexts such as documentation strings or logging output passed on a command line"
+level: medium

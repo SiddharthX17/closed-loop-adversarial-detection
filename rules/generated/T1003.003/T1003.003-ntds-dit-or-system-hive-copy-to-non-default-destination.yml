@@ -1,0 +1,36 @@
+title: "NTDS.dit or SYSTEM Hive Copy to Non-Default Destination"
+id: 3ba0271c-ab3d-4d46-a355-b61463e0d9fa
+status: experimental
+description: "Detects command lines that reference the Active Directory database (ntds.dit) or SYSTEM registry hive as a source path alongside a destination path outside their default directories, indicating an attempt to extract domain credential material via raw file copy/MFT-level access for offline cracking."
+references:
+    - https://attack.mitre.org/techniques/T1003/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-28
+tags:
+    - attack.credential-access
+    - attack.t1003.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_source:
+        CommandLine|contains:
+            - 'ntds.dit'
+            - '\config\SYSTEM'
+    selection_dest:
+        CommandLine|contains:
+            - '\Temp\'
+            - '\Users\'
+            - '\ProgramData\'
+            - '\Windows\Tasks\'
+            - 'D:\'
+            - 'E:\'
+            - '\'
+    filter_ntdsutil:
+        Image|endswith: '\ntdsutil.exe'
+    condition: selection_source and selection_dest and not filter_ntdsutil
+falsepositives:
+    - "Legitimate ntdsutil.exe-based AD backup or IFM (install-from-media) creation, which is exempted here by requiring the process's own Image not be ntdsutil.exe"
+    - "Third-party AD backup/DR agents or disk-imaging tools that legitimately copy ntds.dit or the SYSTEM hive to a staging path as part of scheduled backup jobs — not excluded here since Image varies by vendor and requires environment-specific tuning"
+    - "Administrators manually copying ntds.dit/SYSTEM to a network share or removable drive for legitimate forensic or migration purposes"
+level: critical

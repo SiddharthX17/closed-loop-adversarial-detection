@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   3  |  Feasible: 3  |  Variants: 9
+# Clusters:   4  |  Feasible: 4  |  Variants: 11
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,393 +10,408 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_71d4f063-63ac-4a68-9fe8-1390e5d6f257  (1 rule(s)) ---------------------
-# Intent:    Adversaries writing command interpreter output to administrative shares (ADMIN$ 
-# Rules:     71d4f063-63ac-4a68-9fe8-1390e5d6f257
+# -- Cluster: singleton_a0c34f6e-4fe7-4f74-a8e0-47dddf07a303  (1 rule(s)) ---------------------
+# Intent:    Attackers attempt to extract the NTDS.dit file (Active Directory database) via c
+# Rules:     a0c34f6e-4fe7-4f74-a8e0-47dddf07a303
 # Archetype: IT admin workflow
 
-$remoteAdminShare = '\\127.0.0.1\admin$'
-$reportDir = Join-Path $env:TEMP 'sysreport_' + (Get-Date -Format 'yyyyMMdd')
-New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
-
-# Collect diagnostic information locally
-$diagnosticOutput = cmd /c 'systeminfo'
-Set-Content -Path (Join-Path $reportDir 'systeminfo.txt') -Value $diagnosticOutput
-
-# Collect network configuration
-$networkOutput = cmd /c 'ipconfig /all'
-Set-Content -Path (Join-Path $reportDir 'ipconfig.txt') -Value $networkOutput
-
-# Create summary report and write to local share mount point using redirection
-$summaryFile = Join-Path $reportDir 'summary.txt'
-cmd /c "echo System Diagnostic Report - Generated $(Get-Date) >> $summaryFile"
-cmd /c "echo Machine: %COMPUTERNAME% >> $summaryFile"
-
-# Simulate writing collection output via PowerShell redirection to admin$ mount
-if (Test-Path $remoteAdminShare -ErrorAction SilentlyContinue) {
-  Get-Content (Join-Path $reportDir 'systeminfo.txt') | Out-File -FilePath (Join-Path $remoteAdminShare 'diag_report.txt') -Encoding ASCII
+$adminCheck = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($adminCheck)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Not running as administrator. Skipping ntdsutil validation."
+    exit 0
 }
 
-# Write network diagnostics via redirection operator
-$logPath = Join-Path $reportDir 'network_diagnostics.log'
-cmd /c "systeminfo 1> $logPath"
+# Legitimate AD health check workflow
+$logPath = Join-Path $env:TEMP "ad_integrity_check_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
-# Cleanup
-Remove-Item -Path $reportDir -Recurse -Force -ErrorAction SilentlyContinue
+try {
+    # Capture the ntdsutil help output which legitimately references ntds.dit
+    & ntdsutil.exe help 2>&1 | Tee-Object -FilePath $logPath | Select-String -Pattern 'ntds\.dit|config|system' | Out-Null
 
-# -- Cluster: singleton_71d4f063-63ac-4a68-9fe8-1390e5d6f257  (1 rule(s)) ---------------------
-# Intent:    Adversaries writing command interpreter output to administrative shares (ADMIN$ 
-# Rules:     71d4f063-63ac-4a68-9fe8-1390e5d6f257
+    # Document the database location and expected configuration paths
+    Write-Host "AD database diagnostics captured to $logPath"
+
+    # Verify the log was created and contains expected NTDS references
+    if (Test-Path $logPath) {
+        $content = Get-Content $logPath -Raw
+        if ($content -match 'ntds\.dit') {
+            Write-Host "AD integrity check completed successfully"
+        }
+    }
+}
+finally {
+    # Clean up diagnostic logs
+    if (Test-Path $logPath) {
+        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Write-Host "AD maintenance workflow completed."
+
+# -- Cluster: singleton_a0c34f6e-4fe7-4f74-a8e0-47dddf07a303  (1 rule(s)) ---------------------
+# Intent:    Attackers attempt to extract the NTDS.dit file (Active Directory database) via c
+# Rules:     a0c34f6e-4fe7-4f74-a8e0-47dddf07a303
 # Archetype: Software installer/updater workflow
 
-# Enterprise deployment automation writing deployment logs to central administrative store
-$deploymentShare = '\\127.0.0.1\c$'
-$deploymentLogPath = Join-Path $env:TEMP 'deployment_log_' + (Get-Date -Format 'yyyyMMddHHmmss') + '.txt'
-
-# Simulate deployment script collecting output
-$deployOutput = @(
-  'Deployment Agent Started: ' + (Get-Date)
-  'Checking prerequisites...'
-  'System configuration: OK'
-  'Installation proceeding...'
-)
-
-# Write deployment log via PowerShell redirection
-Set-Content -Path $deploymentLogPath -Value $deployOutput
-
-# Consolidate to administrative C$ share if accessible (simulating central log collection)
-if (Test-Path $deploymentShare -ErrorAction SilentlyContinue) {
-  Copy-Item -Path $deploymentLogPath -Destination (Join-Path $deploymentShare 'Windows\Temp\deploy.log') -Force -ErrorAction SilentlyContinue
+$adminCheck = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($adminCheck)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Not running as administrator. Skipping backup diagnostics."
+    exit 0
 }
 
-# Simulate installation script writing status
-$statusLog = Join-Path $env:TEMP 'install_status.log'
-wmic os get name /format:list >> $statusLog
-wmic os get totalvirtualmemory /format:list >> $statusLog
+# Legitimate system backup discovery workflow
+$diagnosticLog = Join-Path $env:TEMP "backup_discovery_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
 
-# Write installation details via copy-item cmdlet
-$installDetails = Join-Path $env:TEMP 'install_details.txt'
-cmd /c "echo Installation Package Information > $installDetails"
-cmd /c "echo Package: Deployment_Agent_v2.1 >> $installDetails"
-cmd /c "echo Timestamp: %date% %time% >> $installDetails"
-
-# Attempt to copy installation log to administrative share
-if (Test-Path $deploymentShare -ErrorAction SilentlyContinue) {
-  Copy-Item -Path $installDetails -Destination (Join-Path $deploymentShare 'Windows\Temp\install_details.log') -Force -ErrorAction SilentlyContinue
-}
-
-# Cleanup temporary files
-Remove-Item -Path $deploymentLogPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $statusLog -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $installDetails -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_71d4f063-63ac-4a68-9fe8-1390e5d6f257  (1 rule(s)) ---------------------
-# Intent:    Adversaries writing command interpreter output to administrative shares (ADMIN$ 
-# Rules:     71d4f063-63ac-4a68-9fe8-1390e5d6f257
-# Archetype: Document/file operation workflow
-
-# Administrative report consolidation and archival
-$adminShare = '\\127.0.0.1\admin$'
-$reportBase = Join-Path $env:TEMP 'monthly_reports_' + (Get-Date -Format 'yyyyMMdd')
-New-Item -ItemType Directory -Path $reportBase -Force | Out-Null
-
-# Collect server maintenance information
-$maintenanceReport = Join-Path $reportBase 'maintenance_log.txt'
-cmd /c "echo SERVER MAINTENANCE REPORT - $(date /t) > $maintenanceReport"
-cmd /c "systeminfo >> $maintenanceReport"
-cmd /c "wmic logicaldisk get name,size,freespace >> $maintenanceReport"
-
-# Collect service status for archival
-$serviceReport = Join-Path $reportBase 'service_status.txt'
-cmd /c "sc query >> $serviceReport"
-
-# Archive reports to administrative shares if accessible
-if (Test-Path $adminShare -ErrorAction SilentlyContinue) {
-  Copy-Item -Path (Join-Path $reportBase 'maintenance_log.txt') -Destination (Join-Path $adminShare 'maintenance_log.txt') -Force -ErrorAction SilentlyContinue
-}
-
-# Write compliance audit output via PowerShell out-file
-$auditReport = Join-Path $reportBase 'audit_trail.txt'
-Get-Process | Select-Object Name, Id, ProcessName | Out-File -FilePath $auditReport -Encoding ASCII
-
-# Consolidate all reports to central location
-$consolidatedPath = Join-Path $env:TEMP 'reports_consolidated.txt'
-Get-Content -Path (Join-Path $reportBase '*') -ErrorAction SilentlyContinue | Out-File -FilePath $consolidatedPath
-
-# Move consolidated report to administrative share for centralized archival
-if (Test-Path $adminShare -ErrorAction SilentlyContinue) {
-  Move-Item -Path $consolidatedPath -Destination (Join-Path $adminShare 'consolidated_reports.txt') -Force -ErrorAction SilentlyContinue
-}
-
-# Cleanup local copies
-Remove-Item -Path $reportBase -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_c31bab8c-ab36-40e4-841e-7c363f90b7d7  (1 rule(s)) ---------------------
-# Intent:    Attackers enabling WinRM or using PowerShell Remoting to execute commands on loc
-# Rules:     c31bab8c-ab36-40e4-841e-7c363f90b7d7
-# Archetype: IT admin workflow
-
-$originalExecutionPolicy = Get-ExecutionPolicy -Scope LocalMachine
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
 try {
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Enabling WinRM for remote management infrastructure."
-  Start-Service -Name WinRM -ErrorAction SilentlyContinue
-  winrm quickconfig -quiet -force
+    # Capture wbadmin status output which may reference system hives and NTDS context
+    & wbadmin.exe get status 2>&1 | Tee-Object -FilePath $diagnosticLog | Out-Null
 
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Validating PSRemoting on localhost."
-  Enable-PSRemoting -Force -SkipNetworkProfileCheck
+    # Parse backup history for any references to system state or registry backups
+    if (Test-Path $diagnosticLog) {
+        $status = Get-Content $diagnosticLog -Raw
 
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Testing PSSession creation to localhost."
-  $session = New-PSSession -ComputerName localhost -ErrorAction SilentlyContinue
+        # Check if system state backups are configured (would include NTDS in domain controllers)
+        if ($status -match 'system|registry|config') {
+            Write-Host "System backup configuration validated"
+        }
+    }
 
-  if ($session) {
-    Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executing remote command to verify connectivity."
-    $result = Invoke-Command -Session $session -ScriptBlock { Get-ComputerInfo -Property CsName } -ErrorAction SilentlyContinue
-    Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Remote execution result: $result"
-    Remove-PSSession -Session $session
-  }
+    # Document backup location requirements for compliance
+    $backupInventory = Join-Path $env:TEMP "backup_inventory_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] WinRM and PSRemoting infrastructure validation complete."
+    # Query backup log which may contain references to system_hive and NTDS contexts
+    wbadmin.exe get versions 2>&1 | Tee-Object -FilePath $backupInventory | Select-String -Pattern 'system|ntds' | Out-Null
+
+    if (Test-Path $backupInventory) {
+        Write-Host "Backup inventory documented"
+    }
 }
 finally {
-  Set-ExecutionPolicy -ExecutionPolicy $originalExecutionPolicy -Scope LocalMachine -Force
+    # Clean up diagnostic files
+    @($diagnosticLog, $backupInventory) | ForEach-Object {
+        if (Test-Path $_) {
+            Remove-Item -Path $_ -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
-# -- Cluster: singleton_c31bab8c-ab36-40e4-841e-7c363f90b7d7  (1 rule(s)) ---------------------
-# Intent:    Attackers enabling WinRM or using PowerShell Remoting to execute commands on loc
-# Rules:     c31bab8c-ab36-40e4-841e-7c363f90b7d7
+Write-Host "System backup diagnostic workflow completed."
+
+# -- Cluster: singleton_85bfb341-e093-4e14-8882-68305c7ab78d  (1 rule(s)) ---------------------
+# Intent:    Detect attackers using PowerShell remoting cmdlets (Invoke-Command, New-PSSessio
+# Rules:     85bfb341-e093-4e14-8882-68305c7ab78d
+# Archetype: IT admin workflow
+
+$ServerList = @('localhost', 'localhost')
+$Credentials = [System.Management.Automation.PSCredential]::new('LocalAdmin', (ConvertTo-SecureString -AsPlainText -Force 'TempPass123'))
+
+foreach ($Server in $ServerList) {
+  try {
+    $Session = New-PSSession -ComputerName $Server -Credential $Credentials -ErrorAction SilentlyContinue
+    if ($Session) {
+      $Results = Invoke-Command -Session $Session -ScriptBlock {
+        $env:COMPUTERNAME
+        Get-Service -Name 'WinRM' | Select-Object -Property Status
+      } -ErrorAction SilentlyContinue
+      Remove-PSSession -Session $Session -ErrorAction SilentlyContinue
+    }
+  } catch {
+  }
+}
+
+Enter-PSSession -ComputerName localhost -Credential $Credentials -ErrorAction SilentlyContinue | { exit }
+
+# -- Cluster: singleton_85bfb341-e093-4e14-8882-68305c7ab78d  (1 rule(s)) ---------------------
+# Intent:    Detect attackers using PowerShell remoting cmdlets (Invoke-Command, New-PSSessio
+# Rules:     85bfb341-e093-4e14-8882-68305c7ab78d
 # Archetype: Software installer/updater workflow
 
-$configMgmtLog = "$env:TEMP\config_mgmt_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-try {
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Initializing configuration management deployment." | Tee-Object -FilePath $configMgmtLog
+$RemoteNodes = @('localhost')
+$DeploymentScriptPath = [System.IO.Path]::Combine($env:TEMP, 'deploy_update.ps1')
 
-  $targets = @('127.0.0.1', 'localhost')
-  foreach ($target in $targets) {
-    Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Creating PSSession to $target for config deployment." | Tee-Object -FilePath $configMgmtLog -Append
-    try {
-      $session = New-PSSession -ComputerName $target -ErrorAction Continue
-      if ($session) {
-        Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executing configuration validation on $target." | Tee-Object -FilePath $configMgmtLog -Append
-        $config = Invoke-Command -Session $session -ScriptBlock {
-          @{
-            'OS' = [System.Environment]::OSVersion.VersionString
-            'PowerShellVersion' = $PSVersionTable.PSVersion.ToString()
-            'Timestamp' = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-          }
-        } -ErrorAction Continue
-        Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Config snapshot: $($config | ConvertTo-Json)" | Tee-Object -FilePath $configMgmtLog -Append
-        Remove-PSSession -Session $session
-      }
-    }
-    catch {
-      Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Warning: Could not connect to $target - $_" | Tee-Object -FilePath $configMgmtLog -Append
-    }
-  }
-
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Configuration management deployment phase completed. Log saved to $configMgmtLog" | Tee-Object -FilePath $configMgmtLog -Append
+@'
+# Configuration verification script
+Write-Output 'Verifying deployment...'
+if (Test-Path 'C:\\Program Files\\') {
+  Get-ChildItem 'C:\\Program Files\\' -Directory -ErrorAction SilentlyContinue | Select-Object -First 3 | ForEach-Object { $_.Name }
 }
-finally {
-  if (Test-Path -Path $configMgmtLog) {
-    Remove-Item -Path $configMgmtLog -Force
+'@ | Out-File -FilePath $DeploymentScriptPath -Encoding UTF8
+
+foreach ($Node in $RemoteNodes) {
+  try {
+    $PSSession = New-PSSession -ComputerName $Node -ErrorAction SilentlyContinue
+    if ($PSSession) {
+      Invoke-Command -Session $PSSession -FilePath $DeploymentScriptPath -ErrorAction SilentlyContinue
+      Remove-PSSession $PSSession -ErrorAction SilentlyContinue
+    }
+  } catch {
   }
 }
 
-# -- Cluster: singleton_c31bab8c-ab36-40e4-841e-7c363f90b7d7  (1 rule(s)) ---------------------
-# Intent:    Attackers enabling WinRM or using PowerShell Remoting to execute commands on loc
-# Rules:     c31bab8c-ab36-40e4-841e-7c363f90b7d7
+if (Test-Path $DeploymentScriptPath) { Remove-Item $DeploymentScriptPath -Force -ErrorAction SilentlyContinue }
+
+# -- Cluster: singleton_85bfb341-e093-4e14-8882-68305c7ab78d  (1 rule(s)) ---------------------
+# Intent:    Detect attackers using PowerShell remoting cmdlets (Invoke-Command, New-PSSessio
+# Rules:     85bfb341-e093-4e14-8882-68305c7ab78d
 # Archetype: User-driven workflow
 
-$sessionLog = "$env:TEMP\remote_session_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+$RemoteHost = 'localhost'
+$AdminCreds = [System.Management.Automation.PSCredential]::new('admin', (ConvertTo-SecureString -AsPlainText -Force 'P@ssw0rd'))
+
 try {
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Initiating remote diagnostics session." | Tee-Object -FilePath $sessionLog
-
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Establishing PSSession to localhost for diagnostics." | Tee-Object -FilePath $sessionLog -Append
-  $diagSession = New-PSSession -ComputerName 127.0.0.1 -ErrorAction SilentlyContinue
-
-  if ($diagSession) {
-    Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Connected to remote system. Gathering diagnostics." | Tee-Object -FilePath $sessionLog -Append
-
-    $diagnostics = Invoke-Command -Session $diagSession -ScriptBlock {
-      @{
-        'SystemUptime' = (Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty LastBootUpTime)
-        'LogicalProcessors' = (Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum | Select-Object -ExpandProperty Sum)
-        'TotalMemory_GB' = [math]::Round((Get-CimInstance Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory) / 1GB, 2)
-        'ScanTime' = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-      }
-    } -ErrorAction SilentlyContinue
-
-    Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Diagnostic Results: $($diagnostics | ConvertTo-Json)" | Tee-Object -FilePath $sessionLog -Append
-    Remove-PSSession -Session $diagSession
-  }
-
-  Write-Output "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Diagnostics session complete." | Tee-Object -FilePath $sessionLog -Append
-}
-finally {
-  if (Test-Path -Path $sessionLog) {
-    Remove-Item -Path $sessionLog -Force
-  }
+  Enter-PSSession -ComputerName $RemoteHost -Credential $AdminCreds -ErrorAction SilentlyContinue
+  Get-WindowsUpdate -ErrorAction SilentlyContinue
+  Get-Process -Name 'svchost' -ErrorAction SilentlyContinue | Measure-Object
+} catch {
 }
 
-# -- Cluster: singleton_0cf6c3aa-6f5a-441e-9008-118d555e9956  (1 rule(s)) ---------------------
-# Intent:    Detect when script engines (PowerShell, VBScript, etc.) spawn network discovery 
-# Rules:     0cf6c3aa-6f5a-441e-9008-118d555e9956
+$SessionCheck = New-PSSession -ComputerName $RemoteHost -ErrorAction SilentlyContinue
+if ($SessionCheck) {
+  Invoke-Command -Session $SessionCheck -ScriptBlock {
+    Write-Output 'Remote session connected'
+    Get-HotFix | Select-Object -Property InstalledOn -Last 5
+  } -ErrorAction SilentlyContinue
+  Remove-PSSession $SessionCheck -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_5a0f062a-9ca1-4ec6-ab97-a72c5b15daaa  (1 rule(s)) ---------------------
+# Intent:    Detects when script interpreters (PowerShell, WSH, mshta, rundll32) are invoked 
+# Rules:     5a0f062a-9ca1-4ec6-ab97-a72c5b15daaa
 # Archetype: IT admin workflow
 
-# Network diagnostics health check executed by IT operations
-$diagnosticLog = Join-Path $env:TEMP "network_diagnostic_$(Get-Date -Format yyyyMMdd_HHmmss).txt"
-$testTargets = @('8.8.8.8', 'google.com', '127.0.0.1')
+# Administrator performs system diagnostics via Run dialog invocation
+# This simulates real Win+R usage patterns for script execution
 
-foreach ($target in $testTargets) {
-    Add-Content -Path $diagnosticLog -Value "=== Testing connectivity to $target ==="
-
-    # Ping for ICMP connectivity check
-    $pingResult = ping.exe -n 1 -w 1000 $target 2>&1
-    Add-Content -Path $diagnosticLog -Value $pingResult
-
-    # Resolve DNS name
-    $nsResult = nslookup.exe $target 2>&1
-    Add-Content -Path $diagnosticLog -Value $nsResult
-}
-
-# Local ARP table enumeration for network discovery
-Add-Content -Path $diagnosticLog -Value "=== Local ARP Table ==="
-$arpResult = arp.exe -a
-Add-Content -Path $diagnosticLog -Value $arpResult
-
-# Network interface and routing check
-Add-Content -Path $diagnosticLog -Value "=== Network Configuration ==="
-$netResult = net.exe config workstation 2>&1
-Add-Content -Path $diagnosticLog -Value $netResult
-
-# Display results
-Write-Host "Diagnostic report saved to $diagnosticLog"
-Get-Content -Path $diagnosticLog
-
-# Cleanup
-Remove-Item -Path $diagnosticLog -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_0cf6c3aa-6f5a-441e-9008-118d555e9956  (1 rule(s)) ---------------------
-# Intent:    Detect when script engines (PowerShell, VBScript, etc.) spawn network discovery 
-# Rules:     0cf6c3aa-6f5a-441e-9008-118d555e9956
-# Archetype: User-driven workflow
-
-# Network troubleshooting helper script wrapped in mshta invocation
-# User runs this when experiencing network connectivity problems
-
-$tempScriptPath = Join-Path $env:TEMP "net_check_helper.vbs"
-$tempLog = Join-Path $env:TEMP "connectivity_check.txt"
-
-# Create a simple VBScript that calls network utilities
-$vbsContent = @'
-Set objShell = CreateObject("WScript.Shell")
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-
-logFile = objFSO.BuildPath(objShell.ExpandEnvironmentStrings("%TEMP%"), "connectivity_check.txt")
-Set objLog = objFSO.CreateTextFile(logFile, True)
-
-objLog.WriteLine("Network connectivity check started at " & Now())
-objLog.WriteBlankLines(1)
-
-objLog.WriteLine("Testing ping to 8.8.8.8:")
-Set objExec = objShell.Exec("cmd /c ping.exe -n 1 8.8.8.8")
-objLog.Write(objExec.StdOut.ReadAll())
-
-objLog.WriteBlankLines(1)
-objLog.WriteLine("Resolving google.com via nslookup:")
-Set objExec = objShell.Exec("cmd /c nslookup.exe google.com")
-objLog.Write(objExec.StdOut.ReadAll())
-
-objLog.WriteBlankLines(1)
-objLog.WriteLine("ARP table enumeration:")
-Set objExec = objShell.Exec("cmd /c arp.exe -a")
-objLog.Write(objExec.StdOut.ReadAll())
-
-objLog.WriteBlankLines(1)
-objLog.WriteLine("Network adapters status:")
-Set objExec = objShell.Exec("cmd /c net.exe config workstation")
-objLog.Write(objExec.StdOut.ReadAll())
-
-objLog.WriteLine("Check completed at " & Now())
-objLog.Close()
-MsgBox("Network check complete. Results saved to " & logFile), vbInformation, "Connectivity Check"
+$diagnosticsScript = @'
+Write-Host "System Diagnostic Report"
+Get-WindowsFeature | Where-Object {$_.Installed -eq $true} | Select-Object -First 10
+$osInfo = Get-CimInstance -ClassName Win32_OperatingSystem
+Write-Host "OS Version: $($osInfo.Caption)"
 '@
 
-Set-Content -Path $tempScriptPath -Value $vbsContent -Encoding ASCII
+$scriptPath = Join-Path $env:TEMP "system_diagnostics.ps1"
+Set-Content -Path $scriptPath -Value $diagnosticsScript -Encoding UTF8
 
-# Invoke the VBScript via mshta (HTML Application host)
-# This is a common pattern for running diagnostic tools from user scripts
-mshta.exe vbscript:CreateObject("WScript.Shell").Run("cscript.exe \"" + $tempScriptPath + "\"", 0, True)
+# Simulate Run dialog execution by directly writing to RunMRU registry
+# This is what explorer.exe does when a user types a command in Win+R
+$runMruPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"
 
-# Wait for completion
-Start-Sleep -Seconds 2
+try {
+    # Create the registry key path if needed
+    if (-not (Test-Path $runMruPath)) {
+        New-Item -Path $runMruPath -Force | Out-Null
+    }
 
-# Display and then clean up
-if (Test-Path $tempLog) {
-    Write-Host "Connectivity check results:"
-    Get-Content -Path $tempLog
-    Remove-Item -Path $tempLog -Force -ErrorAction SilentlyContinue
+    # Write PowerShell invocation to RunMRU (mimics Win+R history)
+    $runCommand = "powershell.exe -File `"$scriptPath`""
+    Set-ItemProperty -Path $runMruPath -Name "a" -Value $runCommand -ErrorAction Stop
+
+    # Execute the script to complete the workflow
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath
+
+    # Clean up registry entries
+    Remove-ItemProperty -Path $runMruPath -Name "a" -ErrorAction SilentlyContinue
+}
+finally {
+    # Clean up script file
+    if (Test-Path $scriptPath) {
+        Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
-Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_0cf6c3aa-6f5a-441e-9008-118d555e9956  (1 rule(s)) ---------------------
-# Intent:    Detect when script engines (PowerShell, VBScript, etc.) spawn network discovery 
-# Rules:     0cf6c3aa-6f5a-441e-9008-118d555e9956
+# -- Cluster: singleton_5a0f062a-9ca1-4ec6-ab97-a72c5b15daaa  (1 rule(s)) ---------------------
+# Intent:    Detects when script interpreters (PowerShell, WSH, mshta, rundll32) are invoked 
+# Rules:     5a0f062a-9ca1-4ec6-ab97-a72c5b15daaa
 # Archetype: Software installer/updater workflow
 
-# Software deployment pre-flight network validation
-# This runs as part of an installer to verify network readiness before deployment
+# Software deployment scenario: installer uses mshta for HTML-based setup validation
+# This simulates legitimate enterprise software packaging
 
-$validationLog = Join-Path $env:TEMP "deployment_prereq_check.txt"
-$deploymentServer = "updates.example.local"
+$htmlSetup = @'
+<html>
+<head><title>Setup Validation</title></head>
+<body>
+<script>
+WScript.Echo("Setup prerequisites validated");
+</script>
+</body>
+</html>
+'@
 
-Add-Content -Path $validationLog -Value "Software Deployment Network Pre-flight Check"
-Add-Content -Path $validationLog -Value ("Initiated: {0}" -f (Get-Date))
-Add-Content -Path $validationLog -Value ""
+$htmlPath = Join-Path $env:TEMP "setup_validation.hta"
+Set-Content -Path $htmlPath -Value $htmlSetup -Encoding UTF8
 
-# Validate DNS resolution of deployment server
-Add-Content -Path $validationLog -Value "DNS Resolution Validation:"
+$runMruPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"
+
 try {
-    $dnsCheck = nslookup.exe $deploymentServer 2>&1 | Out-String
-    Add-Content -Path $validationLog -Value $dnsCheck
-} catch {
-    Add-Content -Path $validationLog -Value "DNS lookup failed: $_"
+    # Create registry path if needed
+    if (-not (Test-Path $runMruPath)) {
+        New-Item -Path $runMruPath -Force | Out-Null
+    }
+
+    # Record mshta invocation in RunMRU as would occur via Win+R
+    $mshtaCommand = "mshta.exe `"$htmlPath`""
+    Set-ItemProperty -Path $runMruPath -Name "b" -Value $mshtaCommand -ErrorAction Stop
+
+    # Execute mshta to complete installer workflow
+    & mshta.exe "$htmlPath" 2>$null
+
+    # Clean up registry
+    Remove-ItemProperty -Path $runMruPath -Name "b" -ErrorAction SilentlyContinue
+}
+finally {
+    # Clean up HTML file
+    if (Test-Path $htmlPath) {
+        Remove-Item -Path $htmlPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
-Add-Content -Path $validationLog -Value ""
+# -- Cluster: singleton_5a0f062a-9ca1-4ec6-ab97-a72c5b15daaa  (1 rule(s)) ---------------------
+# Intent:    Detects when script interpreters (PowerShell, WSH, mshta, rundll32) are invoked 
+# Rules:     5a0f062a-9ca1-4ec6-ab97-a72c5b15daaa
+# Archetype: User-driven workflow
 
-# Ping deployment server to verify routing
-Add-Content -Path $validationLog -Value "Connectivity Check to deployment infrastructure:"
-$pingTests = @('8.8.8.8', '1.1.1.1')
-foreach ($server in $pingTests) {
-    $pingOutput = ping.exe -n 2 -w 500 $server 2>&1 | Out-String
-    Add-Content -Path $validationLog -Value "Ping $server : $pingOutput"
+# User runs WSH script through Run dialog for local system configuration
+# This simulates legitimate end-user automation task execution
+
+$vbScript = @'
+WScript.Echo "Configuration check initiated"
+Set objShell = CreateObject("WScript.Shell")
+objShell.Popup "System configuration validated", 2, "Status"
+WScript.Quit 0
+'@
+
+$vbsPath = Join-Path $env:TEMP "config_check.vbs"
+Set-Content -Path $vbsPath -Value $vbScript -Encoding UTF8
+
+$runMruPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"
+
+try {
+    # Ensure registry path exists
+    if (-not (Test-Path $runMruPath)) {
+        New-Item -Path $runMruPath -Force | Out-Null
+    }
+
+    # Log cscript execution as it would appear in RunMRU from Win+R
+    $cscriptCommand = "cscript.exe `"$vbsPath`""
+    Set-ItemProperty -Path $runMruPath -Name "c" -Value $cscriptCommand -ErrorAction Stop
+
+    # Execute the VBScript
+    & cscript.exe "$vbsPath" //Nologo 2>$null
+
+    # Clean up registry entry
+    Remove-ItemProperty -Path $runMruPath -Name "c" -ErrorAction SilentlyContinue
+}
+finally {
+    # Clean up script file
+    if (Test-Path $vbsPath) {
+        Remove-Item -Path $vbsPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
-Add-Content -Path $validationLog -Value ""
+# -- Cluster: singleton_f509be03-df3a-419a-b5fb-7130ed238041  (1 rule(s)) ---------------------
+# Intent:    Detect living-off-the-land binary (LOLBin) downloads via HTTP(S) using built-in 
+# Rules:     f509be03-df3a-419a-b5fb-7130ed238041
+# Archetype: IT admin workflow
 
-# Enumerate local network configuration
-Add-Content -Path $validationLog -Value "Local Network Configuration:"
-$arpTable = arp.exe -a | Out-String
-Add-Content -Path $validationLog -Value $arpTable
+# IT admin downloading and installing a legitimate software package via certutil
+# Common scenario: deploying standardized tools across a fleet of machines
 
-Add-Content -Path $validationLog -Value ""
+$msiPath = "$env:TEMP\VCRedist2022.msi"
+$msiUrl = "https://download.visualstudio.microsoft.com/download/pr/1234567/vcredist.msi"
 
-# Verify network share accessibility
-Add-Content -Path $validationLog -Value "Network Share Enumeration:"
-$netShares = net.exe view localhost 2>&1 | Out-String
-Add-Content -Path $validationLog -Value $netShares
+try {
+    # Use certutil to cache and download the MSI package from a legitimate vendor site
+    # certutil is preferred in some environments for checksums and retry logic
+    Write-Host "Downloading package via certutil..."
+    & certutil.exe -urlcache -split -f $msiUrl $msiPath
 
-Add-Content -Path $validationLog -Value ""
-Add-Content -Path $validationLog -Value ("Check completed: {0}" -f (Get-Date))
+    # Verify the file was downloaded successfully
+    if (Test-Path $msiPath) {
+        Write-Host "Package downloaded successfully: $msiPath"
 
-Write-Host "Pre-flight validation complete. Review results:"
-Get-Content -Path $validationLog
+        # Install silently with no user interaction (/qn) and no restart (/norestart)
+        # This is standard for unattended deployment in CI/CD and enterprise environments
+        Write-Host "Installing package silently..."
+        & msiexec /i $msiPath /qn /norestart /l*v "$env:TEMP\install_log.txt"
 
-# Cleanup
-Remove-Item -Path $validationLog -Force -ErrorAction SilentlyContinue
-Write-Host "Deployment validation finished."
+        # Wait for installation to complete
+        Start-Sleep -Seconds 5
+
+        Write-Host "Installation completed"
+    } else {
+        Write-Host "Failed to download package"
+    }
+}
+finally {
+    # Clean up the MSI file and installation log
+    if (Test-Path $msiPath) {
+        Remove-Item $msiPath -Force
+    }
+    if (Test-Path "$env:TEMP\install_log.txt") {
+        Remove-Item "$env:TEMP\install_log.txt" -Force
+    }
+}
+
+# -- Cluster: singleton_f509be03-df3a-419a-b5fb-7130ed238041  (1 rule(s)) ---------------------
+# Intent:    Detect living-off-the-land binary (LOLBin) downloads via HTTP(S) using built-in 
+# Rules:     f509be03-df3a-419a-b5fb-7130ed238041
+# Archetype: Software installer/updater workflow
+
+# Software update manager checking for patches via WinHttpRequest (rundll32 COM invocation)
+# Realistic scenario: automated update client fetching and installing patches
+
+$vbScriptPath = "$env:TEMP\check_updates.vbs"
+$msiPath = "$env:TEMP\SecurityPatch.msi"
+
+try {
+    # Create a VBScript that uses WinHttpRequest through rundll32
+    # This is how legacy update clients often check for new versions
+    $vbScript = @'
+Dim http
+Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+http.Open "GET", "https://updates.example.com/security/latest.msi", False
+http.Send
+If http.Status = 200 Then
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set file = fso.CreateTextFile("' + $msiPath + '", True)
+    file.Write http.ResponseBody
+    file.Close
+End If
+'@
+
+    $vbScript | Out-File -FilePath $vbScriptPath -Encoding ASCII
+
+    # Execute the VBScript via cscript
+    Write-Host "Checking for software updates via WinHttpRequest..."
+    & cscript.exe //NoLogo $vbScriptPath
+
+    # Simulate successful download by creating the MSI file
+    # In real scenarios, the VBScript would download from the actual update server
+    if (-not (Test-Path $msiPath)) {
+        New-Item -Path $msiPath -ItemType File -Force | Out-Null
+    }
+
+    # If update package is available, install it silently
+    if (Test-Path $msiPath) {
+        Write-Host "Update package available, installing silently..."
+        # Use /quiet for silent installation with progress bar (enterprise standard)
+        & msiexec /i $msiPath /quiet /norestart ALLUSERS=1
+        Start-Sleep -Seconds 3
+    }
+}
+finally {
+    # Clean up temporary files
+    @($vbScriptPath, $msiPath) | ForEach-Object {
+        if (Test-Path $_) {
+            Remove-Item $_ -Force
+        }
+    }
+}
+
+# SKIPPED variant 'User-driven workflow': blocked pattern: hidden window ('-windowstyle hidden')
 
 
 # ===========================================================================

@@ -1,0 +1,41 @@
+title: "T1219-LOLBin Download and Silent MSI Install Chain"
+id: f509be03-df3a-419a-b5fb-7130ed238041
+status: experimental
+description: "Detects a single LOLBin process invocation (mshta, rundll32, certutil, cscript, wscript) whose command line combines an outbound download indicator with a chained silent msiexec install — a pattern used to stealthily fetch and deploy remote access/RMM tooling (e.g. ScreenConnect) while blending in with trusted signed installers."
+references:
+    - https://attack.mitre.org/techniques/T1219/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-27
+tags:
+    - attack.command-and-control
+    - attack.t1219
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_lolbin:
+        Image|endswith:
+          - '\mshta.exe'
+          - '\rundll32.exe'
+          - '\certutil.exe'
+          - '\cscript.exe'
+          - '\wscript.exe'
+    selection_download:
+        CommandLine|contains:
+          - 'http://'
+          - 'https://'
+          - '-urlcache'
+          - 'XMLHTTP'
+          - 'WinHttp.WinHttpRequest'
+    selection_install:
+        CommandLine|contains: 'msiexec'
+    selection_silent:
+        CommandLine|contains:
+          - '/qn'
+          - '/quiet'
+    condition: selection_lolbin and selection_download and selection_install and selection_silent
+falsepositives:
+    - "Legacy IT deployment or logon scripts that use certutil/rundll32/mshta/cscript to download and silently install software in a single command chain — rare in modern environments but possible in unmodernized enterprise scripting"
+    - "Legitimate remote-access/RMM software deployment performed via LOLBin proxy-execution rather than a managed deployment agent (e.g. SCCM, Intune) — if IT tooling routes installs this way, it will match and should be reviewed/allowlisted by source host or signer rather than suppressed by filename"
+    - "Security tooling or vulnerability scanners that simulate download-and-install chains for testing purposes"
+level: high

@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   2  |  Feasible: 1  |  Variants: 3
+# Clusters:   2  |  Feasible: 2  |  Variants: 4
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,175 +10,177 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_4da457f9-03de-41ff-824c-ef0cd1761275  (1 rule(s)) ---------------------
-# Intent:    Detects BITS job lifecycle management operations (create, add file, resume, set 
-# Rules:     4da457f9-03de-41ff-824c-ef0cd1761275
+# -- Cluster: singleton_5f8684a9-f09c-4415-820e-571ef9015c4c  (1 rule(s)) ---------------------
+# Intent:    Attackers extract the NTDS.dit Active Directory database and SYSTEM registry hiv
+# Rules:     5f8684a9-f09c-4415-820e-571ef9015c4c
 # Archetype: IT admin workflow
 
-# IT administrator using BITS for reliable background transfer of compliance data
-# This simulates a real scenario where a sysadmin script orchestrates critical file downloads
+# Domain controller database maintenance: query NTDS.dit database integrity and recovery information
+# This reflects real IT admin work on DC systems where backup and recovery procedures must be validated
 
-$jobName = 'ComplianceReportDownload_' + (Get-Date -Format 'yyyyMMdd')
-$tempDir = [System.IO.Path]::GetTempPath()
-$localPath = Join-Path $tempDir 'compliance_report.zip'
-$notifyScript = Join-Path $tempDir 'notify_completion.ps1'
+$ntdsUtilPath = 'C:\Windows\System32\ntdsutil.exe'
+$logPath = "$env:TEMP\ntdsutil_diagnostic_$(Get-Random).log"
 
-try {
-  # Create a simple notification script (legitimate cleanup mechanism)
-  @'
-Write-Host 'Compliance report download completed'
-'@ | Out-File -FilePath $notifyScript -Encoding ASCII -Force
+if (Test-Path $ntdsUtilPath) {
+    # Run ntdsutil diagnostic query that references NTDS configuration context
+    # Real admins use this to check database status before maintenance windows
+    $ntdsCommands = @(
+        'ifm',
+        'semantic database analysis',
+        'go'
+    )
 
-  # Create BITS job for reliable background download
-  # This mirrors real admin scripts that use BITS for critical file transfers
-  bitsadmin.exe /create /name $jobName
+    $commandInput = ($ntdsCommands -join "`n") + "`nquit"
 
-  # Add the file to transfer
-  # Using a legitimate internal destination (localhost simulates corporate HTTP server)
-  bitsadmin.exe /addfile $jobName 'http://127.0.0.1/compliance_report.zip' $localPath
+    # Execute ntdsutil with diagnostic parameters
+    $commandInput | & $ntdsUtilPath 2>&1 | Out-File -FilePath $logPath -Encoding UTF8
 
-  # Set retry timing for network reliability
-  bitsadmin.exe /setminretrydelay $jobName 60
+    Start-Sleep -Milliseconds 500
 
-  # Configure completion notification
-  bitsadmin.exe /setnotifycmdline $jobName $notifyScript ''
-
-  # Resume the job to begin transfer
-  bitsadmin.exe /resume $jobName
-
-  # Allow job to attempt for a brief period
-  Start-Sleep -Seconds 3
-
-  # Complete the job (cleanup)
-  bitsadmin.exe /complete $jobName
-
-  Write-Host 'BITS job lifecycle completed'
-}
-catch {
-  Write-Host "Error during BITS operation: $_"
-}
-finally {
-  # Cleanup: remove temp notification script
-  if (Test-Path $notifyScript) {
-    Remove-Item -Path $notifyScript -Force -ErrorAction SilentlyContinue
-  }
-
-  # Cleanup: remove temp file if it was created
-  if (Test-Path $localPath) {
-    Remove-Item -Path $localPath -Force -ErrorAction SilentlyContinue
-  }
+    # Clean up log file
+    if (Test-Path $logPath) {
+        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# -- Cluster: singleton_4da457f9-03de-41ff-824c-ef0cd1761275  (1 rule(s)) ---------------------
-# Intent:    Detects BITS job lifecycle management operations (create, add file, resume, set 
-# Rules:     4da457f9-03de-41ff-824c-ef0cd1761275
+# Query registry for SYSTEM hive backup status as part of disaster recovery audit
+$systemHiveBackupKeys = @(
+    'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager',
+    'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS'
+)
+
+foreach ($regPath in $systemHiveBackupKeys) {
+    if (Test-Path $regPath) {
+        Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue | Out-Null
+    }
+}
+
+# -- Cluster: singleton_8bd8748f-a0ce-49ef-8dab-dca1103351eb  (1 rule(s)) ---------------------
+# Intent:    Detection of Windows Script Host interpreters (cscript.exe, wscript.exe) executi
+# Rules:     8bd8748f-a0ce-49ef-8dab-dca1103351eb
+# Archetype: IT admin workflow
+
+$tempDir = $env:TEMP
+$scriptName = 'hwaudit_' + (Get-Random -Maximum 10000) + '.vbs'
+$scriptPath = Join-Path -Path $tempDir -ChildPath $scriptName
+
+# Create a legitimate VBScript for system inventory
+$vbsContent = @'
+Dim objWMI, colItems, objItem, objFSO, logFile
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+Set objWMI = GetObject("winmgmts:")
+Set colItems = objWMI.ExecQuery("Select * from Win32_Processor")
+logFile = objFSO.BuildPath(objFSO.GetSpecialFolder(2), "hw_log.txt")
+Set objFile = objFSO.CreateTextFile(logFile)
+For Each objItem in colItems
+  objFile.WriteLine "Processor: " & objItem.Name
+Next
+objFile.Close
+'@
+
+$vbsContent | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
+
+# Execute the VBScript via cscript - legitimate admin task
+cscript.exe $scriptPath
+
+# Cleanup
+Start-Sleep -Milliseconds 500
+if (Test-Path -Path $scriptPath) {
+  Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+}
+$logPath = Join-Path -Path $env:TEMP -ChildPath 'hw_log.txt'
+if (Test-Path -Path $logPath) {
+  Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_8bd8748f-a0ce-49ef-8dab-dca1103351eb  (1 rule(s)) ---------------------
+# Intent:    Detection of Windows Script Host interpreters (cscript.exe, wscript.exe) executi
+# Rules:     8bd8748f-a0ce-49ef-8dab-dca1103351eb
 # Archetype: Software installer/updater workflow
 
-# Enterprise deployment agent using BITS for patch distribution
-# Simulates realistic enterprise software update orchestration
-
-$deploymentId = 'Deploy_' + (Get-Random -Minimum 10000 -Maximum 99999)
-$tempDir = [System.IO.Path]::GetTempPath()
-$patchFile = Join-Path $tempDir "patch_KB5034441.exe"
-$logFile = Join-Path $tempDir "deployment_$deploymentId.log"
-
-try {
-  # Initialize deployment log
-  "Deployment started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File -FilePath $logFile -Encoding ASCII
-
-  # Create BITS job for patch distribution
-  bitsadmin.exe /create /name $deploymentId
-
-  # Add patch file to download queue
-  # In real scenarios, this would be from an internal patch server or CDN
-  bitsadmin.exe /addfile $deploymentId 'http://127.0.0.1/patches/KB5034441.exe' $patchFile
-
-  # Configure retry behavior for unstable networks
-  bitsadmin.exe /setminretrydelay $deploymentId 30
-
-  # Set completion notification to log deployment status
-  bitsadmin.exe /setnotifycmdline $deploymentId "cmd /c echo Patch downloaded >> $logFile"
-
-  # Resume transfer
-  bitsadmin.exe /resume $deploymentId
-
-  # Wait for initial transfer attempt
-  Start-Sleep -Seconds 2
-
-  # Complete job
-  bitsadmin.exe /complete $deploymentId
-
-  # Log completion
-  "Deployment completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File -FilePath $logFile -Encoding ASCII -Append
-}
-catch {
-  "Deployment error: $_" | Out-File -FilePath $logFile -Encoding ASCII -Append
-}
-finally {
-  # Cleanup temporary files
-  if (Test-Path $patchFile) {
-    Remove-Item -Path $patchFile -Force -ErrorAction SilentlyContinue
-  }
-  if (Test-Path $logFile) {
-    Remove-Item -Path $logFile -Force -ErrorAction SilentlyContinue
-  }
+$appDataPath = Join-Path -Path $env:APPDATA -ChildPath 'SoftwareSetup'
+if (-not (Test-Path -Path $appDataPath)) {
+  New-Item -ItemType Directory -Path $appDataPath -Force | Out-Null
 }
 
-# -- Cluster: singleton_4da457f9-03de-41ff-824c-ef0cd1761275  (1 rule(s)) ---------------------
-# Intent:    Detects BITS job lifecycle management operations (create, add file, resume, set 
-# Rules:     4da457f9-03de-41ff-824c-ef0cd1761275
-# Archetype: Document/file operation workflow
+$scriptName = 'install_config.js'
+$scriptPath = Join-Path -Path $appDataPath -ChildPath $scriptName
 
-# User/service retrieving large shared document using BITS background transfer
-# Realistic scenario: accessing archived company records or training materials
+# Create a legitimate JavaScript for application configuration
+$jsContent = @'
+var objFSO = new ActiveXObject("Scripting.FileSystemObject");
+var strPath = objFSO.GetSpecialFolder(2);
+var logFile = objFSO.BuildPath(strPath, "app_setup.log");
+var objFile = objFSO.CreateTextFile(logFile);
+objFile.WriteLine("Application configuration initialized");
+objFile.WriteLine("Timestamp: " + new Date());
+objFile.Close();
+'@
 
-$documentJob = 'RetrieveArchive_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
-$downloadDir = Join-Path $env:TEMP 'documents'
-$archiveFile = Join-Path $downloadDir 'Q3_Training_Materials.zip'
-$statusLog = Join-Path $downloadDir 'transfer_log.txt'
+$jsContent | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
 
-try {
-  # Ensure download directory exists
-  if (-not (Test-Path $downloadDir)) {
-    New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
-  }
+# Execute via wscript - installer routine
+wscript.exe $scriptPath
 
-  # Create BITS job for document retrieval
-  bitsadmin.exe /create /name $documentJob
-
-  # Add document archive to job
-  # Simulates downloading from internal document repository
-  bitsadmin.exe /addfile $documentJob 'http://127.0.0.1/docs/Q3_Training_Materials.zip' $archiveFile
-
-  # Configure reasonable retry behavior
-  bitsadmin.exe /setminretrydelay $documentJob 45
-
-  # Set notification to update transfer log on completion
-  $notifyCmd = "cmd /c echo Transfer completed at %date% %time% >> $statusLog"
-  bitsadmin.exe /setnotifycmdline $documentJob $notifyCmd ''
-
-  # Start the transfer
-  bitsadmin.exe /resume $documentJob
-
-  # Allow transfer attempt
-  Start-Sleep -Seconds 3
-
-  # Finalize the job
-  bitsadmin.exe /complete $documentJob
-
-  Write-Host 'Document transfer workflow completed'
+# Cleanup - installer removes temporary files
+Start-Sleep -Milliseconds 500
+if (Test-Path -Path $scriptPath) {
+  Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
 }
-catch {
-  Write-Host "Error: $_"
+if (Test-Path -Path $appDataPath) {
+  Remove-Item -Path $appDataPath -Recurse -Force -ErrorAction SilentlyContinue
 }
-finally {
-  # Cleanup: remove temporary files and logs
-  if (Test-Path $downloadDir) {
-    Remove-Item -Path $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
-  }
+$logPath = Join-Path -Path $env:TEMP -ChildPath 'app_setup.log'
+if (Test-Path -Path $logPath) {
+  Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
 }
 
-# SKIPPED cluster singleton_efb1170e-2737-4c5d-9c86-8d0dd3c8bd78: LLM response truncated at max_tokens (4096)
+# -- Cluster: singleton_8bd8748f-a0ce-49ef-8dab-dca1103351eb  (1 rule(s)) ---------------------
+# Intent:    Detection of Windows Script Host interpreters (cscript.exe, wscript.exe) executi
+# Rules:     8bd8748f-a0ce-49ef-8dab-dca1103351eb
+# Archetype: User-driven workflow
+
+$downloadsPath = Join-Path -Path $env:USERPROFILE -ChildPath 'Downloads'
+$tempExtractPath = Join-Path -Path $env:APPDATA -ChildPath 'Local\DocumentTools'
+
+if (-not (Test-Path -Path $tempExtractPath)) {
+  New-Item -ItemType Directory -Path $tempExtractPath -Force | Out-Null
+}
+
+$scriptName = 'extract_docs.vbs'
+$scriptPath = Join-Path -Path $tempExtractPath -ChildPath $scriptName
+
+# VBScript for extracting and organizing downloaded files
+$vbsContent = @'
+Dim objFSO, objShell, downloadsFolder, outputLog
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+Set objShell = CreateObject("WScript.Shell")
+downloadsFolder = objShell.SpecialFolders("Downloads")
+outputLog = objFSO.BuildPath(objFSO.GetSpecialFolder(2), "doc_extract.log")
+Set logFile = objFSO.CreateTextFile(outputLog)
+logFile.WriteLine "Processing downloads from: " & downloadsFolder
+logFile.WriteLine "Operation completed at: " & Now
+logFile.Close
+'@
+
+$vbsContent | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
+
+# User executes the helper script
+wscript.exe $scriptPath
+
+# Cleanup
+Start-Sleep -Milliseconds 500
+if (Test-Path -Path $scriptPath) {
+  Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path -Path $tempExtractPath) {
+  Remove-Item -Path $tempExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+}
+$logPath = Join-Path -Path $env:TEMP -ChildPath 'doc_extract.log'
+if (Test-Path -Path $logPath) {
+  Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+}
+
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

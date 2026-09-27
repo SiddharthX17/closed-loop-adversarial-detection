@@ -1,0 +1,44 @@
+title: "WSH Script Execution From User-Writable Directory"
+id: 50a7f4f2-a1a8-4477-849d-f032c25d5441
+status: experimental
+description: "Detects cscript.exe or wscript.exe executing a script file (.vbs, .vbe, .js, .jse, .wsf) located in a user-writable directory such as Temp, Public, Downloads, or AppData\\Roaming — a common pattern for user-execution based initial access via malicious script files delivered through phishing or drive-by downloads."
+references:
+    - https://attack.mitre.org/techniques/T1204/002/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-28
+tags:
+    - attack.execution
+    - attack.t1204.002
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_wsh:
+      OriginalFileName:
+        - 'cscript.exe'
+        - 'wscript.exe'
+    selection_script_ext:
+      CommandLine|contains:
+        - '.vbs'
+        - '.vbe'
+        - '.js '
+        - '.jse'
+        - '.wsf'
+    selection_userpath:
+      CommandLine|contains:
+        - '\Temp\'
+        - '\Public\'
+        - '\Downloads\'
+        - '\AppData\Roaming\'
+        - '\AppData\Local\Temp\'
+    filter_known_deployment:
+      CommandLine|contains:
+        - '\CORP-DEPLOY\Scripts\'
+        - 'C:\Windows\System32\GroupPolicy\'
+    condition: selection_wsh and selection_script_ext and selection_userpath and not filter_known_deployment
+falsepositives:
+    - "IT-deployed logon or administrative scripts that legitimately stage script files in Temp, Public, or Roaming paths before execution rather than running from NETLOGON or approved deployment shares"
+    - "Software packaging or configuration tools that invoke cscript/wscript against script files copied to user-writable locations during installation"
+    - "Internal automation or scheduled tasks that unpack and run VBScript/JScript payloads from AppData or Temp as part of legitimate application update mechanisms"
+    - "Security or IT tooling that uses WSH for endpoint diagnostics and stores its scripts outside System32 or Program Files"
+level: high

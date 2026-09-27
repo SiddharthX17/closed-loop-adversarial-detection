@@ -1,0 +1,44 @@
+title: "T1018-ScriptEngineSpawnsNetworkDiscoveryTool"
+id: 0cf6c3aa-6f5a-441e-9008-118d555e9956
+status: experimental
+description: "Detects a scripting interpreter (mshta, wscript, cscript, or powershell) spawning a network discovery/resolution utility (nslookup, ping, arp, net) either directly or via cmd.exe as an intermediary, consistent with automated subnet enumeration used to build a lateral movement target list."
+references:
+    - https://attack.mitre.org/techniques/T1018/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-27
+tags:
+    - attack.discovery
+    - attack.t1018
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+      ParentImage|endswith:
+        - '\mshta.exe'
+        - '\wscript.exe'
+        - '\cscript.exe'
+        - '\powershell.exe'
+    selection_direct_child:
+      Image|endswith:
+        - '\nslookup.exe'
+        - '\ping.exe'
+        - '\arp.exe'
+        - '\net.exe'
+        - '\net1.exe'
+    selection_cmd_wrapper:
+      Image|endswith: '\cmd.exe'
+      CommandLine|contains:
+        - 'nslookup'
+        - 'ping'
+        - 'arp'
+        - ' net '
+        - 'net.exe'
+        - 'net1.exe'
+    condition: selection_parent and (selection_direct_child or selection_cmd_wrapper)
+falsepositives:
+    - "IT inventory or logon scripts that invoke network utilities (nslookup/ping/arp/net) via wscript/cscript/mshta/powershell, sometimes wrapped through cmd.exe, for legitimate asset discovery or troubleshooting"
+    - "Help desk or network admin ad hoc scripts using scripting engines to wrap ping/nslookup/cmd.exe for connectivity checks"
+    - "Software distribution or monitoring agents that use mshta/wscript wrappers to invoke net.exe, arp.exe, or cmd.exe for inventory collection - should be filtered by verifying the discovery tool's own file hash/signature belongs to an approved package rather than by excluding the parent process or directory"
+    - "Single-target nslookup/ping troubleshooting invoked via a script or cmd.exe wrapper (not a range/loop) - lower suspicion but still matches this family-level rule since loop syntax in CommandLine is not required for the match"
+level: medium

@@ -1,0 +1,33 @@
+title: "NTDS.dit Extraction via ntdsutil IFM or Direct Copy"
+id: ce4c8302-34d2-4a92-bb43-8964e42aa802
+status: experimental
+description: "Detects NTDS database credential extraction either through the ntdsutil IFM (install-from-media) command grammar, or through command-line/script references copying ntds.dit or the SYSTEM registry hive to a non-default location — both patterns used to harvest domain credential material outside of legitimate DC promotion or backup workflows."
+references:
+    - https://attack.mitre.org/techniques/T1003/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-28
+tags:
+    - attack.credential-access
+    - attack.t1003.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_ifm:
+        CommandLine|contains|all:
+            - 'ac i ntds'
+            - 'ifm'
+            - 'create full'
+    selection_pathcopy:
+        CommandLine|contains:
+            - 'ntds.dit'
+            - 'config\SYSTEM'
+    filter_genuine_ntdsutil:
+        Image: 'C:\Windows\System32\ntdsutil.exe'
+    condition: (selection_ifm and not filter_genuine_ntdsutil) or selection_pathcopy
+falsepositives:
+    - "Legitimate domain controller promotion, demotion, or disaster-recovery operations using ntdsutil IFM by administrators, typically during a documented change-controlled maintenance window — this rule does not exempt DC-hosted activity since attackers targeting DCs would otherwise evade detection; correlate with change records manually"
+    - "Backup and AD health-monitoring software that references ntds.dit or the SYSTEM hive path as part of legitimate volume-shadow-copy based backup jobs — exempt only by verifying the invoking Image is a known, signed backup vendor binary, not by CommandLine content"
+    - "Legacy internal HTA-based administrative tools or rundll32 script-protocol invocations are not filtered here since none matched a known-good allowlist; if discovered, exempt by specific signed binary hash rather than parent process"
+    - "Scripted extraction/copy tooling (as in the mshta/PowerShell IEX case) referencing ntds.dit/SYSTEM paths from remote code-hosting sites will match and is intentionally not exempted, since arbitrary public script fetch-and-execute referencing these paths is inherently high-risk"
+level: high

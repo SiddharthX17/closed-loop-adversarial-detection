@@ -1,0 +1,32 @@
+title: "T1021.006 - PowerShell Remoting Cmdlet with Remote Target in CommandLine"
+id: f1d5151e-595c-4fcb-bb1c-5464e07c9d96
+status: experimental
+description: "Detects a command line invoking PowerShell remote session cmdlets (Invoke-Command, New-PSSession, Enter-PSSession) combined with a remote-target parameter such as -ComputerName, -Session, or -ConnectionUri, indicating potential WinRM-based lateral movement. The condition matches on CommandLine content rather than requiring Image=powershell.exe, since the invocation may be embedded as an argument to a LOLBin proxy (mshta, rundll32) rather than being the process image itself."
+references:
+    - https://attack.mitre.org/techniques/T1021/006/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-28
+tags:
+    - attack.lateral-movement
+    - attack.t1021.006
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_cmdlet:
+      CommandLine|contains:
+        - 'Invoke-Command'
+        - 'New-PSSession'
+        - 'Enter-PSSession'
+    selection_target:
+      CommandLine|contains:
+        - '-ComputerName'
+        - '-Session'
+        - '-ConnectionUri'
+    condition: selection_cmdlet and selection_target
+falsepositives:
+    - "Legitimate IT administration via PowerShell remoting for routine configuration management, patching, or troubleshooting from admin jump-boxes — correlate source host/user against known administrative infrastructure and change-management windows rather than excluding the cmdlet pattern"
+    - "Scheduled automation or orchestration tooling (e.g. DSC, SCCM, Ansible-on-Windows) that legitimately invokes Invoke-Command/New-PSSession against a fleet of managed computers"
+    - "LOLBin proxy execution (mshta.exe, rundll32.exe, cscript.exe, wscript.exe) embedding this cmdlet pattern as a spawned command-line argument rather than running powershell.exe directly should be treated as higher confidence, not suppressed, since Image alone cannot be relied upon here"
+    - "Download-cradle content (DownloadString/DownloadFile combined with IEX) appearing in the same command line further raises confidence toward malicious payload staging but is not required for this rule to fire"
+level: high

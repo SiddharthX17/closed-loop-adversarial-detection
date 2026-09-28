@@ -1,0 +1,35 @@
+title: "T1543.003 - Service Creation With Svchost-Hosted BinPath"
+id: 5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc
+status: experimental
+description: "Detects creation of a Windows service via sc.exe/sc create whose binPath launches svchost.exe with a service-group (-k) flag, a pattern used to disguise attacker-controlled service payloads as legitimate OS-hosted services."
+references:
+    - https://attack.mitre.org/techniques/T1543/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.persistence
+    - attack.t1543.003
+    - attack.privilege-escalation
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_create:
+      CommandLine|contains:
+        - 'sc create '
+        - 'sc.exe create '
+        - 'sc  create '
+    selection_svchost_k:
+      CommandLine|contains: 'svchost.exe -k '
+    selection_binpath:
+      CommandLine|contains: 'binPath'
+    filter_known_vendor:
+      CommandLine|contains:
+        - 'binPath= "c:\Program Files\Windows Defender\'
+        - 'binPath= "c:\Windows\System32\svchost.exe -k netsvcs -p"'
+    condition: selection_create and selection_svchost_k and selection_binpath and not filter_known_vendor
+falsepositives:
+    - "Legitimate software installers or OS update processes that register services hosted by svchost.exe with a documented, signed vendor binary path — should be validated against a maintained allowlist of known-good binPath hashes rather than excluded by path or parent process"
+    - "IT administration scripts using sc.exe to create or reconfigure services for legitimate infrastructure purposes, which can produce syntactically identical commands to malicious use and cannot be reliably distinguished without a binary/hash allowlist"
+    - "Service migration or cloning during system reconfiguration where an existing svchost-hosted service definition is recreated with the same -k group for maintenance purposes"
+level: high

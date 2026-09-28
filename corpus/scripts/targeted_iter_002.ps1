@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   2  |  Feasible: 2  |  Variants: 4
+# Clusters:   3  |  Feasible: 3  |  Variants: 8
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,176 +10,297 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_5f8684a9-f09c-4415-820e-571ef9015c4c  (1 rule(s)) ---------------------
-# Intent:    Attackers extract the NTDS.dit Active Directory database and SYSTEM registry hiv
-# Rules:     5f8684a9-f09c-4415-820e-571ef9015c4c
+# -- Cluster: singleton_533f19f5-36ad-426c-bf9b-99930d91bbc4  (1 rule(s)) ---------------------
+# Intent:    Attacker activity involving copying NTDS.dit and SYSTEM registry hive for offlin
+# Rules:     533f19f5-36ad-426c-bf9b-99930d91bbc4
 # Archetype: IT admin workflow
 
-# Domain controller database maintenance: query NTDS.dit database integrity and recovery information
-# This reflects real IT admin work on DC systems where backup and recovery procedures must be validated
+$backupRoot = "$env:TEMP\SystemBackup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
 
-$ntdsUtilPath = 'C:\Windows\System32\ntdsutil.exe'
-$logPath = "$env:TEMP\ntdsutil_diagnostic_$(Get-Random).log"
+# Create a test SYSTEM registry hive export (simulating legitimate backup of registry)
+$testRegPath = "$backupRoot\registry_export"
+New-Item -ItemType Directory -Path $testRegPath -Force | Out-Null
 
-if (Test-Path $ntdsUtilPath) {
-    # Run ntdsutil diagnostic query that references NTDS configuration context
-    # Real admins use this to check database status before maintenance windows
-    $ntdsCommands = @(
-        'ifm',
-        'semantic database analysis',
-        'go'
-    )
+# Export SYSTEM hive for backup verification
+reg export HKLM\SYSTEM "$testRegPath\system_hive.reg" /y | Out-Null
+reg export HKLM\SECURITY "$testRegPath\security_hive.reg" /y | Out-Null
 
-    $commandInput = ($ntdsCommands -join "`n") + "`nquit"
+# Simulate copying system files that include references to system configuration
+# This would be part of a legitimate full system backup
+$demoFile = "$backupRoot\system_config_snapshot.txt"
+@"
+System Backup Report - $(Get-Date)
+Target: Local System Configuration
+Including: Config\System registry paths
+Status: Backup in progress
+"@ | Set-Content -Path $demoFile
 
-    # Execute ntdsutil with diagnostic parameters
-    $commandInput | & $ntdsUtilPath 2>&1 | Out-File -FilePath $logPath -Encoding UTF8
+# Simulate robocopy operation that an admin might use for file mirroring
+# Including paths that reference system configuration
+Write-Host "Initiating system configuration backup..."
+robocopy "$env:SystemRoot\System32\config" "$backupRoot\config" /S /E /R:1 /W:1 2>&1 | Out-Null
 
-    Start-Sleep -Milliseconds 500
+# Cleanup: remove the backup directory and its contents
+Remove-Item -Path $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "Backup activity completed and cleaned up."
 
-    # Clean up log file
-    if (Test-Path $logPath) {
-        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
-    }
-}
-
-# Query registry for SYSTEM hive backup status as part of disaster recovery audit
-$systemHiveBackupKeys = @(
-    'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager',
-    'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS'
-)
-
-foreach ($regPath in $systemHiveBackupKeys) {
-    if (Test-Path $regPath) {
-        Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue | Out-Null
-    }
-}
-
-# -- Cluster: singleton_8bd8748f-a0ce-49ef-8dab-dca1103351eb  (1 rule(s)) ---------------------
-# Intent:    Detection of Windows Script Host interpreters (cscript.exe, wscript.exe) executi
-# Rules:     8bd8748f-a0ce-49ef-8dab-dca1103351eb
-# Archetype: IT admin workflow
-
-$tempDir = $env:TEMP
-$scriptName = 'hwaudit_' + (Get-Random -Maximum 10000) + '.vbs'
-$scriptPath = Join-Path -Path $tempDir -ChildPath $scriptName
-
-# Create a legitimate VBScript for system inventory
-$vbsContent = @'
-Dim objWMI, colItems, objItem, objFSO, logFile
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objWMI = GetObject("winmgmts:")
-Set colItems = objWMI.ExecQuery("Select * from Win32_Processor")
-logFile = objFSO.BuildPath(objFSO.GetSpecialFolder(2), "hw_log.txt")
-Set objFile = objFSO.CreateTextFile(logFile)
-For Each objItem in colItems
-  objFile.WriteLine "Processor: " & objItem.Name
-Next
-objFile.Close
-'@
-
-$vbsContent | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
-
-# Execute the VBScript via cscript - legitimate admin task
-cscript.exe $scriptPath
-
-# Cleanup
-Start-Sleep -Milliseconds 500
-if (Test-Path -Path $scriptPath) {
-  Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
-}
-$logPath = Join-Path -Path $env:TEMP -ChildPath 'hw_log.txt'
-if (Test-Path -Path $logPath) {
-  Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_8bd8748f-a0ce-49ef-8dab-dca1103351eb  (1 rule(s)) ---------------------
-# Intent:    Detection of Windows Script Host interpreters (cscript.exe, wscript.exe) executi
-# Rules:     8bd8748f-a0ce-49ef-8dab-dca1103351eb
+# -- Cluster: singleton_533f19f5-36ad-426c-bf9b-99930d91bbc4  (1 rule(s)) ---------------------
+# Intent:    Attacker activity involving copying NTDS.dit and SYSTEM registry hive for offlin
+# Rules:     533f19f5-36ad-426c-bf9b-99930d91bbc4
 # Archetype: Software installer/updater workflow
 
-$appDataPath = Join-Path -Path $env:APPDATA -ChildPath 'SoftwareSetup'
-if (-not (Test-Path -Path $appDataPath)) {
-  New-Item -ItemType Directory -Path $appDataPath -Force | Out-Null
+$inventoryPath = "$env:TEMP\SystemInventory_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+New-Item -ItemType Directory -Path $inventoryPath -Force | Out-Null
+
+# Simulate a system inventory/compliance tool reading system configuration
+# This is realistic behavior for tools like Microsoft Baseline Security Analyzer
+Write-Host "Initiating system compliance inventory..."
+
+# Check for NTDS.dit presence (normal inventory operation)
+if (Test-Path "$env:SystemRoot\NTDS\ntds.dit") {
+    Write-Host "NTDS.dit location identified for compliance audit"
+    Get-Item "$env:SystemRoot\NTDS\ntds.dit" -ErrorAction SilentlyContinue | Select-Object FullName, Length | Out-File -FilePath "$inventoryPath\ntds_inventory.txt"
 }
 
-$scriptName = 'install_config.js'
-$scriptPath = Join-Path -Path $appDataPath -ChildPath $scriptName
+# Export SYSTEM hive for compliance scanning
+$systemHivePath = "$inventoryPath\system.hiv"
+reg export HKLM\SYSTEM $systemHivePath /y | Out-Null
 
-# Create a legitimate JavaScript for application configuration
-$jsContent = @'
-var objFSO = new ActiveXObject("Scripting.FileSystemObject");
-var strPath = objFSO.GetSpecialFolder(2);
-var logFile = objFSO.BuildPath(strPath, "app_setup.log");
-var objFile = objFSO.CreateTextFile(logFile);
-objFile.WriteLine("Application configuration initialized");
-objFile.WriteLine("Timestamp: " + new Date());
-objFile.Close();
-'@
+# Scan the exported hive for security baselines (legitimate compliance tool behavior)
+if (Test-Path $systemHivePath) {
+    $hiveSize = (Get-Item $systemHivePath).Length
+    Write-Host "SYSTEM hive exported for compliance analysis: $hiveSize bytes"
 
-$jsContent | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
-
-# Execute via wscript - installer routine
-wscript.exe $scriptPath
-
-# Cleanup - installer removes temporary files
-Start-Sleep -Milliseconds 500
-if (Test-Path -Path $scriptPath) {
-  Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
-}
-if (Test-Path -Path $appDataPath) {
-  Remove-Item -Path $appDataPath -Recurse -Force -ErrorAction SilentlyContinue
-}
-$logPath = Join-Path -Path $env:TEMP -ChildPath 'app_setup.log'
-if (Test-Path -Path $logPath) {
-  Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+    # Simulate reading system configuration from the hive
+    "System Hive Compliance Report" | Out-File -FilePath "$inventoryPath\compliance_report.txt"
+    "Scanned paths: Config\\System registry structure" | Add-Content -Path "$inventoryPath\compliance_report.txt"
 }
 
-# -- Cluster: singleton_8bd8748f-a0ce-49ef-8dab-dca1103351eb  (1 rule(s)) ---------------------
-# Intent:    Detection of Windows Script Host interpreters (cscript.exe, wscript.exe) executi
-# Rules:     8bd8748f-a0ce-49ef-8dab-dca1103351eb
+# Also export SECURITY hive for comprehensive inventory
+reg export HKLM\SECURITY "$inventoryPath\security.hiv" /y | Out-Null
+
+# Cleanup: remove the inventory directory
+Remove-Item -Path $inventoryPath -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "System inventory completed and cleaned up."
+
+# -- Cluster: singleton_713879b9-0e84-44cd-bfb3-fbeb37b3d991  (1 rule(s)) ---------------------
+# Intent:    Detect PS-Remoting cmdlet invocations (Enable-PSRemoting, Invoke-Command, Enter-
+# Rules:     713879b9-0e84-44cd-bfb3-fbeb37b3d991
+# Archetype: IT admin workflow
+
+# Enable PowerShell Remoting for remote management capability
+Enable-PSRemoting -Force -SkipNetworkProfileCheck
+
+# Wait briefly for service to initialize
+Start-Sleep -Seconds 2
+
+# Create a remote session to a local host for diagnostic purposes
+$session = New-PSSession -ComputerName localhost -ErrorAction SilentlyContinue
+
+if ($session) {
+    # Run a diagnostic query via the remote session
+    Invoke-Command -Session $session -ScriptBlock {
+        Get-Process | Where-Object {$_.WorkingSet -gt 100MB} | Select-Object Name, WorkingSet
+    } -ErrorAction SilentlyContinue
+
+    # Clean up the session
+    Remove-PSSession -Session $session -ErrorAction SilentlyContinue
+}
+
+# Enter the local session briefly to verify remoting is operational
+$localSession = New-PSSession -ComputerName localhost -ErrorAction SilentlyContinue
+if ($localSession) {
+    Enter-PSSession -Session $localSession -ErrorAction SilentlyContinue | Exit-PSSession -ErrorAction SilentlyContinue
+    Remove-PSSession -Session $localSession -ErrorAction SilentlyContinue
+}
+
+# Cleanup: Disable PSRemoting to return to default state
+Disable-PSRemoting -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_713879b9-0e84-44cd-bfb3-fbeb37b3d991  (1 rule(s)) ---------------------
+# Intent:    Detect PS-Remoting cmdlet invocations (Enable-PSRemoting, Invoke-Command, Enter-
+# Rules:     713879b9-0e84-44cd-bfb3-fbeb37b3d991
+# Archetype: Software installer/updater workflow
+
+# Simulate an automated deployment framework establishing remote sessions
+# This represents how enterprise configuration management tools (SCCM, Ansible, Puppet) operate
+
+$targetHosts = @('localhost')
+$deploymentLog = Join-Path $env:TEMP 'deployment_log.txt'
+
+# Initialize deployment framework connection
+New-PSSession -ComputerName localhost -Name 'DeploymentSession' -ErrorAction SilentlyContinue | Out-Null
+
+foreach ($host in $targetHosts) {
+    try {
+        # Establish remote session for configuration validation
+        $remoteSession = New-PSSession -ComputerName $host -ErrorAction SilentlyContinue
+
+        if ($remoteSession) {
+            # Retrieve installed software inventory via remoting
+            $softwareInfo = Invoke-Command -Session $remoteSession -ScriptBlock {
+                Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' |
+                    Select-Object DisplayName, DisplayVersion -ErrorAction SilentlyContinue
+            } -ErrorAction SilentlyContinue
+
+            # Log results
+            if ($softwareInfo) {
+                Add-Content -Path $deploymentLog -Value "Host: $host - Software inventory retrieved"
+            }
+
+            # Close the session
+            Remove-PSSession -Session $remoteSession -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        Add-Content -Path $deploymentLog -Value "Warning: Could not connect to $host"
+    }
+}
+
+# Clean up any remaining sessions
+Get-PSSession -ErrorAction SilentlyContinue | Remove-PSSession -ErrorAction SilentlyContinue
+
+# Clean up log file
+if (Test-Path $deploymentLog) {
+    Remove-Item -Path $deploymentLog -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_713879b9-0e84-44cd-bfb3-fbeb37b3d991  (1 rule(s)) ---------------------
+# Intent:    Detect PS-Remoting cmdlet invocations (Enable-PSRemoting, Invoke-Command, Enter-
+# Rules:     713879b9-0e84-44cd-bfb3-fbeb37b3d991
 # Archetype: User-driven workflow
 
-$downloadsPath = Join-Path -Path $env:USERPROFILE -ChildPath 'Downloads'
-$tempExtractPath = Join-Path -Path $env:APPDATA -ChildPath 'Local\DocumentTools'
+# Developer establishing an interactive remote session for troubleshooting
+# This simulates a realistic scenario where a user needs direct shell access to a remote system
 
-if (-not (Test-Path -Path $tempExtractPath)) {
-  New-Item -ItemType Directory -Path $tempExtractPath -Force | Out-Null
+$remoteHost = 'localhost'
+
+# Create a new PSSession for interactive use
+$interactiveSession = New-PSSession -ComputerName $remoteHost -ErrorAction SilentlyContinue
+
+if ($interactiveSession) {
+    # Simulate entering the remote session for troubleshooting
+    # In a real scenario, this would be interactive, but we'll execute a command block
+    # that demonstrates the Enter-PSSession workflow
+
+    # First, query remote system information
+    Invoke-Command -Session $interactiveSession -ScriptBlock {
+        # Get recent event logs for troubleshooting
+        Get-EventLog -LogName Application -Newest 10 -ErrorAction SilentlyContinue |
+            Select-Object TimeGenerated, Source, EventID, Message
+    } -ErrorAction SilentlyContinue
+
+    # Demonstrate Enter-PSSession workflow
+    # Note: Enter-PSSession in script context is limited, so we use Invoke-Command
+    # to simulate the same behavior and event generation
+    Invoke-Command -Session $interactiveSession -ScriptBlock {
+        # Check running services for the application
+        Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName
+    } -ErrorAction SilentlyContinue
+
+    # Cleanup
+    Remove-PSSession -Session $interactiveSession -ErrorAction SilentlyContinue
+} else {
+    Write-Host 'Could not establish remote session for troubleshooting'
 }
 
-$scriptName = 'extract_docs.vbs'
-$scriptPath = Join-Path -Path $tempExtractPath -ChildPath $scriptName
+# Also demonstrate the Enter-PSSession cmdlet being invoked
+# (even though full interactive use is limited in non-interactive CI environments)
+$testSession = New-PSSession -ComputerName localhost -ErrorAction SilentlyContinue
+if ($testSession) {
+    # Simulate a brief Enter-PSSession invocation
+    try {
+        $null = Enter-PSSession -Session $testSession -ErrorAction SilentlyContinue
+    }
+    catch {
+        # Expected in non-interactive environment
+    }
+    finally {
+        Remove-PSSession -Session $testSession -ErrorAction SilentlyContinue
+    }
+}
 
-# VBScript for extracting and organizing downloaded files
-$vbsContent = @'
-Dim objFSO, objShell, downloadsFolder, outputLog
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objShell = CreateObject("WScript.Shell")
-downloadsFolder = objShell.SpecialFolders("Downloads")
-outputLog = objFSO.BuildPath(objFSO.GetSpecialFolder(2), "doc_extract.log")
-Set logFile = objFSO.CreateTextFile(outputLog)
-logFile.WriteLine "Processing downloads from: " & downloadsFolder
-logFile.WriteLine "Operation completed at: " & Now
-logFile.Close
-'@
+# -- Cluster: singleton_398f304f-13bb-44b6-8fb4-ccdd0985dcd4  (1 rule(s)) ---------------------
+# Intent:    Detects when Windows Explorer spawns script interpreters (cscript, wscript, msht
+# Rules:     398f304f-13bb-44b6-8fb4-ccdd0985dcd4
+# Archetype: User-driven workflow
 
-$vbsContent | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
+# Simulate a user downloading and running a legitimate maintenance VBScript from Downloads
+$downloadsPath = [System.Environment]::GetFolderPath('MyDocuments') -replace 'Documents', 'Downloads'
+if (-not (Test-Path $downloadsPath)) {
+    New-Item -ItemType Directory -Path $downloadsPath -Force | Out-Null
+}
 
-# User executes the helper script
-wscript.exe $scriptPath
+$scriptPath = Join-Path $downloadsPath 'registry_backup_utility.vbs'
+
+# Create a benign VBScript that performs a legitimate backup operation
+$vbscriptContent = @'
+Set oShell = CreateObject("WScript.Shell")
+Set oFSO = CreateObject("Scripting.FileSystemObject")
+
+backupDir = oShell.SpecialFolders("Temp") & "\\reg_backup_temp"
+if not oFSO.FolderExists(backupDir) then
+    oFSO.CreateFolder(backupDir)
+end if
+
+regPath = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+backupFile = backupDir & "\\explorer_settings.reg"
+
+' @
+$vbscriptContent | Out-File -FilePath $scriptPath -Encoding ASCII -Force
+
+# Invoke the script via wscript.exe, simulating Explorer launching it
+& wscript.exe $scriptPath
 
 # Cleanup
 Start-Sleep -Milliseconds 500
-if (Test-Path -Path $scriptPath) {
-  Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $downloadsPath 'reg_backup_temp') -Recurse -Force -ErrorAction SilentlyContinue
+
+# SKIPPED variant 'Software installer/updater workflow': blocked pattern: hidden window ('-windowstyle hidden')
+
+# -- Cluster: singleton_398f304f-13bb-44b6-8fb4-ccdd0985dcd4  (1 rule(s)) ---------------------
+# Intent:    Detects when Windows Explorer spawns script interpreters (cscript, wscript, msht
+# Rules:     398f304f-13bb-44b6-8fb4-ccdd0985dcd4
+# Archetype: IT admin workflow
+
+$appDataPath = $env:APPDATA
+$adminScriptDir = Join-Path $appDataPath 'AdminTools'
+if (-not (Test-Path $adminScriptDir)) {
+    New-Item -ItemType Directory -Path $adminScriptDir -Force | Out-Null
 }
-if (Test-Path -Path $tempExtractPath) {
-  Remove-Item -Path $tempExtractPath -Recurse -Force -ErrorAction SilentlyContinue
-}
-$logPath = Join-Path -Path $env:TEMP -ChildPath 'doc_extract.log'
-if (Test-Path -Path $logPath) {
-  Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
-}
+
+$maintenanceScript = Join-Path $adminScriptDir 'log_maintenance.vbs'
+
+# Create a realistic admin maintenance script
+$scriptContent = @'
+Set oFSO = CreateObject("Scripting.FileSystemObject")
+Set oShell = CreateObject("WScript.Shell")
+
+logDir = oShell.ExpandEnvironmentStrings("%SystemRoot%\\Logs")
+if oFSO.FolderExists(logDir) then
+    Set logFolder = oFSO.GetFolder(logDir)
+    Set files = logFolder.Files
+    for each file in files
+        if Right(file.Name, 4) = ".log" then
+            if DateDiff("d", file.DateCreated, Now()) > 30 then
+                oFSO.DeleteFile file.Path
+            end if
+        end if
+    next
+end if
+' @
+
+$scriptContent | Out-File -FilePath $maintenanceScript -Encoding ASCII -Force
+
+# Invoke via cscript to simulate admin workflow through Explorer
+& cscript.exe $maintenanceScript
+
+# Cleanup
+Start-Sleep -Milliseconds 500
+Remove-Item -Path $maintenanceScript -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $adminScriptDir -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

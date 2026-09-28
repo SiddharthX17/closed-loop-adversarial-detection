@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   3  |  Feasible: 3  |  Variants: 8
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,297 +10,79 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_533f19f5-36ad-426c-bf9b-99930d91bbc4  (1 rule(s)) ---------------------
-# Intent:    Attacker activity involving copying NTDS.dit and SYSTEM registry hive for offlin
-# Rules:     533f19f5-36ad-426c-bf9b-99930d91bbc4
+# -- Cluster: singleton_5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc  (1 rule(s)) ---------------------
+# Intent:    Attackers create malicious Windows services that masquerade as legitimate svchos
+# Rules:     5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc
 # Archetype: IT admin workflow
 
-$backupRoot = "$env:TEMP\SystemBackup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+# Create a temporary service configuration for enterprise monitoring infrastructure
+$serviceFile = Join-Path $env:TEMP "svc_monitor.vbs"
 
-# Create a test SYSTEM registry hive export (simulating legitimate backup of registry)
-$testRegPath = "$backupRoot\registry_export"
-New-Item -ItemType Directory -Path $testRegPath -Force | Out-Null
+# Write a harmless WMI monitoring script
+$monitorScript = @'
+Set objWMIService = GetObject("winmgmts:")
+Set colItems = objWMIService.ExecQuery("Select * from Win32_Processor")
+For Each objItem in colItems
+    WScript.Echo "CPU Count: " & objItem.NumberOfCores
+Next
+'@
 
-# Export SYSTEM hive for backup verification
-reg export HKLM\SYSTEM "$testRegPath\system_hive.reg" /y | Out-Null
-reg export HKLM\SECURITY "$testRegPath\security_hive.reg" /y | Out-Null
+$monitorScript | Out-File -FilePath $serviceFile -Encoding ASCII -Force
 
-# Simulate copying system files that include references to system configuration
-# This would be part of a legitimate full system backup
-$demoFile = "$backupRoot\system_config_snapshot.txt"
-@"
-System Backup Report - $(Get-Date)
-Target: Local System Configuration
-Including: Config\System registry paths
-Status: Backup in progress
-"@ | Set-Content -Path $demoFile
+# Create the service with sc.exe pointing to a legitimate system path
+# This represents an admin deploying a managed service for system monitoring
+sc.exe create "MonitoringService" binpath= "$env:SystemRoot\System32\svchost.exe -k netsvcs" | Out-Null
 
-# Simulate robocopy operation that an admin might use for file mirroring
-# Including paths that reference system configuration
-Write-Host "Initiating system configuration backup..."
-robocopy "$env:SystemRoot\System32\config" "$backupRoot\config" /S /E /R:1 /W:1 2>&1 | Out-Null
+# Verify the service was created in registry
+Start-Sleep -Milliseconds 500
+$servicePath = "HKLM:\SYSTEM\CurrentControlSet\Services\MonitoringService"
+if (Test-Path $servicePath) {
+    # Service creation succeeded, verify binpath in registry
+    $binPathValue = (Get-ItemProperty -Path $servicePath -Name ImagePath -ErrorAction SilentlyContinue).ImagePath
+    Write-Host "Service created with binpath: $binPathValue"
+}
 
-# Cleanup: remove the backup directory and its contents
-Remove-Item -Path $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Backup activity completed and cleaned up."
+# Clean up: remove the service and temporary file
+sc.exe delete "MonitoringService" 2>$null | Out-Null
+Start-Sleep -Milliseconds 500
+Remove-Item -Path $serviceFile -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $servicePath -Force -ErrorAction SilentlyContinue
 
-# -- Cluster: singleton_533f19f5-36ad-426c-bf9b-99930d91bbc4  (1 rule(s)) ---------------------
-# Intent:    Attacker activity involving copying NTDS.dit and SYSTEM registry hive for offlin
-# Rules:     533f19f5-36ad-426c-bf9b-99930d91bbc4
+# -- Cluster: singleton_5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc  (1 rule(s)) ---------------------
+# Intent:    Attackers create malicious Windows services that masquerade as legitimate svchos
+# Rules:     5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc
 # Archetype: Software installer/updater workflow
 
-$inventoryPath = "$env:TEMP\SystemInventory_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-New-Item -ItemType Directory -Path $inventoryPath -Force | Out-Null
+# Simulating an enterprise update mechanism registering a service
+# This mirrors behavior of Windows Update, Defender, or similar agents
 
-# Simulate a system inventory/compliance tool reading system configuration
-# This is realistic behavior for tools like Microsoft Baseline Security Analyzer
-Write-Host "Initiating system compliance inventory..."
+# Create a temporary PowerShell script that will be hosted as a service
+$serviceScript = Join-Path $env:TEMP "health_check.ps1"
+@'
+# Health check monitoring script
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+$lastCheck = Get-Date
+Write-EventLog -LogName "System" -Source "System" -EventId 1000 -Message "Health check initiated" -ErrorAction SilentlyContinue
+'@ | Out-File -FilePath $serviceScript -Encoding UTF8 -Force
 
-# Check for NTDS.dit presence (normal inventory operation)
-if (Test-Path "$env:SystemRoot\NTDS\ntds.dit") {
-    Write-Host "NTDS.dit location identified for compliance audit"
-    Get-Item "$env:SystemRoot\NTDS\ntds.dit" -ErrorAction SilentlyContinue | Select-Object FullName, Length | Out-File -FilePath "$inventoryPath\ntds_inventory.txt"
+# Register a service with sc.exe using the standard svchost architecture
+# The binpath references the standard svchost.exe with netsvcs group
+sc.exe create "SystemHealthService" binpath= "$env:SystemRoot\System32\svchost.exe -k netsvcs" | Out-Null
+
+# Wait for registry to catch up
+Start-Sleep -Milliseconds 300
+
+# Verify service was created
+$servicePath = "HKLM:\SYSTEM\CurrentControlSet\Services\SystemHealthService"
+if (Test-Path $servicePath) {
+    $displayName = (Get-ItemProperty -Path $servicePath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
+    Write-Host "Service registration completed."
 }
-
-# Export SYSTEM hive for compliance scanning
-$systemHivePath = "$inventoryPath\system.hiv"
-reg export HKLM\SYSTEM $systemHivePath /y | Out-Null
-
-# Scan the exported hive for security baselines (legitimate compliance tool behavior)
-if (Test-Path $systemHivePath) {
-    $hiveSize = (Get-Item $systemHivePath).Length
-    Write-Host "SYSTEM hive exported for compliance analysis: $hiveSize bytes"
-
-    # Simulate reading system configuration from the hive
-    "System Hive Compliance Report" | Out-File -FilePath "$inventoryPath\compliance_report.txt"
-    "Scanned paths: Config\\System registry structure" | Add-Content -Path "$inventoryPath\compliance_report.txt"
-}
-
-# Also export SECURITY hive for comprehensive inventory
-reg export HKLM\SECURITY "$inventoryPath\security.hiv" /y | Out-Null
-
-# Cleanup: remove the inventory directory
-Remove-Item -Path $inventoryPath -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "System inventory completed and cleaned up."
-
-# -- Cluster: singleton_713879b9-0e84-44cd-bfb3-fbeb37b3d991  (1 rule(s)) ---------------------
-# Intent:    Detect PS-Remoting cmdlet invocations (Enable-PSRemoting, Invoke-Command, Enter-
-# Rules:     713879b9-0e84-44cd-bfb3-fbeb37b3d991
-# Archetype: IT admin workflow
-
-# Enable PowerShell Remoting for remote management capability
-Enable-PSRemoting -Force -SkipNetworkProfileCheck
-
-# Wait briefly for service to initialize
-Start-Sleep -Seconds 2
-
-# Create a remote session to a local host for diagnostic purposes
-$session = New-PSSession -ComputerName localhost -ErrorAction SilentlyContinue
-
-if ($session) {
-    # Run a diagnostic query via the remote session
-    Invoke-Command -Session $session -ScriptBlock {
-        Get-Process | Where-Object {$_.WorkingSet -gt 100MB} | Select-Object Name, WorkingSet
-    } -ErrorAction SilentlyContinue
-
-    # Clean up the session
-    Remove-PSSession -Session $session -ErrorAction SilentlyContinue
-}
-
-# Enter the local session briefly to verify remoting is operational
-$localSession = New-PSSession -ComputerName localhost -ErrorAction SilentlyContinue
-if ($localSession) {
-    Enter-PSSession -Session $localSession -ErrorAction SilentlyContinue | Exit-PSSession -ErrorAction SilentlyContinue
-    Remove-PSSession -Session $localSession -ErrorAction SilentlyContinue
-}
-
-# Cleanup: Disable PSRemoting to return to default state
-Disable-PSRemoting -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_713879b9-0e84-44cd-bfb3-fbeb37b3d991  (1 rule(s)) ---------------------
-# Intent:    Detect PS-Remoting cmdlet invocations (Enable-PSRemoting, Invoke-Command, Enter-
-# Rules:     713879b9-0e84-44cd-bfb3-fbeb37b3d991
-# Archetype: Software installer/updater workflow
-
-# Simulate an automated deployment framework establishing remote sessions
-# This represents how enterprise configuration management tools (SCCM, Ansible, Puppet) operate
-
-$targetHosts = @('localhost')
-$deploymentLog = Join-Path $env:TEMP 'deployment_log.txt'
-
-# Initialize deployment framework connection
-New-PSSession -ComputerName localhost -Name 'DeploymentSession' -ErrorAction SilentlyContinue | Out-Null
-
-foreach ($host in $targetHosts) {
-    try {
-        # Establish remote session for configuration validation
-        $remoteSession = New-PSSession -ComputerName $host -ErrorAction SilentlyContinue
-
-        if ($remoteSession) {
-            # Retrieve installed software inventory via remoting
-            $softwareInfo = Invoke-Command -Session $remoteSession -ScriptBlock {
-                Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' |
-                    Select-Object DisplayName, DisplayVersion -ErrorAction SilentlyContinue
-            } -ErrorAction SilentlyContinue
-
-            # Log results
-            if ($softwareInfo) {
-                Add-Content -Path $deploymentLog -Value "Host: $host - Software inventory retrieved"
-            }
-
-            # Close the session
-            Remove-PSSession -Session $remoteSession -ErrorAction SilentlyContinue
-        }
-    }
-    catch {
-        Add-Content -Path $deploymentLog -Value "Warning: Could not connect to $host"
-    }
-}
-
-# Clean up any remaining sessions
-Get-PSSession -ErrorAction SilentlyContinue | Remove-PSSession -ErrorAction SilentlyContinue
-
-# Clean up log file
-if (Test-Path $deploymentLog) {
-    Remove-Item -Path $deploymentLog -Force -ErrorAction SilentlyContinue
-}
-
-# -- Cluster: singleton_713879b9-0e84-44cd-bfb3-fbeb37b3d991  (1 rule(s)) ---------------------
-# Intent:    Detect PS-Remoting cmdlet invocations (Enable-PSRemoting, Invoke-Command, Enter-
-# Rules:     713879b9-0e84-44cd-bfb3-fbeb37b3d991
-# Archetype: User-driven workflow
-
-# Developer establishing an interactive remote session for troubleshooting
-# This simulates a realistic scenario where a user needs direct shell access to a remote system
-
-$remoteHost = 'localhost'
-
-# Create a new PSSession for interactive use
-$interactiveSession = New-PSSession -ComputerName $remoteHost -ErrorAction SilentlyContinue
-
-if ($interactiveSession) {
-    # Simulate entering the remote session for troubleshooting
-    # In a real scenario, this would be interactive, but we'll execute a command block
-    # that demonstrates the Enter-PSSession workflow
-
-    # First, query remote system information
-    Invoke-Command -Session $interactiveSession -ScriptBlock {
-        # Get recent event logs for troubleshooting
-        Get-EventLog -LogName Application -Newest 10 -ErrorAction SilentlyContinue |
-            Select-Object TimeGenerated, Source, EventID, Message
-    } -ErrorAction SilentlyContinue
-
-    # Demonstrate Enter-PSSession workflow
-    # Note: Enter-PSSession in script context is limited, so we use Invoke-Command
-    # to simulate the same behavior and event generation
-    Invoke-Command -Session $interactiveSession -ScriptBlock {
-        # Check running services for the application
-        Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName
-    } -ErrorAction SilentlyContinue
-
-    # Cleanup
-    Remove-PSSession -Session $interactiveSession -ErrorAction SilentlyContinue
-} else {
-    Write-Host 'Could not establish remote session for troubleshooting'
-}
-
-# Also demonstrate the Enter-PSSession cmdlet being invoked
-# (even though full interactive use is limited in non-interactive CI environments)
-$testSession = New-PSSession -ComputerName localhost -ErrorAction SilentlyContinue
-if ($testSession) {
-    # Simulate a brief Enter-PSSession invocation
-    try {
-        $null = Enter-PSSession -Session $testSession -ErrorAction SilentlyContinue
-    }
-    catch {
-        # Expected in non-interactive environment
-    }
-    finally {
-        Remove-PSSession -Session $testSession -ErrorAction SilentlyContinue
-    }
-}
-
-# -- Cluster: singleton_398f304f-13bb-44b6-8fb4-ccdd0985dcd4  (1 rule(s)) ---------------------
-# Intent:    Detects when Windows Explorer spawns script interpreters (cscript, wscript, msht
-# Rules:     398f304f-13bb-44b6-8fb4-ccdd0985dcd4
-# Archetype: User-driven workflow
-
-# Simulate a user downloading and running a legitimate maintenance VBScript from Downloads
-$downloadsPath = [System.Environment]::GetFolderPath('MyDocuments') -replace 'Documents', 'Downloads'
-if (-not (Test-Path $downloadsPath)) {
-    New-Item -ItemType Directory -Path $downloadsPath -Force | Out-Null
-}
-
-$scriptPath = Join-Path $downloadsPath 'registry_backup_utility.vbs'
-
-# Create a benign VBScript that performs a legitimate backup operation
-$vbscriptContent = @'
-Set oShell = CreateObject("WScript.Shell")
-Set oFSO = CreateObject("Scripting.FileSystemObject")
-
-backupDir = oShell.SpecialFolders("Temp") & "\\reg_backup_temp"
-if not oFSO.FolderExists(backupDir) then
-    oFSO.CreateFolder(backupDir)
-end if
-
-regPath = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-backupFile = backupDir & "\\explorer_settings.reg"
-
-' @
-$vbscriptContent | Out-File -FilePath $scriptPath -Encoding ASCII -Force
-
-# Invoke the script via wscript.exe, simulating Explorer launching it
-& wscript.exe $scriptPath
 
 # Cleanup
-Start-Sleep -Milliseconds 500
-Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path (Join-Path $downloadsPath 'reg_backup_temp') -Recurse -Force -ErrorAction SilentlyContinue
-
-# SKIPPED variant 'Software installer/updater workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# -- Cluster: singleton_398f304f-13bb-44b6-8fb4-ccdd0985dcd4  (1 rule(s)) ---------------------
-# Intent:    Detects when Windows Explorer spawns script interpreters (cscript, wscript, msht
-# Rules:     398f304f-13bb-44b6-8fb4-ccdd0985dcd4
-# Archetype: IT admin workflow
-
-$appDataPath = $env:APPDATA
-$adminScriptDir = Join-Path $appDataPath 'AdminTools'
-if (-not (Test-Path $adminScriptDir)) {
-    New-Item -ItemType Directory -Path $adminScriptDir -Force | Out-Null
-}
-
-$maintenanceScript = Join-Path $adminScriptDir 'log_maintenance.vbs'
-
-# Create a realistic admin maintenance script
-$scriptContent = @'
-Set oFSO = CreateObject("Scripting.FileSystemObject")
-Set oShell = CreateObject("WScript.Shell")
-
-logDir = oShell.ExpandEnvironmentStrings("%SystemRoot%\\Logs")
-if oFSO.FolderExists(logDir) then
-    Set logFolder = oFSO.GetFolder(logDir)
-    Set files = logFolder.Files
-    for each file in files
-        if Right(file.Name, 4) = ".log" then
-            if DateDiff("d", file.DateCreated, Now()) > 30 then
-                oFSO.DeleteFile file.Path
-            end if
-        end if
-    next
-end if
-' @
-
-$scriptContent | Out-File -FilePath $maintenanceScript -Encoding ASCII -Force
-
-# Invoke via cscript to simulate admin workflow through Explorer
-& cscript.exe $maintenanceScript
-
-# Cleanup
-Start-Sleep -Milliseconds 500
-Remove-Item -Path $maintenanceScript -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $adminScriptDir -Force -ErrorAction SilentlyContinue
+sc.exe delete "SystemHealthService" 2>$null | Out-Null
+Start-Sleep -Milliseconds 300
+Remove-Item -Path $serviceScript -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

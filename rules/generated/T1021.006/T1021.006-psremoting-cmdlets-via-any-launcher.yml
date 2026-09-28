@@ -1,0 +1,28 @@
+title: "T1021.006-PSRemoting-Cmdlets-Via-Any-Launcher"
+id: 713879b9-0e84-44cd-bfb3-fbeb37b3d991
+status: experimental
+description: "Detects command lines invoking PowerShell WinRM remoting cmdlets (Enable-PSRemoting, Invoke-Command, Enter-PSSession, New-PSSession), which enable and drive remote command execution over WinRM regardless of whether powershell.exe was launched directly or spawned via an intermediary process such as mshta.exe or rundll32.exe."
+references:
+    - https://attack.mitre.org/techniques/T1021/006/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-28
+tags:
+    - attack.lateral-movement
+    - attack.t1021.006
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_cmdlets:
+      CommandLine|contains:
+        - 'Enable-PSRemoting'
+        - 'Invoke-Command'
+        - 'Enter-PSSession'
+        - 'New-PSSession'
+    condition: selection_cmdlets
+falsepositives:
+    - "Legitimate remote administration and configuration-management tooling (e.g. SCCM, Ansible, DSC pull servers, Azure Automation) that invoke Enable-PSRemoting or Invoke-Command as part of normal orchestration workflows — should be scoped by allow-listing the initiating host's own trusted automation binary (Image/hash), not by ParentImage or working directory"
+    - "IT administrators manually running PowerShell remoting cmdlets from jump hosts or admin workstations for routine remote management"
+    - "Monitoring or inventory agents that periodically invoke Invoke-Command against managed endpoints"
+    - "Process ancestry involving LOLBins (mshta.exe, rundll32.exe, wscript.exe, cscript.exe) or the command line embedding the cmdlet text inside a script interpreter call (vbscript:, WScript.Shell.Run) rather than a direct powershell.exe invocation is not filtered here but should be treated as a strong escalation signal since these are not normal launchers for legitimate admin tooling"
+level: medium

@@ -1,0 +1,35 @@
+title: "WSH Script Execution From User-Writable Directory"
+id: 737e86a8-49c8-40a1-a8c7-64c5b9e23e4c
+status: experimental
+description: "Detects cscript.exe or wscript.exe executing a script file located under a user-writable directory such as AppData, Temp, Downloads, or Desktop, which is a common pattern for malicious file execution via user interaction or LOLBin proxy invocation."
+references:
+    - https://attack.mitre.org/techniques/T1204/002/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-28
+tags:
+    - attack.execution
+    - attack.t1204.002
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      - Image|endswith:
+          - '\cscript.exe'
+          - '\wscript.exe'
+      - OriginalFileName:
+          - 'cscript.exe'
+          - 'wscript.exe'
+    selection_path:
+      CommandLine|contains:
+        - '\AppData\'
+        - '\Temp\'
+        - '\Downloads\'
+        - '\Desktop\'
+    condition: selection_image and selection_path
+falsepositives:
+    - "Legitimate logon/logoff or software update scripts executed from AppData or Temp by IT automation tools (not filtered here; requires an allow-list of known-good script paths/hashes to suppress safely)"
+    - "IT/administrative automation invoking cscript/wscript for scripts staged in user profile directories as part of deployment tooling"
+    - "Some enterprise software installers or update mechanisms that stage and execute .vbs/.js helper scripts from AppData during installation"
+    - "Explorer.exe or rundll32.exe as parent process is common for both legitimate double-click launches and malicious execution, so parent process alone cannot be used to safely exclude activity"
+level: medium

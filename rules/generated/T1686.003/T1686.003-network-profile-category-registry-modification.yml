@@ -1,0 +1,25 @@
+title: "Network Profile Category Registry Modification"
+id: 679f5a69-8c90-46aa-8146-031381014ef6
+status: experimental
+description: "Detects a write to the NetworkList Profiles Category registry value, which determines whether Windows Firewall applies Public, Private, or Domain profile rules; attackers manipulate this value to downgrade the effective firewall profile and weaken inbound filtering."
+references:
+    - https://attack.mitre.org/techniques/T1686/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.defense-impairment
+    - attack.t1686.003
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+      TargetObject|contains: '\NetworkList\Profiles\'
+      TargetObject|endswith: '\Category'
+    condition: selection
+falsepositives:
+    - "Legitimate network environment changes such as connecting to a new Wi-Fi network, VPN connection/disconnection, or domain join/leave, which naturally trigger NLA (Network Location Awareness) to reclassify and rewrite the profile category."
+    - "NLA reclassification bursts following system wake-from-sleep, adapter link resets, or DHCP renewal, which are standard legitimate triggers for this key changing and are not distinguishable from malicious writes using registry-only telemetry."
+    - "Admin-initiated profile correction via Network and Sharing Center or Group Policy, which writes the same key and cannot be reliably distinguished from attacker activity by process identity alone."
+    - "Without correlation to a temporally adjacent legitimate network connection/adapter event or a subsequent firewall rule/state change, this rule cannot by itself confirm malicious intent — it should be treated as a medium-confidence signal pending such correlation."
+level: medium

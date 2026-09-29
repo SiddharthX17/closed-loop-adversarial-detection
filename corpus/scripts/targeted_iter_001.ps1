@@ -10,116 +10,96 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d  (1 rule(s)) ---------------------
-# Intent:    Attackers disable or modify Windows Firewall rules to evade detection or allow m
-# Rules:     f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d
+# -- Cluster: singleton_2b3ffc9c-a54c-41c9-8601-cdace311c92e  (1 rule(s)) ---------------------
+# Intent:    Attacker disabling Windows Firewall via registry policy commands to evade networ
+# Rules:     2b3ffc9c-a54c-41c9-8601-cdace311c92e
 # Archetype: IT admin workflow
 
-$ProgressPreference = 'SilentlyContinue'
-Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Initiating firewall policy audit and baseline hardening."
+$auditLogPath = Join-Path $env:TEMP 'firewall_policy_audit.txt'
+$policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile'
+$domainPolicyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile'
 
-# Query current firewall profile state to establish baseline
-Write-Host "Retrieving current firewall profiles..."
-$currentProfiles = Get-NetFirewallProfile -ErrorAction SilentlyContinue
-foreach ($profile in $currentProfiles) {
-    Write-Host "  Profile: $($profile.Name) - Enabled: $($profile.Enabled)"
-}
+# Document current firewall policy state for audit purposes
+Add-Content -Path $auditLogPath -Value "Firewall Policy Audit - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Add-Content -Path $auditLogPath -Value "================================================================"
 
-# Create a temporary inbound rule for network monitoring purposes (legitimate admin task)
-Write-Host "Creating temporary test rule for monitoring baseline..."
-$ruleName = "IT-Ops-Monitoring-Rule-$(Get-Random -Minimum 1000 -Maximum 9999)"
-New-NetFirewallRule -DisplayName $ruleName `
-  -Direction Inbound `
-  -Action Allow `
-  -Protocol TCP `
-  -LocalPort 8888 `
-  -RemoteAddress 127.0.0.1 `
-  -Enabled $true `
-  -ErrorAction SilentlyContinue | Out-Null
+# Query current firewall enabled state across profiles
+try {
+  if (Test-Path $policyPath) {
+    $stdValue = Get-ItemProperty -Path $policyPath -Name 'EnableFirewall' -ErrorAction SilentlyContinue
+    Add-Content -Path $auditLogPath -Value "StandardProfile EnableFirewall: $($stdValue.EnableFirewall)"
+  }
+} catch {}
 
-# Set profile configurations as part of baseline deployment
-Write-Host "Applying firewall profile hardening baseline..."
-Set-NetFirewallProfile -Profile Domain -Enabled $true -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue | Out-Null
-Set-NetFirewallProfile -Profile Private -Enabled $true -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue | Out-Null
+try {
+  if (Test-Path $domainPolicyPath) {
+    $domainValue = Get-ItemProperty -Path $domainPolicyPath -Name 'EnableFirewall' -ErrorAction SilentlyContinue
+    Add-Content -Path $auditLogPath -Value "DomainProfile EnableFirewall: $($domainValue.EnableFirewall)"
+  }
+} catch {}
 
-# Query and log all current rules for audit trail
-Write-Host "Auditing active firewall rules..."
-$allRules = Get-NetFirewallRule -ErrorAction SilentlyContinue | Select-Object -First 5
-foreach ($rule in $allRules) {
-    Write-Host "  Rule: $($rule.DisplayName) - Enabled: $($rule.Enabled)"
-}
+# Update firewall policy using registry command-line tool
+# This simulates admin making policy changes via standard registry modification
+reg add "HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile" /v EnableFirewall /t REG_DWORD /d 1 /f 2>&1 | Out-Null
 
-# Enable a firewall rule group (e.g., Windows Defender)
-Write-Host "Enabling Windows Defender firewall rule group..."
-Enable-NetFirewallRule -DisplayGroup "Windows Defender" -ErrorAction SilentlyContinue | Out-Null
+# Use PowerShell to verify policy application
+$verifyCmd = 'powershell.exe -NoProfile -Command "Get-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile -Name EnableFirewall -ErrorAction SilentlyContinue | Select-Object EnableFirewall"'
+Invoke-Expression $verifyCmd 2>&1 | Out-Null
 
-# Query firewall profile again post-hardening
-Write-Host "Verifying firewall profile state post-hardening..."
-$postProfiles = Get-NetFirewallProfile -ErrorAction SilentlyContinue
-foreach ($profile in $postProfiles) {
-    Write-Host "  Profile: $($profile.Name) - Enabled: $($profile.Enabled)"
-}
+# Query via command line to document final state (demonstrates monitoring via CLI)
+cmd /c "reg query HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile /v EnableFirewall" 2>&1 | Out-Null
 
-# Clean up temporary test rule
-Write-Host "Removing temporary test rule..."
-Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Out-Null
+# Clean up audit log
+if (Test-Path $auditLogPath) { Remove-Item -Path $auditLogPath -Force }
 
-Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Firewall policy audit and hardening completed."
-
-# -- Cluster: singleton_f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d  (1 rule(s)) ---------------------
-# Intent:    Attackers disable or modify Windows Firewall rules to evade detection or allow m
-# Rules:     f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d
+# -- Cluster: singleton_2b3ffc9c-a54c-41c9-8601-cdace311c92e  (1 rule(s)) ---------------------
+# Intent:    Attacker disabling Windows Firewall via registry policy commands to evade networ
+# Rules:     2b3ffc9c-a54c-41c9-8601-cdace311c92e
 # Archetype: Software installer/updater workflow
 
-$ProgressPreference = 'SilentlyContinue'
-Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Starting Enterprise Security Software installation workflow."
+$configLogPath = Join-Path $env:TEMP 'config_firewall_settings.log'
+$tempRegPath = 'HKLM:\SOFTWARE\Temp_SecurityConfig'
 
-# Installer pre-flight check: query current firewall state
-Write-Host "Performing pre-installation firewall compatibility check..."
-$firewallStatus = Get-NetFirewallProfile -Profile Domain -ErrorAction SilentlyContinue
-if ($firewallStatus) {
-    Write-Host "  Firewall status: $($firewallStatus.Enabled)"
-}
+# Simulate security tool installer verifying Windows Firewall policy
+# This is typical behavior of endpoint protection, MDM, or network management tools
 
-# Create installer-specific temporary rules required for setup
-Write-Host "Configuring firewall rules for software installation..."
-$installerPort = 9876
-$installerRuleName = "SecuritySoftware-Setup-$(Get-Random -Minimum 10000 -Maximum 99999)"
+# Create temporary configuration registry location
+try {
+  if (-not (Test-Path $tempRegPath)) {
+    New-Item -Path $tempRegPath -Force | Out-Null
+  }
+} catch {}
 
-New-NetFirewallRule -DisplayName $installerRuleName `
-  -Direction Outbound `
-  -Action Allow `
-  -Protocol TCP `
-  -RemotePort $installerPort `
-  -RemoteAddress 127.0.0.1 `
-  -Enabled $true `
-  -ErrorAction SilentlyContinue | Out-Null
+# Installer queries current firewall state using command-line registry tool
+# (Enterprise tools often verify policy state before applying configurations)
+cmd /c "reg query HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile /v EnableFirewall" 2>&1 | Tee-Object -FilePath $configLogPath | Out-Null
 
-# Apply temporary profile relaxation during installation (common during setup)
-Write-Host "Temporarily adjusting firewall profile for installation..."
-Set-NetFirewallProfile -Profile Public -Enabled $true -NotifyOnListen $true -ErrorAction SilentlyContinue | Out-Null
+# Tool applies its firewall policy configuration via PowerShell registry command
+# Setting EnableFirewall to 1 (enabled) as part of standard deployment
+try {
+  $fwPolicyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile'
+  if (-not (Test-Path $fwPolicyPath)) {
+    New-Item -Path $fwPolicyPath -Force | Out-Null
+  }
 
-# Create additional rule group for application functionality
-Write-Host "Enabling application-specific firewall rule groups..."
-Enable-NetFirewallRule -DisplayGroup "File and Printer Sharing" -ErrorAction SilentlyContinue | Out-Null
-Enable-NetFirewallRule -DisplayGroup "Windows Management Instrumentation (WMI)" -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $fwPolicyPath -Name 'EnableFirewall' -Value 1 -Type DWord -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $fwPolicyPath -Name 'DoNotAllowExceptions' -Value 0 -Type DWord -ErrorAction SilentlyContinue
+} catch {}
 
-# Validate installed rules
-Write-Host "Validating installed firewall configuration..."
-$installedRules = Get-NetFirewallRule -DisplayName $installerRuleName -ErrorAction SilentlyContinue
-if ($installedRules) {
-    Write-Host "  Successfully configured rule: $installerRuleName"
-}
+# Verify policy application success
+Invoke-Expression "Get-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile -Name EnableFirewall -ErrorAction SilentlyContinue" 2>&1 | Out-Null
 
-# Post-installation cleanup: remove temporary setup rules
-Write-Host "Performing post-installation firewall cleanup..."
-Remove-NetFirewallRule -DisplayName $installerRuleName -ErrorAction SilentlyContinue | Out-Null
+# Document configuration completion
+Add-Content -Path $configLogPath -Value "Configuration applied at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
-# Restore default inbound action for all profiles
-Write-Host "Restoring default firewall policy..."
-Set-NetFirewallProfile -Profile Domain,Private,Public -DefaultInboundAction Block -ErrorAction SilentlyContinue | Out-Null
+# Clean up temporary registry and log
+try {
+  if (Test-Path $tempRegPath) {
+    Remove-Item -Path $tempRegPath -Force -Recurse -ErrorAction SilentlyContinue
+  }
+} catch {}
 
-Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Installation workflow and firewall configuration completed."
+if (Test-Path $configLogPath) { Remove-Item -Path $configLogPath -Force }
 
 
 # ===========================================================================

@@ -1,0 +1,50 @@
+title: "T1686.003-Windows-Firewall-Policy-Modification-Via-CLI-Or-COM"
+id: d65b10d0-e42b-42a1-bd28-892ae4d5c423
+status: experimental
+description: "Detects process command lines invoking firewall policy modification interfaces — the HNetCfg.FwPolicy2 COM object, netsh advfirewall, or PowerShell NetSecurity cmdlets — to enable or disable firewall rules/profiles, a common defense-impairment technique used to permit lateral movement, C2, or discovery traffic that would otherwise be blocked."
+references:
+    - https://attack.mitre.org/techniques/T1686/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.defense-impairment
+    - attack.t1686.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_com:
+      CommandLine|contains: 'HNetCfg.FwPolicy2'
+    selection_com_action:
+      CommandLine|contains:
+        - 'EnableRuleGroup'
+        - '.Enable'
+        - '.BlockAllInboundTraffic'
+    selection_netsh:
+      CommandLine|contains|all:
+        - 'advfirewall'
+        - 'set'
+    selection_netsh_action:
+      CommandLine|contains:
+        - 'state off'
+        - 'state on'
+        - 'allow'
+        - 'enable'
+        - 'disable'
+    selection_netsecurity:
+      CommandLine|contains:
+        - 'Set-NetFirewallProfile'
+        - 'Set-NetFirewallRule'
+        - 'Disable-NetFirewallRule'
+        - 'Enable-NetFirewallRule'
+    filter_security_agent:
+      Image|startswith:
+        - 'C:\Program Files\Windows Defender\'
+        - 'C:\Program Files\Microsoft Security Client\'
+        - 'C:\Program Files\Windows Defender Advanced Threat Protection\'
+    condition: ((selection_com and selection_com_action) or (selection_netsh and selection_netsh_action) or selection_netsecurity) and not filter_security_agent
+falsepositives:
+    - "Legitimate firewall administration via netsh advfirewall or PowerShell NetSecurity cmdlets executed by IT/security tooling, group policy startup scripts, or system administrators for routine firewall configuration changes"
+    - "Security/EDR agent installation or update routines that programmatically adjust firewall rules via HNetCfg.FwPolicy2 or netsh advfirewall from vendor-signed processes not covered by the narrow exemption list included in this rule"
+    - "Endpoint management platforms (SCCM, Intune) pushing firewall policy changes as part of baseline configuration enforcement — these are not filtered here since parent process/service context cannot be reliably distinguished from attacker-spawned processes using only Image-based identity"
+level: high

@@ -1,0 +1,28 @@
+title: "NetworkList Profile Category Registry Downgrade"
+id: b41c39a7-ae72-4dfd-9b25-15e6f12c991b
+status: experimental
+description: "Detects a registry write to the Windows NetworkList Profiles Category value, which controls which firewall profile (Domain/Private/Public) is applied to a network connection; setting this to Public (0) or Private (1) can downgrade firewall enforcement without touching firewall rules directly."
+references:
+    - https://attack.mitre.org/techniques/T1686/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-30
+tags:
+    - attack.defense-evasion
+    - attack.t1686.003
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+      TargetObject|contains: '\NetworkList\Profiles\'
+      TargetObject|endswith: '\Category'
+    downgrade:
+      Details|contains:
+        - '0x00000000'
+        - '0x00000001'
+    condition: selection and downgrade
+falsepositives:
+    - "Legitimate network location changes performed by the Network Location Awareness (NLA) service when connecting to a new Wi-Fi network, joining/leaving a VPN, or when a domain controller becomes temporarily unreachable causing automatic reclassification to Private/Public."
+    - "Administrative or automated provisioning scripts that intentionally set network profiles during machine setup or imaging."
+    - "Since this rule cannot correlate with adjacent network-change telemetry (adapter connect/disconnect, VPN session events) in this single-event evaluation context, all matches should be treated as medium-confidence and reviewed against nearby network change activity rather than auto-actioned."
+level: medium

@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   1  |  Feasible: 1  |  Variants: 2
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,79 +10,110 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc  (1 rule(s)) ---------------------
-# Intent:    Attackers create malicious Windows services that masquerade as legitimate svchos
-# Rules:     5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc
+# -- Cluster: singleton_18e283b5-d9f3-43e4-a887-df05c713a836  (1 rule(s)) ---------------------
+# Intent:    Detecting mshta.exe execution with script file or URL arguments, which is a know
+# Rules:     18e283b5-d9f3-43e4-a887-df05c713a836
 # Archetype: IT admin workflow
 
-# Create a temporary service configuration for enterprise monitoring infrastructure
-$serviceFile = Join-Path $env:TEMP "svc_monitor.vbs"
-
-# Write a harmless WMI monitoring script
-$monitorScript = @'
-Set objWMIService = GetObject("winmgmts:")
-Set colItems = objWMIService.ExecQuery("Select * from Win32_Processor")
-For Each objItem in colItems
-    WScript.Echo "CPU Count: " & objItem.NumberOfCores
-Next
+# IT Admin: Execute system inventory collection HTA
+$htaPath = Join-Path $env:TEMP 'inventory_collector.hta'
+$htaContent = @'
+<html>
+<head>
+<title>System Inventory</title>
+<script language="VBScript">
+Dim fso, shell, sysInfo
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set shell = CreateObject("WScript.Shell")
+sysInfo = shell.ExpandEnvironmentStrings("%COMPUTERNAME%") & " - " & shell.ExpandEnvironmentStrings("%OS%")
+MsgBox sysInfo
+window.close()
+</script>
+</head>
+<body>
+<p>Collecting inventory...</p>
+</body>
+</html>
 '@
 
-$monitorScript | Out-File -FilePath $serviceFile -Encoding ASCII -Force
+Set-Content -Path $htaPath -Value $htaContent -Encoding UTF8
 
-# Create the service with sc.exe pointing to a legitimate system path
-# This represents an admin deploying a managed service for system monitoring
-sc.exe create "MonitoringService" binpath= "$env:SystemRoot\System32\svchost.exe -k netsvcs" | Out-Null
+# Execute the HTA application
+& mshta.exe $htaPath | Out-Null
 
-# Verify the service was created in registry
+# Clean up
 Start-Sleep -Milliseconds 500
-$servicePath = "HKLM:\SYSTEM\CurrentControlSet\Services\MonitoringService"
-if (Test-Path $servicePath) {
-    # Service creation succeeded, verify binpath in registry
-    $binPathValue = (Get-ItemProperty -Path $servicePath -Name ImagePath -ErrorAction SilentlyContinue).ImagePath
-    Write-Host "Service created with binpath: $binPathValue"
-}
+Remove-Item -Path $htaPath -Force -ErrorAction SilentlyContinue
 
-# Clean up: remove the service and temporary file
-sc.exe delete "MonitoringService" 2>$null | Out-Null
-Start-Sleep -Milliseconds 500
-Remove-Item -Path $serviceFile -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $servicePath -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc  (1 rule(s)) ---------------------
-# Intent:    Attackers create malicious Windows services that masquerade as legitimate svchos
-# Rules:     5cb3c5ba-b5cf-47eb-be4b-769a7a8a94fc
+# -- Cluster: singleton_18e283b5-d9f3-43e4-a887-df05c713a836  (1 rule(s)) ---------------------
+# Intent:    Detecting mshta.exe execution with script file or URL arguments, which is a know
+# Rules:     18e283b5-d9f3-43e4-a887-df05c713a836
 # Archetype: Software installer/updater workflow
 
-# Simulating an enterprise update mechanism registering a service
-# This mirrors behavior of Windows Update, Defender, or similar agents
+# Software Installer: Execute HTML-based setup configuration dialog
+$htmlPath = Join-Path $env:TEMP 'setup_config.html'
+$htmlContent = @'
+<!DOCTYPE html>
+<html>
+<head>
+<title>Installation Configuration</title>
+<script>
+window.onload = function() {
+  var config = "Installation path: " + document.location;
+  window.close();
+};
+</script>
+</head>
+<body>
+<h1>Product Setup</h1>
+<p>Configuring installation parameters...</p>
+</body>
+</html>
+'@
 
-# Create a temporary PowerShell script that will be hosted as a service
-$serviceScript = Join-Path $env:TEMP "health_check.ps1"
-@'
-# Health check monitoring script
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-$lastCheck = Get-Date
-Write-EventLog -LogName "System" -Source "System" -EventId 1000 -Message "Health check initiated" -ErrorAction SilentlyContinue
-'@ | Out-File -FilePath $serviceScript -Encoding UTF8 -Force
+Set-Content -Path $htmlPath -Value $htmlContent -Encoding UTF8
 
-# Register a service with sc.exe using the standard svchost architecture
-# The binpath references the standard svchost.exe with netsvcs group
-sc.exe create "SystemHealthService" binpath= "$env:SystemRoot\System32\svchost.exe -k netsvcs" | Out-Null
+# Execute the HTML configuration interface
+& mshta.exe $htmlPath | Out-Null
 
-# Wait for registry to catch up
-Start-Sleep -Milliseconds 300
+# Clean up installation artifacts
+Start-Sleep -Milliseconds 500
+Remove-Item -Path $htmlPath -Force -ErrorAction SilentlyContinue
 
-# Verify service was created
-$servicePath = "HKLM:\SYSTEM\CurrentControlSet\Services\SystemHealthService"
-if (Test-Path $servicePath) {
-    $displayName = (Get-ItemProperty -Path $servicePath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
-    Write-Host "Service registration completed."
+# -- Cluster: singleton_18e283b5-d9f3-43e4-a887-df05c713a836  (1 rule(s)) ---------------------
+# Intent:    Detecting mshta.exe execution with script file or URL arguments, which is a know
+# Rules:     18e283b5-d9f3-43e4-a887-df05c713a836
+# Archetype: User-driven workflow
+
+# User: Open HTML-based application tool
+$appPath = Join-Path $env:TEMP 'app_launcher.html'
+$appContent = @'
+<!DOCTYPE html>
+<html>
+<head>
+<title>Application Launcher</title>
+<hta:application id="AppLauncher" applicationName="Tool"/>
+<script>
+function onLoad() {
+  document.body.innerHTML = '<p>Loading application...</p>';
+  window.setTimeout(function() { window.close(); }, 1000);
 }
+</script>
+</head>
+<body onload="onLoad()">
+<p>Application interface</p>
+</body>
+</html>
+'@
 
-# Cleanup
-sc.exe delete "SystemHealthService" 2>$null | Out-Null
-Start-Sleep -Milliseconds 300
-Remove-Item -Path $serviceScript -Force -ErrorAction SilentlyContinue
+Set-Content -Path $appPath -Value $appContent -Encoding UTF8
+
+# Execute the application through mshta
+& mshta.exe $appPath | Out-Null
+
+# Clean up
+Start-Sleep -Milliseconds 500
+Remove-Item -Path $appPath -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

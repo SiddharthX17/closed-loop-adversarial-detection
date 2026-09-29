@@ -23,7 +23,8 @@
     "T1546.001": true,
     "T1547.001": true,
     "T1564.003": true,
-    "T1567.003": true
+    "T1567.003": true,
+    "T1685.001": true
   },
   "fp_rate": 0.007129377227930384,
   "rules": {
@@ -71,6 +72,8 @@
     "T1547.001-registry-run-key-persistence-via-setvalue.yml": true,
     "T1564.003-hidden-window-via-powershell-or-scripting-host.yml": true,
     "T1567.003-exfiltration-to-text-storage-sites-via-non-browser-process.yml": true,
-    "T1567.003-non-browser-process-outbound-connection-to-text-storage-sites.yml": true
+    "T1567.003-non-browser-process-outbound-connection-to-text-storage-sites.yml": true,
+    "T1685.001-eventlog-channel-customsd-deny-ace-modification.yml": true,
+    "T1685.001-iis-http-logging-disabled-via-appcmd-dontlog.yml": true
   }
 }

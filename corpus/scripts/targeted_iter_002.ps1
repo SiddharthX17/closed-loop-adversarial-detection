@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   2  |  Feasible: 2  |  Variants: 5
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,235 +10,82 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_7f18ec67-b008-46f2-bcf6-b897f77bbc03  (1 rule(s)) ---------------------
-# Intent:    Adversaries modifying Windows Firewall policies to disable firewall protections 
-# Rules:     7f18ec67-b008-46f2-bcf6-b897f77bbc03
+# -- Cluster: singleton_b41c39a7-ae72-4dfd-9b25-15e6f12c991b  (1 rule(s)) ---------------------
+# Intent:    Attacker registry downgrade of network connection profile category from private/
+# Rules:     b41c39a7-ae72-4dfd-9b25-15e6f12c991b
 # Archetype: IT admin workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
+$profilePath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
 
-# Simulate IT admin activity: disabling a specific rule group for application compatibility testing
-# This is a common operation during enterprise deployments
+# Enumerate existing network profiles (simulating admin audit/review)
+$profiles = Get-ChildItem -Path $profilePath -ErrorAction SilentlyContinue
 
-Write-Host "Beginning firewall rule adjustment for application migration..."
+if ($profiles) {
+    foreach ($profile in $profiles) {
+        $categoryPath = Join-Path -Path $profile.PSPath -ChildPath 'Category'
 
-# Disable the RPC rule group to test compatibility with legacy application
-netsh advfirewall firewall set rule group="Remote Procedure Call" new enable=no
-Start-Sleep -Milliseconds 500
+        # Read current category value to validate state
+        $currentCategory = Get-ItemProperty -Path $profile.PSPath -Name 'Category' -ErrorAction SilentlyContinue
 
-# Re-enable the RPC rule group after validation
-netsh advfirewall firewall set rule group="Remote Procedure Call" new enable=yes
-Start-Sleep -Milliseconds 500
+        if ($currentCategory) {
+            # Administrative task: reconfigure network profile from domain/private to public
+            # This occurs when network classification needs to be reset or updated during maintenance
+            Set-ItemProperty -Path $profile.PSPath -Name 'Category' -Value 0x00000000 -ErrorAction SilentlyContinue
 
-# Disable inbound file sharing rules temporarily for network maintenance
-netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=no
-Start-Sleep -Milliseconds 500
+            # Verify the change was applied
+            $verifyValue = Get-ItemProperty -Path $profile.PSPath -Name 'Category' -ErrorAction SilentlyContinue
+            if ($verifyValue) {
+                Write-Host "Profile $($profile.PSChildName) category reconfigured"
+            }
 
-# Enable file sharing rules again
-netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=yes
-Start-Sleep -Milliseconds 500
+            # Reset to a valid state (private/domain = 0x00000001)
+            Set-ItemProperty -Path $profile.PSPath -Name 'Category' -Value 0x00000001 -ErrorAction SilentlyContinue
+        }
+    }
+}
 
-# Use fwpolicy2 utility to query current firewall policy
-fwpolicy2.exe
-Start-Sleep -Milliseconds 500
+Write-Host 'Network profile maintenance completed'
 
-Write-Host "Firewall rule adjustment completed successfully"
-
-# -- Cluster: singleton_7f18ec67-b008-46f2-bcf6-b897f77bbc03  (1 rule(s)) ---------------------
-# Intent:    Adversaries modifying Windows Firewall policies to disable firewall protections 
-# Rules:     7f18ec67-b008-46f2-bcf6-b897f77bbc03
+# -- Cluster: singleton_b41c39a7-ae72-4dfd-9b25-15e6f12c991b  (1 rule(s)) ---------------------
+# Intent:    Attacker registry downgrade of network connection profile category from private/
+# Rules:     b41c39a7-ae72-4dfd-9b25-15e6f12c991b
 # Archetype: Software installer/updater workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
+# Simulate enterprise network configuration tool installation workflow
+$profilePath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
+$toolConfigPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\NetworkConfigTool'
 
-# Simulate enterprise VPN or remote management installer adjusting firewall policies
-# This represents legitimate software installation that modifies firewall rules
+# Create tool registry entry (simulating installer registration)
+$null = New-Item -Path $toolConfigPath -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $toolConfigPath -Name 'DisplayName' -Value 'Enterprise Network Config Tool'
+Set-ItemProperty -Path $toolConfigPath -Name 'Version' -Value '1.0.0.1'
 
-Write-Host "Enterprise application installer: preparing system firewall for configuration"
+# During installation, enumerate and update network profiles
+$profiles = Get-ChildItem -Path $profilePath -ErrorAction SilentlyContinue
 
-# Temporary firewall profile state change during installation
-netsh advfirewall set allprofiles state off
-Start-Sleep -Milliseconds 800
+if ($profiles) {
+    foreach ($profile in $profiles) {
+        try {
+            # Installation workflow: temporarily set profile to public (0x00000000) for initial validation
+            Set-ItemProperty -Path $profile.PSPath -Name 'Category' -Value 0x00000000 -ErrorAction SilentlyContinue
 
-# Restore firewall to normal operational state after installation
-netsh advfirewall set allprofiles state on
-Start-Sleep -Milliseconds 500
+            # Simulate configuration validation
+            Start-Sleep -Milliseconds 50
 
-# Enable specific rule groups needed for the application
-netsh advfirewall firewall set rule group="Windows Management Instrumentation (WMI)" new enable=yes
-Start-Sleep -Milliseconds 500
-
-# Add allowed program to firewall exceptions (simulating installer registration)
-# Using a real Windows system tool that would legitimately appear
-netsh advfirewall firewall add rule name="Allow System Maintenance" dir=in action=allow program="%WINDIR%\System32\svchost.exe" enable=yes
-Start-Sleep -Milliseconds 500
-
-# Remove the test rule to clean up
-netsh advfirewall firewall delete rule name="Allow System Maintenance"
-Start-Sleep -Milliseconds 500
-
-Write-Host "Application installation firewall configuration completed"
-
-# -- Cluster: singleton_88ecfc2a-5e7c-471d-b919-7e0cd737f5b6  (1 rule(s)) ---------------------
-# Intent:    Attackers modify Event Log channel CustomSD registry values to deny security pri
-# Rules:     88ecfc2a-5e7c-471d-b919-7e0cd737f5b6
-# Archetype: IT admin workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Simulate IT admin audit and remediation of Event Log channel permissions
-# This represents legitimate hardening of eventlog channel security
-
-$eventLogChannels = @('Security', 'Application', 'System')
-$tempAuditLog = "$env:TEMP\eventlog_acl_audit_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-
-Write-Host "[*] Auditing Event Log channel security permissions"
-
-foreach ($channel in $eventLogChannels) {
-    $regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\$channel"
-
-    # Read current CustomSD to audit permissions
-    if (Test-Path $regPath) {
-        $customSd = Get-ItemProperty -Path $regPath -Name CustomSD -ErrorAction SilentlyContinue
-        if ($customSd) {
-            Add-Content -Path $tempAuditLog -Value "Channel: $channel"
-            Add-Content -Path $tempAuditLog -Value "CustomSD Present: Yes"
+            # After validation, set to appropriate security level (0x00000001 = private/domain)
+            Set-ItemProperty -Path $profile.PSPath -Name 'Category' -Value 0x00000001 -ErrorAction SilentlyContinue
+        }
+        catch {
+            # Continue if profile is protected
+            continue
         }
     }
 }
 
-# Simulate remediation: removing overly permissive deny ACEs from Security log
-# This is a realistic admin task during compliance hardening
-$securityLogPath = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Security"
+# Clean up installation registry entry
+Remove-Item -Path $toolConfigPath -Force -ErrorAction SilentlyContinue
 
-if (Test-Path $securityLogPath) {
-    # Read current CustomSD binary
-    $currentSD = Get-ItemProperty -Path $securityLogPath -Name CustomSD -ErrorAction SilentlyContinue
-
-    if ($currentSD.CustomSD) {
-        # Create a modified copy with restricted deny rules (simulated remediation)
-        # The key operation: modifying CustomSD to enforce stricter access control
-        # This is a benign audit/hardening task, not log suppression
-
-        # Simulate: admin updates CustomSD to remove broad deny rules
-        # Real scenario: after audit finding "excessive denial rules"
-        $remediatedSD = $currentSD.CustomSD
-
-        # Document the change
-        Add-Content -Path $tempAuditLog -Value "Security Log Remediation: Reviewed CustomSD ACLs"
-        Add-Content -Path $tempAuditLog -Value "Action: Hardening Access Control Lists"
-    }
-}
-
-# Clean up audit log
-Remove-Item -Path $tempAuditLog -Force -ErrorAction SilentlyContinue
-
-Write-Host "[+] Event Log channel audit completed"
-
-# -- Cluster: singleton_88ecfc2a-5e7c-471d-b919-7e0cd737f5b6  (1 rule(s)) ---------------------
-# Intent:    Attackers modify Event Log channel CustomSD registry values to deny security pri
-# Rules:     88ecfc2a-5e7c-471d-b919-7e0cd737f5b6
-# Archetype: Software installer/updater workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Simulate enterprise monitoring software installation and event log integration
-# Many legitimate monitoring products configure event log permissions during install
-
-$monitoringServiceName = 'EnterpriseMonitor'
-$monitoringRegPath = "HKLM:\SOFTWARE\EnterpriseMonitor"
-
-Write-Host "[*] Installing enterprise monitoring agent with event log integration"
-
-# Create monitoring agent configuration registry path
-if (-not (Test-Path $monitoringRegPath)) {
-    New-Item -Path $monitoringRegPath -Force | Out-Null
-    New-ItemProperty -Path $monitoringRegPath -Name 'Version' -Value '10.5.2' -PropertyType String | Out-Null
-    New-ItemProperty -Path $monitoringRegPath -Name 'EventLogIntegration' -Value 1 -PropertyType DWord | Out-Null
-}
-
-# Simulate: Product configures access to Application event log
-# The installer reads current security descriptor and may add access rules
-$appLogPath = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application"
-
-if (Test-Path $appLogPath) {
-    # Check current CustomSD to understand existing permissions
-    $sd = Get-ItemProperty -Path $appLogPath -Name CustomSD -ErrorAction SilentlyContinue
-
-    if ($sd) {
-        # Installer would validate it can read the event log
-        # This is a normal pre-flight check during product installation
-        Write-Host "[+] Verified event log channel access configuration"
-    }
-}
-
-# Clean up: Remove monitoring software installation artifacts
-Remove-Item -Path $monitoringRegPath -Recurse -Force -ErrorAction SilentlyContinue
-
-Write-Host "[+] Enterprise monitoring agent installation simulation completed"
-
-# -- Cluster: singleton_88ecfc2a-5e7c-471d-b919-7e0cd737f5b6  (1 rule(s)) ---------------------
-# Intent:    Attackers modify Event Log channel CustomSD registry values to deny security pri
-# Rules:     88ecfc2a-5e7c-471d-b919-7e0cd737f5b6
-# Archetype: User-driven workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Simulate: Administrator performs compliance-driven event log security hardening
-# This is a legitimate operational task for regulatory compliance
-
-Write-Host "[*] Initiating event log channel security compliance review"
-
-$complianceConfig = @{
-    'CheckEventLogEncryption' = $true
-    'EnforceMinimumRetention' = 30
-    'VerifyAccessControls' = $true
-}
-
-# Review critical event log channels for proper access controls
-$criticalChannels = @('Security', 'System', 'Application')
-$complianceReport = "$env:TEMP\compliance_eventlog_$(Get-Random).txt"
-
-foreach ($channelName in $criticalChannels) {
-    $eventLogPath = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\$channelName"
-
-    if (Test-Path $eventLogPath) {
-        # Read current channel properties to verify compliance
-        $properties = Get-ItemProperty -Path $eventLogPath -ErrorAction SilentlyContinue
-
-        # Check for CustomSD (security descriptor) presence
-        if ($properties -and $properties.CustomSD) {
-            Add-Content -Path $complianceReport -Value "$channelName : Access Control Configured"
-
-            # Verify channel is properly protected
-            # This is realistic compliance verification, not malicious suppression
-            Write-Host "[*] Verified $channelName channel access controls"
-        } else {
-            Add-Content -Path $complianceReport -Value "$channelName : Using default permissions"
-        }
-    }
-}
-
-# Additional check: Validate that critical accounts have appropriate audit permissions
-# This is a normal compliance task
-$auditServiceAccounts = @('NT AUTHORITY\SYSTEM', 'NT AUTHORITY\LOCAL SERVICE')
-
-foreach ($account in $auditServiceAccounts) {
-    # Check if service account can access Security event log
-    # This is a standard compliance verification
-    $securityLogPath = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Security"
-    if (Test-Path $securityLogPath) {
-        $sd = Get-ItemProperty -Path $securityLogPath -Name CustomSD -ErrorAction SilentlyContinue
-        if ($sd) {
-            Add-Content -Path $complianceReport -Value "Audit Service Access: $account verified"
-        }
-    }
-}
-
-# Clean up compliance report
-Remove-Item -Path $complianceReport -Force -ErrorAction SilentlyContinue
-
-Write-Host "[+] Event log compliance review completed"
+Write-Host 'Network configuration utility initialization completed'
 
 
 # ===========================================================================

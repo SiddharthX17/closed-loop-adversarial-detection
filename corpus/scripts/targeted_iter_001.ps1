@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   2  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,217 +10,276 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_e3527e5e-b29b-4913-9d7b-28e156610827  (1 rule(s)) ---------------------
-# Intent:    Detection of mshta.exe being invoked with remote URLs from scripting hosts or cm
-# Rules:     e3527e5e-b29b-4913-9d7b-28e156610827
+# -- Cluster: singleton_679f5a69-8c90-46aa-8146-031381014ef6  (1 rule(s)) ---------------------
+# Intent:    Detection of registry modifications to network profile category settings, which 
+# Rules:     679f5a69-8c90-46aa-8146-031381014ef6
 # Archetype: IT admin workflow
 
-# IT Administrator testing HTML help system functionality
-$tempDir = Join-Path -Path $env:TEMP -ChildPath "HtmlHelpTest_$(Get-Random)"
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+# IT admin: Document and update network profile categories for compliance audit
+# This simulates a real admin maintenance task checking network profile settings
 
-try {
-    # Create a minimal legitimate HTML help file locally
-    $htmlContent = @"
-<!DOCTYPE html>
-<html>
-<head><title>System Help</title></head>
-<body>
-<h1>Help Documentation</h1>
-<p>This is system help content.</p>
-</body>
-</html>
-"@
+$AdminAuditLog = "$env:TEMP\network_profile_audit_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
 
-    $htmlFile = Join-Path -Path $tempDir -ChildPath "help.html"
-    Set-Content -Path $htmlFile -Value $htmlContent -Force
+# Query existing network profiles from registry
+$profilesPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
 
-    # Start a temporary HTTP server to serve the HTML
-    $port = 8765
-    $listener = New-Object System.Net.HttpListener
-    $listener.Prefixes.Add("http://127.0.0.1:$port/")
-    $listener.Start()
+if (Test-Path $profilesPath) {
+    Add-Content -Path $AdminAuditLog -Value "Network Profile Audit - $(Get-Date)"
+    Add-Content -Path $AdminAuditLog -Value "==============================================="
 
-    # Background task to handle HTTP requests
-    $job = Start-Job -ScriptBlock {
-        param($listener, $htmlFile)
-        $listener.GetContext() | ForEach-Object {
-            $response = $_.Response
-            $html = Get-Content -Path $htmlFile -Raw
-            $buffer = [System.Text.Encoding]::UTF8.GetBytes($html)
-            $response.ContentLength64 = $buffer.Length
-            $response.OutputStream.Write($buffer, 0, $buffer.Length)
-            $response.OutputStream.Close()
-        }
-    } -ArgumentList $listener, $htmlFile
+    $profiles = Get-ChildItem -Path $profilesPath -ErrorAction SilentlyContinue
 
-    Start-Sleep -Milliseconds 500
+    foreach ($profile in $profiles) {
+        $profileName = $profile.PSChildName
+        $categoryValue = (Get-ItemProperty -Path "$profilesPath\$profileName" -Name Category -ErrorAction SilentlyContinue).Category
 
-    # Admin testing: launch mshta with the local HTTP URL to verify rendering
-    & cmd.exe /c "mshta http://127.0.0.1:$port/help.html"
-
-    Start-Sleep -Milliseconds 100
-
-    $listener.Stop()
-    Stop-Job -Job $job -Force 2>$null
-
-} finally {
-    # Cleanup
-    if (Test-Path -Path $tempDir) {
-        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        Add-Content -Path $AdminAuditLog -Value "Profile: $profileName"
+        Add-Content -Path $AdminAuditLog -Value "  Category: $categoryValue"
     }
 }
 
-# -- Cluster: singleton_e3527e5e-b29b-4913-9d7b-28e156610827  (1 rule(s)) ---------------------
-# Intent:    Detection of mshta.exe being invoked with remote URLs from scripting hosts or cm
-# Rules:     e3527e5e-b29b-4913-9d7b-28e156610827
-# Archetype: User-driven workflow
-
-# User scenario: Opening HTML application content from intranet/local resource
-$tempDir = Join-Path -Path $env:TEMP -ChildPath "HtmlAppTest_$(Get-Random)"
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+# Create a test network profile entry for validation (simulating new network discovered)
+$testProfileGuid = '{AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB}'
+$testProfilePath = "$profilesPath\$testProfileGuid"
 
 try {
-    # Create a VBScript file that will invoke mshta with a URL (simulating automated tool invocation)
-    $vbsContent = @"
-Set objHTTP = CreateObject("MSXML2.XMLHTTP")
-objHTTP.Open "GET", "http://127.0.0.1:9999/app.html", False
-objHTTP.Send
-Set shell = CreateObject("WScript.Shell")
-shell.Run "mshta http://127.0.0.1:9999/app.html"
-"@
-
-    $vbsFile = Join-Path -Path $tempDir -ChildPath "launcher.vbs"
-    Set-Content -Path $vbsFile -Value $vbsContent -Force
-
-    # Create HTML application content
-    $htaContent = @"
-<html>
-<head>
-<title>Enterprise Tool</title>
-</head>
-<body>
-<h1>Application Content</h1>
-<p>Loading application interface...</p>
-</body>
-</html>
-"@
-
-    $htmlFile = Join-Path -Path $tempDir -ChildPath "app.html"
-    Set-Content -Path $htmlFile -Value $htaContent -Force
-
-    # Start HTTP listener for the application content
-    $port = 9999
-    $listener = New-Object System.Net.HttpListener
-    $listener.Prefixes.Add("http://127.0.0.1:$port/")
-    $listener.Start()
-
-    # Background job to serve HTML
-    $job = Start-Job -ScriptBlock {
-        param($listener, $htmlFile)
-        $maxRequests = 2
-        $count = 0
-        while ($count -lt $maxRequests) {
-            try {
-                $context = $listener.GetContext()
-                $response = $context.Response
-                $html = Get-Content -Path $htmlFile -Raw
-                $buffer = [System.Text.Encoding]::UTF8.GetBytes($html)
-                $response.ContentLength64 = $buffer.Length
-                $response.OutputStream.Write($buffer, 0, $buffer.Length)
-                $response.OutputStream.Close()
-                $count++
-            } catch {}
-        }
-    } -ArgumentList $listener, $htmlFile
-
-    Start-Sleep -Milliseconds 500
-
-    # User invokes via wscript (simulating legitimate HTML app invocation)
-    & cscript.exe $vbsFile 2>$null
-
-    Start-Sleep -Milliseconds 500
-
-    $listener.Stop()
-    Stop-Job -Job $job -Force 2>$null
-
-} finally {
-    # Cleanup
-    if (Test-Path -Path $tempDir) {
-        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    # Create new registry entry if it doesn't exist
+    if (-not (Test-Path $testProfilePath)) {
+        New-Item -Path $testProfilePath -Force | Out-Null
     }
+
+    # Set profile name
+    New-ItemProperty -Path $testProfilePath -Name "ProfileName" -Value "Test_Corporate_Network" -PropertyType String -Force | Out-Null
+
+    # Set category to Private (1 = Private, 0 = Public, 2 = Domain Authenticated)
+    # This is a legitimate network classification admin task
+    New-ItemProperty -Path $testProfilePath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
+
+    Add-Content -Path $AdminAuditLog -Value "Created test profile: $testProfileGuid with Category=1 (Private)"
+
+    # Verify the write succeeded
+    $verifyCategory = (Get-ItemProperty -Path $testProfilePath -Name Category -ErrorAction SilentlyContinue).Category
+    Add-Content -Path $AdminAuditLog -Value "Verification: Category value = $verifyCategory"
+
+} catch {
+    Add-Content -Path $AdminAuditLog -Value "Error: $_"
 }
 
-# -- Cluster: singleton_e3527e5e-b29b-4913-9d7b-28e156610827  (1 rule(s)) ---------------------
-# Intent:    Detection of mshta.exe being invoked with remote URLs from scripting hosts or cm
-# Rules:     e3527e5e-b29b-4913-9d7b-28e156610827
+# Cleanup: Remove test profile
+try {
+    if (Test-Path $testProfilePath) {
+        Remove-Item -Path $testProfilePath -Force -ErrorAction SilentlyContinue
+        Add-Content -Path $AdminAuditLog -Value "Cleanup: Removed test profile"
+    }
+} catch {
+    Add-Content -Path $AdminAuditLog -Value "Cleanup error: $_"
+}
+
+# Output audit completion
+Add-Content -Path $AdminAuditLog -Value "Audit completed at $(Get-Date)"
+
+# Display audit results
+Get-Content -Path $AdminAuditLog
+
+# Cleanup audit log
+Remove-Item -Path $AdminAuditLog -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_679f5a69-8c90-46aa-8146-031381014ef6  (1 rule(s)) ---------------------
+# Intent:    Detection of registry modifications to network profile category settings, which 
+# Rules:     679f5a69-8c90-46aa-8146-031381014ef6
 # Archetype: Software installer/updater workflow
 
-# Software deployment: PowerShell-based installer checking and launching HTML wizard
-$tempDir = Join-Path -Path $env:TEMP -ChildPath "SoftwareSetup_$(Get-Random)"
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+# Installer/Configuration workflow: Network connectivity tool post-install setup
+# This simulates a legitimate enterprise network optimization tool configuring profiles
 
-try {
-    # Create installation wizard HTML
-    $wizardHtml = @"
-<!DOCTYPE html>
-<html>
-<head>
-<title>Installation Wizard</title>
-<style>
-body { font-family: Arial; }
-</style>
-</head>
-<body>
-<h2>Software Installation Wizard</h2>
-<p>Installation in progress...</p>
-<p>License Agreement Accepted</p>
-<p>Installation path: C:\\Program Files\\MyApp</p>
-</body>
-</html>
-"@
+$InstallLog = "$env:TEMP\netconfig_setup_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
 
-    $wizardFile = Join-Path -Path $tempDir -ChildPath "wizard.html"
-    Set-Content -Path $wizardFile -Value $wizardHtml -Force
+Add-Content -Path $InstallLog -Value "Network Connectivity Configuration Tool - Setup"
+Add-Content -Path $InstallLog -Value "Install time: $(Get-Date)"
+Add-Content -Path $InstallLog -Value "=========================================================="
 
-    # Setup HTTP listener for wizard content distribution
-    $port = 7654
-    $listener = New-Object System.Net.HttpListener
-    $listener.Prefixes.Add("http://127.0.0.1:$port/")
-    $listener.Start()
+$profilesPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
 
-    # Background job to serve wizard content
-    $job = Start-Job -ScriptBlock {
-        param($listener, $wizardFile)
-        $context = $listener.GetContext()
-        $response = $context.Response
-        $html = Get-Content -Path $wizardFile -Raw
-        $buffer = [System.Text.Encoding]::UTF8.GetBytes($html)
-        $response.ContentLength64 = $buffer.Length
-        $response.OutputStream.Write($buffer, 0, $buffer.Length)
-        $response.OutputStream.Close()
-    } -ArgumentList $listener, $wizardFile
+# Simulate installer discovering existing profiles and configuring them
+if (Test-Path $profilesPath) {
+    $profiles = Get-ChildItem -Path $profilesPath -ErrorAction SilentlyContinue
 
-    Start-Sleep -Milliseconds 500
+    foreach ($profile in $profiles) {
+        $profileGuid = $profile.PSChildName
+        $profilePath = "$profilesPath\$profileGuid"
 
-    # PowerShell-based installer launches mshta to display wizard
-    # This simulates legitimate software deployment using mshta for GUI rendering
-    & powershell.exe -NoProfile -Command @"
-Start-Process -FilePath mshta.exe -ArgumentList 'http://127.0.0.1:$port/wizard.html' -Wait
-"@
+        try {
+            # Verify profile exists and read current category
+            $currentCategory = (Get-ItemProperty -Path $profilePath -Name Category -ErrorAction SilentlyContinue).Category
 
-    Start-Sleep -Milliseconds 100
+            if ($null -ne $currentCategory) {
+                Add-Content -Path $InstallLog -Value "Configuring profile $profileGuid"
+                Add-Content -Path $InstallLog -Value "  Current category: $currentCategory"
 
-    $listener.Stop()
-    Stop-Job -Job $job -Force 2>$null
-
-} finally {
-    # Cleanup
-    if (Test-Path -Path $tempDir) {
-        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                # Installer applies security policy: ensure all discovered networks are at least Private
+                # This is a realistic post-install configuration step
+                if ($currentCategory -ne 1) {
+                    New-ItemProperty -Path $profilePath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
+                    Add-Content -Path $InstallLog -Value "  Updated category to 1 (Private) for security"
+                }
+            }
+        } catch {
+            Add-Content -Path $InstallLog -Value "  Warning: Could not update profile - $_"
+        }
     }
 }
 
+# Create installer-managed profile entries
+Add-Content -Path $InstallLog -Value ""
+Add-Content -Path $InstallLog -Value "Creating managed network profile entries..."
+
+for ($i = 1; $i -le 2; $i++) {
+    $managedGuid = "{CCCCCCCC-$('{0:D4}' -f $i)-5555-6666-DDDDDDDDDDDD}"
+    $managedProfilePath = "$profilesPath\$managedGuid"
+
+    try {
+        if (-not (Test-Path $managedProfilePath)) {
+            New-Item -Path $managedProfilePath -Force | Out-Null
+        }
+
+        # Set managed profile attributes
+        New-ItemProperty -Path $managedProfilePath -Name "ProfileName" -Value "ManagedNetwork_$i" -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $managedProfilePath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $managedProfilePath -Name "Description" -Value "Managed by NetOptimizer" -PropertyType String -Force | Out-Null
+
+        Add-Content -Path $InstallLog -Value "Created managed profile: $managedGuid"
+    } catch {
+        Add-Content -Path $InstallLog -Value "Error creating managed profile: $_"
+    }
+}
+
+# Cleanup managed profiles
+Add-Content -Path $InstallLog -Value ""
+Add-Content -Path $InstallLog -Value "Cleaning up installation artifacts..."
+
+for ($i = 1; $i -le 2; $i++) {
+    $managedGuid = "{CCCCCCCC-$('{0:D4}' -f $i)-5555-6666-DDDDDDDDDDDD}"
+    $managedProfilePath = "$profilesPath\$managedGuid"
+
+    try {
+        if (Test-Path $managedProfilePath) {
+            Remove-Item -Path $managedProfilePath -Force -ErrorAction SilentlyContinue
+            Add-Content -Path $InstallLog -Value "Removed temporary profile: $managedGuid"
+        }
+    } catch {
+        Add-Content -Path $InstallLog -Value "Cleanup error: $_"
+    }
+}
+
+Add-Content -Path $InstallLog -Value ""
+Add-Content -Path $InstallLog -Value "Setup completed at $(Get-Date)"
+
+# Output log
+Get-Content -Path $InstallLog
+
+# Cleanup
+Remove-Item -Path $InstallLog -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_679f5a69-8c90-46aa-8146-031381014ef6  (1 rule(s)) ---------------------
+# Intent:    Detection of registry modifications to network profile category settings, which 
+# Rules:     679f5a69-8c90-46aa-8146-031381014ef6
+# Archetype: User-driven workflow
+
+# User-driven workflow: Enterprise network configuration utility
+# Simulates a user running network settings configuration tool that manages profiles
+
+$ConfigLog = "$env:TEMP\network_config_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+
+Add-Content -Path $ConfigLog -Value "Network Configuration Tool - User Session"
+Add-Content -Path $ConfigLog -Value "Started: $(Get-Date)"
+Add-Content -Path $ConfigLog -Value "========================================================"
+
+$profilesPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
+
+# First, enumerate all current profiles like a UI would show them
+Add-Content -Path $ConfigLog -Value "Discovered Network Profiles:"
+Add-Content -Path $ConfigLog -Value ""
+
+if (Test-Path $profilesPath) {
+    $allProfiles = Get-ChildItem -Path $profilesPath -ErrorAction SilentlyContinue
+    $profileCount = 0
+
+    foreach ($profile in $allProfiles) {
+        $profileGuid = $profile.PSChildName
+        $props = Get-ItemProperty -Path "$profilesPath\$profileGuid" -ErrorAction SilentlyContinue
+        $profileName = $props.ProfileName
+        $category = $props.Category
+
+        $categoryLabel = switch ($category) {
+            0 { "Public" }
+            1 { "Private" }
+            2 { "Domain" }
+            default { "Unknown" }
+        }
+
+        Add-Content -Path $ConfigLog -Value "[$profileCount] $profileName (GUID: $profileGuid)"
+        Add-Content -Path $ConfigLog -Value "     Current category: $categoryLabel"
+        $profileCount++
+    }
+}
+
+Add-Content -Path $ConfigLog -Value ""
+Add-Content -Path $ConfigLog -Value "User selects network to reclassify and applies new configuration..."
+Add-Content -Path $ConfigLog -Value ""
+
+# Simulate user selection and configuration change
+# Create a temporary test profile to simulate a discovered/new network
+$testGuid = '{EEEEEEEE-7777-8888-9999-FFFFFFFFFFFF}'
+$testPath = "$profilesPath\$testGuid"
+
+try {
+    # Create test profile
+    if (-not (Test-Path $testPath)) {
+        New-Item -Path $testPath -Force | Out-Null
+    }
+
+    New-ItemProperty -Path $testPath -Name "ProfileName" -Value "Guest_WiFi_Network" -PropertyType String -Force | Out-Null
+
+    # Initial category (Public)
+    New-ItemProperty -Path $testPath -Name "Category" -Value 0 -PropertyType DWord -Force | Out-Null
+
+    Add-Content -Path $ConfigLog -Value "Selected network: Guest_WiFi_Network"
+    Add-Content -Path $ConfigLog -Value "Current setting: Public (0)"
+    Add-Content -Path $ConfigLog -Value "User action: Change to Private for better security"
+
+    # User reclassifies the network (realistic scenario)
+    New-ItemProperty -Path $testPath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
+
+    $verifyNew = (Get-ItemProperty -Path $testPath -Name Category -ErrorAction SilentlyContinue).Category
+    Add-Content -Path $ConfigLog -Value "Applied change: Category = $verifyNew (Private)"
+
+} catch {
+    Add-Content -Path $ConfigLog -Value "Configuration error: $_"
+}
+
+# Cleanup
+Add-Content -Path $ConfigLog -Value ""
+Add-Content -Path $ConfigLog -Value "Cleaning up temporary configuration entries..."
+
+try {
+    if (Test-Path $testPath) {
+        Remove-Item -Path $testPath -Force -ErrorAction SilentlyContinue
+        Add-Content -Path $ConfigLog -Value "Removed temporary profile entry"
+    }
+} catch {
+    Add-Content -Path $ConfigLog -Value "Cleanup error: $_"
+}
+
+Add-Content -Path $ConfigLog -Value ""
+Add-Content -Path $ConfigLog -Value "Session ended: $(Get-Date)"
+
+# Display log
+Get-Content -Path $ConfigLog
+
+# Cleanup log file
+Remove-Item -Path $ConfigLog -Force -ErrorAction SilentlyContinue
+
+# SKIPPED cluster singleton_8ea72355-9c48-4b99-8f31-4026fcad0f19: LLM response truncated at max_tokens (4096)
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

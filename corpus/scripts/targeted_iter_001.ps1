@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 3
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,171 +10,116 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_d65b10d0-e42b-42a1-bd28-892ae4d5c423  (1 rule(s)) ---------------------
-# Intent:    Attackers modifying Windows Firewall policies via CLI or COM interfaces to disab
-# Rules:     d65b10d0-e42b-42a1-bd28-892ae4d5c423
+# -- Cluster: singleton_f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d  (1 rule(s)) ---------------------
+# Intent:    Attackers disable or modify Windows Firewall rules to evade detection or allow m
+# Rules:     f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d
 # Archetype: IT admin workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
+$ProgressPreference = 'SilentlyContinue'
+Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Initiating firewall policy audit and baseline hardening."
 
-# Simulate IT admin firewall maintenance and audit activity
-# Creating temporary test rules for verification before production deployment
-
-# 1. Query current firewall state using netsh (common admin verification)
-Write-Host "[INFO] Auditing current firewall profile state..."
-netsh advfirewall show allprofiles
-
-# 2. Create a temporary test inbound rule via netsh
-Write-Host "[INFO] Creating test inbound rule for deployment verification..."
-netsh advfirewall firewall add rule name="TestInboundRuleAudit" dir=in action=allow protocol=tcp localport=8888 description="Temporary test rule for firewall audit"
-
-# 3. Query the newly created rule
-netsh advfirewall firewall show rule name="TestInboundRuleAudit"
-
-# 4. Disable the test rule (simulating rule modification during policy review)
-Write-Host "[INFO] Disabling test rule as part of audit..."
-netsh advfirewall firewall set rule name="TestInboundRuleAudit" new enable=no
-
-# 5. Use PowerShell NetFirewall cmdlets for advanced rule management
-Write-Host "[INFO] Modifying firewall rules via PowerShell cmdlets..."
-Get-NetFirewallProfile | Set-NetFirewallProfile -Enabled $false
-Start-Sleep -Milliseconds 500
-
-# 6. Re-enable firewall profiles
-Write-Host "[INFO] Re-enabling firewall profiles for normal operations..."
-Get-NetFirewallProfile | Set-NetFirewallProfile -Enabled $true
-
-# 7. Query current rule state using PowerShell
-Write-Host "[INFO] Verifying test rule state via PowerShell..."
-Get-NetFirewallRule -DisplayName "TestInboundRuleAudit" | Select-Object DisplayName, Enabled, Direction, Action
-
-# 8. Create another test rule to verify enable functionality
-Write-Host "[INFO] Creating secondary test rule to verify enable functionality..."
-New-NetFirewallRule -DisplayName "TestManagementRule" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9999 -Enabled $true
-
-# 9. Query and then disable via PowerShell
-Write-Host "[INFO] Disabling secondary rule via PowerShell..."
-Disable-NetFirewallRule -DisplayName "TestManagementRule"
-
-# 10. Re-enable via PowerShell (simulating rule state changes during maintenance)
-Enable-NetFirewallRule -DisplayName "TestManagementRule"
-
-# 11. Cleanup: Remove test rules
-Write-Host "[INFO] Cleaning up temporary test rules..."
-netsh advfirewall firewall delete rule name="TestInboundRuleAudit"
-Remove-NetFirewallRule -DisplayName "TestManagementRule" -Confirm:$false -ErrorAction SilentlyContinue
-
-Write-Host "[INFO] Firewall audit and maintenance completed."
-
-# -- Cluster: singleton_d65b10d0-e42b-42a1-bd28-892ae4d5c423  (1 rule(s)) ---------------------
-# Intent:    Attackers modifying Windows Firewall policies via CLI or COM interfaces to disab
-# Rules:     d65b10d0-e42b-42a1-bd28-892ae4d5c423
-# Archetype: Software installer/updater workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Simulate security software installation firewall integration workflow
-# This represents how legitimate security tools like Windows Defender or endpoint protection
-# solutions modify firewall policies during installation/update
-
-$securityToolPath = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
-$logPath = "$env:TEMP\security_install_log.txt"
-
-# 1. Security software checks current firewall state during installation
-Write-Host "[INFO] Security software installer: Checking firewall compatibility..."
-netsh advfirewall show currentprofile >> $logPath
-
-# 2. Verify firewall profiles are properly configured
-Write-Host "[INFO] Verifying firewall profiles for security agent compatibility..."
-netsh advfirewall show allprofiles | Out-File -Append $logPath
-
-# 3. Create allowlist rules for security tool network operations
-Write-Host "[INFO] Adding firewall rules for security service network access..."
-netsh advfirewall firewall add rule name="SecurityAgentOutbound" dir=out action=allow protocol=tcp remoteport=443 description="Allow security agent updates and telemetry"
-
-# 4. Create additional rule for callback traffic
-netsh advfirewall firewall add rule name="SecurityAgentCallback" dir=in action=allow protocol=tcp localport=5985 description="Allow security agent management callback"
-
-# 5. Use PowerShell to verify rule creation
-Write-Host "[INFO] Verifying rules via PowerShell..."
-Get-NetFirewallRule -DisplayName "SecurityAgent*" | Format-Table DisplayName, Direction, Action
-
-# 6. Temporarily disable firewall profiles during installation (common pattern)
-Write-Host "[INFO] Temporarily adjusting firewall for installation process..."
-Get-NetFirewallProfile -Name Private | Set-NetFirewallProfile -DefaultInboundAction Block
-
-# 7. Re-enable critical protections
-Write-Host "[INFO] Re-enabling firewall protections post-installation..."
-Get-NetFirewallProfile | Set-NetFirewallProfile -DefaultInboundAction Block -Enabled $true
-
-# 8. Enable specific allowlist rules
-Write-Host "[INFO] Enabling security tool firewall rules..."
-Enable-NetFirewallRule -DisplayName "SecurityAgentOutbound"
-Enable-NetFirewallRule -DisplayName "SecurityAgentCallback"
-
-# 9. Final state verification
-Write-Host "[INFO] Final firewall state verification..."
-Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table
-
-# 10. Cleanup temporary rules
-Write-Host "[INFO] Cleaning up temporary installation rules..."
-netsh advfirewall firewall delete rule name="SecurityAgentOutbound"
-netsh advfirewall firewall delete rule name="SecurityAgentCallback"
-
-if (Test-Path $logPath) {
-    Remove-Item $logPath -Force
+# Query current firewall profile state to establish baseline
+Write-Host "Retrieving current firewall profiles..."
+$currentProfiles = Get-NetFirewallProfile -ErrorAction SilentlyContinue
+foreach ($profile in $currentProfiles) {
+    Write-Host "  Profile: $($profile.Name) - Enabled: $($profile.Enabled)"
 }
 
-Write-Host "[INFO] Security software installation firewall integration completed."
+# Create a temporary inbound rule for network monitoring purposes (legitimate admin task)
+Write-Host "Creating temporary test rule for monitoring baseline..."
+$ruleName = "IT-Ops-Monitoring-Rule-$(Get-Random -Minimum 1000 -Maximum 9999)"
+New-NetFirewallRule -DisplayName $ruleName `
+  -Direction Inbound `
+  -Action Allow `
+  -Protocol TCP `
+  -LocalPort 8888 `
+  -RemoteAddress 127.0.0.1 `
+  -Enabled $true `
+  -ErrorAction SilentlyContinue | Out-Null
 
-# -- Cluster: singleton_d65b10d0-e42b-42a1-bd28-892ae4d5c423  (1 rule(s)) ---------------------
-# Intent:    Attackers modifying Windows Firewall policies via CLI or COM interfaces to disab
-# Rules:     d65b10d0-e42b-42a1-bd28-892ae4d5c423
-# Archetype: User-driven workflow
+# Set profile configurations as part of baseline deployment
+Write-Host "Applying firewall profile hardening baseline..."
+Set-NetFirewallProfile -Profile Domain -Enabled $true -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue | Out-Null
+Set-NetFirewallProfile -Profile Private -Enabled $true -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue | Out-Null
 
-$ErrorActionPreference = 'SilentlyContinue'
+# Query and log all current rules for audit trail
+Write-Host "Auditing active firewall rules..."
+$allRules = Get-NetFirewallRule -ErrorAction SilentlyContinue | Select-Object -First 5
+foreach ($rule in $allRules) {
+    Write-Host "  Rule: $($rule.DisplayName) - Enabled: $($rule.Enabled)"
+}
 
-# Simulate user-initiated network connectivity troubleshooting workflow
-# Real users run diagnostics when experiencing network issues, and system
-# troubleshooting tools interact with firewall state
+# Enable a firewall rule group (e.g., Windows Defender)
+Write-Host "Enabling Windows Defender firewall rule group..."
+Enable-NetFirewallRule -DisplayGroup "Windows Defender" -ErrorAction SilentlyContinue | Out-Null
 
-# 1. User checks current firewall status during network troubleshooting
-Write-Host "[INFO] Checking firewall status for network troubleshooting..."
-Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table
+# Query firewall profile again post-hardening
+Write-Host "Verifying firewall profile state post-hardening..."
+$postProfiles = Get-NetFirewallProfile -ErrorAction SilentlyContinue
+foreach ($profile in $postProfiles) {
+    Write-Host "  Profile: $($profile.Name) - Enabled: $($profile.Enabled)"
+}
 
-# 2. User enables detailed firewall logging for diagnostics
-Write-Host "[INFO] Enabling firewall logging for network diagnosis..."
-Set-NetFirewallProfile -LogFileName "$env:SystemRoot\System32\LogFiles\Firewall\pfirewall.log" -LogMaxSizeKilobytes 4096
+# Clean up temporary test rule
+Write-Host "Removing temporary test rule..."
+Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Out-Null
 
-# 3. User verifies Remote Desktop connectivity by checking firewall rules
-Write-Host "[INFO] Checking Remote Desktop firewall rules..."
-Get-NetFirewallRule -DisplayName "*Remote Desktop*" | Format-Table DisplayName, Enabled, Direction
+Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Firewall policy audit and hardening completed."
 
-# 4. User attempts to enable RDP firewall exception if disabled
-Write-Host "[INFO] Verifying RDP is allowed through firewall..."
-Enable-NetFirewallRule -DisplayName "Remote Desktop - User Mode (TCP-In)" -ErrorAction SilentlyContinue
+# -- Cluster: singleton_f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d  (1 rule(s)) ---------------------
+# Intent:    Attackers disable or modify Windows Firewall rules to evade detection or allow m
+# Rules:     f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d
+# Archetype: Software installer/updater workflow
 
-# 5. User creates temporary diagnostic rule
-Write-Host "[INFO] Creating temporary diagnostics rule..."
-New-NetFirewallRule -DisplayName "DiagnosticsPing" -Direction Inbound -Action Allow -Protocol ICMP -ErrorAction SilentlyContinue
+$ProgressPreference = 'SilentlyContinue'
+Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Starting Enterprise Security Software installation workflow."
 
-# 6. User checks firewall state using both PowerShell and legacy netsh
-Write-Host "[INFO] Detailed firewall state check..."
-netsh advfirewall show allprofiles | Out-Null
+# Installer pre-flight check: query current firewall state
+Write-Host "Performing pre-installation firewall compatibility check..."
+$firewallStatus = Get-NetFirewallProfile -Profile Domain -ErrorAction SilentlyContinue
+if ($firewallStatus) {
+    Write-Host "  Firewall status: $($firewallStatus.Enabled)"
+}
 
-# 7. User disables the diagnostic rule after testing
-Write-Host "[INFO] Disabling diagnostic rule..."
-Disable-NetFirewallRule -DisplayName "DiagnosticsPing" -ErrorAction SilentlyContinue
+# Create installer-specific temporary rules required for setup
+Write-Host "Configuring firewall rules for software installation..."
+$installerPort = 9876
+$installerRuleName = "SecuritySoftware-Setup-$(Get-Random -Minimum 10000 -Maximum 99999)"
 
-# 8. User queries current inbound firewall action for troubleshooting documentation
-Write-Host "[INFO] Recording firewall policy state..."
-Get-NetFirewallProfile -PolicyStore ActiveStore | Select-Object Name, DefaultInboundAction, DefaultOutboundAction | Format-Table
+New-NetFirewallRule -DisplayName $installerRuleName `
+  -Direction Outbound `
+  -Action Allow `
+  -Protocol TCP `
+  -RemotePort $installerPort `
+  -RemoteAddress 127.0.0.1 `
+  -Enabled $true `
+  -ErrorAction SilentlyContinue | Out-Null
 
-# 9. User cleans up diagnostic rule
-Write-Host "[INFO] Removing diagnostic rule..."
-Remove-NetFirewallRule -DisplayName "DiagnosticsPing" -Confirm:$false -ErrorAction SilentlyContinue
+# Apply temporary profile relaxation during installation (common during setup)
+Write-Host "Temporarily adjusting firewall profile for installation..."
+Set-NetFirewallProfile -Profile Public -Enabled $true -NotifyOnListen $true -ErrorAction SilentlyContinue | Out-Null
 
-Write-Host "[INFO] Network troubleshooting diagnostics completed."
+# Create additional rule group for application functionality
+Write-Host "Enabling application-specific firewall rule groups..."
+Enable-NetFirewallRule -DisplayGroup "File and Printer Sharing" -ErrorAction SilentlyContinue | Out-Null
+Enable-NetFirewallRule -DisplayGroup "Windows Management Instrumentation (WMI)" -ErrorAction SilentlyContinue | Out-Null
+
+# Validate installed rules
+Write-Host "Validating installed firewall configuration..."
+$installedRules = Get-NetFirewallRule -DisplayName $installerRuleName -ErrorAction SilentlyContinue
+if ($installedRules) {
+    Write-Host "  Successfully configured rule: $installerRuleName"
+}
+
+# Post-installation cleanup: remove temporary setup rules
+Write-Host "Performing post-installation firewall cleanup..."
+Remove-NetFirewallRule -DisplayName $installerRuleName -ErrorAction SilentlyContinue | Out-Null
+
+# Restore default inbound action for all profiles
+Write-Host "Restoring default firewall policy..."
+Set-NetFirewallProfile -Profile Domain,Private,Public -DefaultInboundAction Block -ErrorAction SilentlyContinue | Out-Null
+
+Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Installation workflow and firewall configuration completed."
 
 
 # ===========================================================================

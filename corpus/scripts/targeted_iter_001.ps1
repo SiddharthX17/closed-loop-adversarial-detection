@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 1  |  Variants: 3
+# Clusters:   2  |  Feasible: 2  |  Variants: 5
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,276 +10,207 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_679f5a69-8c90-46aa-8146-031381014ef6  (1 rule(s)) ---------------------
-# Intent:    Detection of registry modifications to network profile category settings, which 
-# Rules:     679f5a69-8c90-46aa-8146-031381014ef6
+# -- Cluster: singleton_834e59e9-f73b-4e11-8173-bbe1dc5321e8  (1 rule(s)) ---------------------
+# Intent:    Attackers programmatically disable or modify Windows Firewall rules to permit ma
+# Rules:     834e59e9-f73b-4e11-8173-bbe1dc5321e8
 # Archetype: IT admin workflow
 
-# IT admin: Document and update network profile categories for compliance audit
-# This simulates a real admin maintenance task checking network profile settings
+# Scenario: Network security team audits and updates firewall rules for compliance
+# This represents a legitimate admin maintaining Windows Firewall configuration
 
-$AdminAuditLog = "$env:TEMP\network_profile_audit_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-
-# Query existing network profiles from registry
-$profilesPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
-
-if (Test-Path $profilesPath) {
-    Add-Content -Path $AdminAuditLog -Value "Network Profile Audit - $(Get-Date)"
-    Add-Content -Path $AdminAuditLog -Value "==============================================="
-
-    $profiles = Get-ChildItem -Path $profilesPath -ErrorAction SilentlyContinue
-
-    foreach ($profile in $profiles) {
-        $profileName = $profile.PSChildName
-        $categoryValue = (Get-ItemProperty -Path "$profilesPath\$profileName" -Name Category -ErrorAction SilentlyContinue).Category
-
-        Add-Content -Path $AdminAuditLog -Value "Profile: $profileName"
-        Add-Content -Path $AdminAuditLog -Value "  Category: $categoryValue"
-    }
-}
-
-# Create a test network profile entry for validation (simulating new network discovered)
-$testProfileGuid = '{AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB}'
-$testProfilePath = "$profilesPath\$testProfileGuid"
+$ErrorActionPreference = 'SilentlyContinue'
+$testRuleName = 'TestWebServerRule_' + (Get-Random -Minimum 10000 -Maximum 99999)
+$testRuleName2 = 'TestDatabaseRule_' + (Get-Random -Minimum 10000 -Maximum 99999)
 
 try {
-    # Create new registry entry if it doesn't exist
-    if (-not (Test-Path $testProfilePath)) {
-        New-Item -Path $testProfilePath -Force | Out-Null
-    }
+    # Legitimate scenario: Admin creates a new inbound rule for a web server service
+    # This generates the 'new-netfirewallrule' command-line artifact
+    New-NetFirewallRule -DisplayName $testRuleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080 -ErrorAction SilentlyContinue | Out-Null
 
-    # Set profile name
-    New-ItemProperty -Path $testProfilePath -Name "ProfileName" -Value "Test_Corporate_Network" -PropertyType String -Force | Out-Null
+    # Admin enables a specific rule group to allow corporate software communication
+    # This generates the 'enablerulegroup' artifact
+    Enable-NetFirewallRule -DisplayGroup "Windows Defender Firewall" -ErrorAction SilentlyContinue
 
-    # Set category to Private (1 = Private, 0 = Public, 2 = Domain Authenticated)
-    # This is a legitimate network classification admin task
-    New-ItemProperty -Path $testProfilePath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
+    # Legitimate scenario: Configure firewall profile for domain-joined machines
+    # Admin sets the domain profile to enforce specific policy
+    Set-NetFirewallProfile -Profile Domain -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue
 
-    Add-Content -Path $AdminAuditLog -Value "Created test profile: $testProfileGuid with Category=1 (Private)"
+    # Create another rule and enable it - part of routine compliance audit
+    New-NetFirewallRule -DisplayName $testRuleName2 -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3306 -ErrorAction SilentlyContinue | Out-Null
 
-    # Verify the write succeeded
-    $verifyCategory = (Get-ItemProperty -Path $testProfilePath -Name Category -ErrorAction SilentlyContinue).Category
-    Add-Content -Path $AdminAuditLog -Value "Verification: Category value = $verifyCategory"
+    # Admin enables the newly created database rule
+    Enable-NetFirewallRule -DisplayName $testRuleName2 -ErrorAction SilentlyContinue
+
+    # Reset profile to default after audit
+    Set-NetFirewallProfile -Profile Domain -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue
+
+    # Cleanup: Remove the test rules created during this maintenance cycle
+    Remove-NetFirewallRule -DisplayName $testRuleName -ErrorAction SilentlyContinue
+    Remove-NetFirewallRule -DisplayName $testRuleName2 -ErrorAction SilentlyContinue
 
 } catch {
-    Add-Content -Path $AdminAuditLog -Value "Error: $_"
+    # Continue on error to ensure cleanup runs
+    Write-Host "Operation completed"
 }
 
-# Cleanup: Remove test profile
-try {
-    if (Test-Path $testProfilePath) {
-        Remove-Item -Path $testProfilePath -Force -ErrorAction SilentlyContinue
-        Add-Content -Path $AdminAuditLog -Value "Cleanup: Removed test profile"
-    }
-} catch {
-    Add-Content -Path $AdminAuditLog -Value "Cleanup error: $_"
-}
+Write-Host "Firewall maintenance cycle completed"
 
-# Output audit completion
-Add-Content -Path $AdminAuditLog -Value "Audit completed at $(Get-Date)"
-
-# Display audit results
-Get-Content -Path $AdminAuditLog
-
-# Cleanup audit log
-Remove-Item -Path $AdminAuditLog -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_679f5a69-8c90-46aa-8146-031381014ef6  (1 rule(s)) ---------------------
-# Intent:    Detection of registry modifications to network profile category settings, which 
-# Rules:     679f5a69-8c90-46aa-8146-031381014ef6
+# -- Cluster: singleton_834e59e9-f73b-4e11-8173-bbe1dc5321e8  (1 rule(s)) ---------------------
+# Intent:    Attackers programmatically disable or modify Windows Firewall rules to permit ma
+# Rules:     834e59e9-f73b-4e11-8173-bbe1dc5321e8
 # Archetype: Software installer/updater workflow
 
-# Installer/Configuration workflow: Network connectivity tool post-install setup
-# This simulates a legitimate enterprise network optimization tool configuring profiles
+# Scenario: Windows Defender or security software post-installation configuration
+# Security tools legitimately modify firewall rules during setup/update as part of normal operation
 
-$InstallLog = "$env:TEMP\netconfig_setup_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+$ErrorActionPreference = 'SilentlyContinue'
+$defenderRuleName = 'Defender_Update_Service_' + (Get-Random -Minimum 10000 -Maximum 99999)
+$scanRuleName = 'Defender_Scan_Service_' + (Get-Random -Minimum 10000 -Maximum 99999)
 
-Add-Content -Path $InstallLog -Value "Network Connectivity Configuration Tool - Setup"
-Add-Content -Path $InstallLog -Value "Install time: $(Get-Date)"
-Add-Content -Path $InstallLog -Value "=========================================================="
+try {
+    # Simulate security software creating firewall rules for its update mechanisms
+    # This is typical of Windows Defender, Trend Micro, CrowdStrike, etc. during deployment
 
-$profilesPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
+    # Create rule for Defender update service communication
+    New-NetFirewallRule -DisplayName $defenderRuleName -Direction Outbound -Action Allow -Program "C:\Program Files\Windows Defender\MsMpEng.exe" -ErrorAction SilentlyContinue | Out-Null
 
-# Simulate installer discovering existing profiles and configuring them
-if (Test-Path $profilesPath) {
-    $profiles = Get-ChildItem -Path $profilesPath -ErrorAction SilentlyContinue
+    # Enable built-in Windows Defender firewall rules
+    Enable-NetFirewallRule -DisplayGroup "Windows Defender Firewall" -ErrorAction SilentlyContinue
 
-    foreach ($profile in $profiles) {
-        $profileGuid = $profile.PSChildName
-        $profilePath = "$profilesPath\$profileGuid"
+    # Create rule for real-time scanning engine
+    New-NetFirewallRule -DisplayName $scanRuleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5985 -ErrorAction SilentlyContinue | Out-Null
 
-        try {
-            # Verify profile exists and read current category
-            $currentCategory = (Get-ItemProperty -Path $profilePath -Name Category -ErrorAction SilentlyContinue).Category
+    # Set firewall profile to ensure Defender functions in all scenarios
+    Set-NetFirewallProfile -Profile Public -DefaultInboundAction Block -ErrorAction SilentlyContinue
 
-            if ($null -ne $currentCategory) {
-                Add-Content -Path $InstallLog -Value "Configuring profile $profileGuid"
-                Add-Content -Path $InstallLog -Value "  Current category: $currentCategory"
+    # Enable the scan service rule
+    Enable-NetFirewallRule -DisplayName $scanRuleName -ErrorAction SilentlyContinue
 
-                # Installer applies security policy: ensure all discovered networks are at least Private
-                # This is a realistic post-install configuration step
-                if ($currentCategory -ne 1) {
-                    New-ItemProperty -Path $profilePath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
-                    Add-Content -Path $InstallLog -Value "  Updated category to 1 (Private) for security"
-                }
-            }
-        } catch {
-            Add-Content -Path $InstallLog -Value "  Warning: Could not update profile - $_"
-        }
-    }
+    # Configure advanced security settings via netsh (as some installers do)
+    # This generates the 'advfirewall' command-line artifacts
+    cmd /c "netsh advfirewall firewall show allprofiles" | Out-Null
+
+    # Cleanup: Remove test rules
+    Remove-NetFirewallRule -DisplayName $defenderRuleName -ErrorAction SilentlyContinue
+    Remove-NetFirewallRule -DisplayName $scanRuleName -ErrorAction SilentlyContinue
+
+} catch {
+    Write-Host "Security software firewall configuration completed"
 }
 
-# Create installer-managed profile entries
-Add-Content -Path $InstallLog -Value ""
-Add-Content -Path $InstallLog -Value "Creating managed network profile entries..."
+Write-Host "Security software firewall rules configured"
 
-for ($i = 1; $i -le 2; $i++) {
-    $managedGuid = "{CCCCCCCC-$('{0:D4}' -f $i)-5555-6666-DDDDDDDDDDDD}"
-    $managedProfilePath = "$profilesPath\$managedGuid"
+# -- Cluster: singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9  (1 rule(s)) ---------------------
+# Intent:    Disabling IIS HTTP request logging to evade detection of web-based attack activi
+# Rules:     56d235eb-8663-4eb8-b271-5f6801bb90e9
+# Archetype: IT admin workflow
 
-    try {
-        if (-not (Test-Path $managedProfilePath)) {
-            New-Item -Path $managedProfilePath -Force | Out-Null
-        }
+$iisPath = "C:\Windows\System32\inetsrv"
+$appcmdExe = Join-Path $iisPath "appcmd.exe"
 
-        # Set managed profile attributes
-        New-ItemProperty -Path $managedProfilePath -Name "ProfileName" -Value "ManagedNetwork_$i" -PropertyType String -Force | Out-Null
-        New-ItemProperty -Path $managedProfilePath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
-        New-ItemProperty -Path $managedProfilePath -Name "Description" -Value "Managed by NetOptimizer" -PropertyType String -Force | Out-Null
-
-        Add-Content -Path $InstallLog -Value "Created managed profile: $managedGuid"
-    } catch {
-        Add-Content -Path $InstallLog -Value "Error creating managed profile: $_"
-    }
+# Check if IIS is installed
+if (-not (Test-Path $appcmdExe)) {
+    Write-Host "IIS appcmd not found; IIS may not be installed on this system"
+    exit 0
 }
 
-# Cleanup managed profiles
-Add-Content -Path $InstallLog -Value ""
-Add-Content -Path $InstallLog -Value "Cleaning up installation artifacts..."
-
-for ($i = 1; $i -le 2; $i++) {
-    $managedGuid = "{CCCCCCCC-$('{0:D4}' -f $i)-5555-6666-DDDDDDDDDDDD}"
-    $managedProfilePath = "$profilesPath\$managedGuid"
-
-    try {
-        if (Test-Path $managedProfilePath) {
-            Remove-Item -Path $managedProfilePath -Force -ErrorAction SilentlyContinue
-            Add-Content -Path $InstallLog -Value "Removed temporary profile: $managedGuid"
-        }
-    } catch {
-        Add-Content -Path $InstallLog -Value "Cleanup error: $_"
-    }
+# Query current HTTP logging status for audit purposes
+Write-Host "[Compliance Review] Auditing HTTP logging configuration..."
+& $appcmdExe list apppool /text:name | ForEach-Object {
+    Write-Host "Checking app pool: $_"
 }
 
-Add-Content -Path $InstallLog -Value ""
-Add-Content -Path $InstallLog -Value "Setup completed at $(Get-Date)"
+# Temporarily disable HTTP logging on the Default Web Site for a maintenance window
+Write-Host "[Maintenance] Disabling HTTP logging on Default Web Site during scheduled maintenance..."
+& $appcmdExe set site "Default Web Site" /httplogging.dontlog:true
 
-# Output log
-Get-Content -Path $InstallLog
+# Verify the change
+Write-Host "[Verification] Current logging status:"
+& $appcmdExe list site "Default Web Site" /text:httplogging.dontlog
 
-# Cleanup
-Remove-Item -Path $InstallLog -Force -ErrorAction SilentlyContinue
+# Restore HTTP logging after maintenance
+Start-Sleep -Seconds 2
+Write-Host "[Compliance] Re-enabling HTTP logging..."
+& $appcmdExe set site "Default Web Site" /httplogging.dontlog:false
 
-# -- Cluster: singleton_679f5a69-8c90-46aa-8146-031381014ef6  (1 rule(s)) ---------------------
-# Intent:    Detection of registry modifications to network profile category settings, which 
-# Rules:     679f5a69-8c90-46aa-8146-031381014ef6
+# Final verification
+Write-Host "[Verification] Final logging status:"
+& $appcmdExe list site "Default Web Site" /text:httplogging.dontlog
+
+Write-Host "Compliance review and maintenance completed."
+
+# -- Cluster: singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9  (1 rule(s)) ---------------------
+# Intent:    Disabling IIS HTTP request logging to evade detection of web-based attack activi
+# Rules:     56d235eb-8663-4eb8-b271-5f6801bb90e9
+# Archetype: Software installer/updater workflow
+
+$iisPath = "C:\Windows\System32\inetsrv"
+$appcmdExe = Join-Path $iisPath "appcmd.exe"
+
+# Check if IIS is installed
+if (-not (Test-Path $appcmdExe)) {
+    Write-Host "IIS appcmd not found; IIS may not be installed on this system"
+    exit 0
+}
+
+# Simulate deployment automation adjusting IIS settings
+Write-Host "[Deployment] Configuring IIS for application initialization..."
+
+# Disable logging during setup phase for performance
+Write-Host "[Setup Phase] Temporarily reducing I/O overhead by disabling HTTP logging..."
+& $appcmdExe set apppool "DefaultAppPool" /processModel.idleTimeout:00:20:00
+
+# Apply HTTP logging configuration update
+& $appcmdExe set site "Default Web Site" /httplogging.enabled:true
+& $appcmdExe set site "Default Web Site" /httplogging.dontlog:true
+
+Start-Sleep -Seconds 3
+
+# Re-enable logging as part of post-deployment verification
+Write-Host "[Post-Deployment] Re-enabling HTTP logging for production..."
+& $appcmdExe set site "Default Web Site" /httplogging.dontlog:false
+
+Write-Host "Application initialization completed."
+
+# -- Cluster: singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9  (1 rule(s)) ---------------------
+# Intent:    Disabling IIS HTTP request logging to evade detection of web-based attack activi
+# Rules:     56d235eb-8663-4eb8-b271-5f6801bb90e9
 # Archetype: User-driven workflow
 
-# User-driven workflow: Enterprise network configuration utility
-# Simulates a user running network settings configuration tool that manages profiles
+$iisPath = "C:\Windows\System32\inetsrv"
+$appcmdExe = Join-Path $iisPath "appcmd.exe"
 
-$ConfigLog = "$env:TEMP\network_config_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-
-Add-Content -Path $ConfigLog -Value "Network Configuration Tool - User Session"
-Add-Content -Path $ConfigLog -Value "Started: $(Get-Date)"
-Add-Content -Path $ConfigLog -Value "========================================================"
-
-$profilesPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles'
-
-# First, enumerate all current profiles like a UI would show them
-Add-Content -Path $ConfigLog -Value "Discovered Network Profiles:"
-Add-Content -Path $ConfigLog -Value ""
-
-if (Test-Path $profilesPath) {
-    $allProfiles = Get-ChildItem -Path $profilesPath -ErrorAction SilentlyContinue
-    $profileCount = 0
-
-    foreach ($profile in $allProfiles) {
-        $profileGuid = $profile.PSChildName
-        $props = Get-ItemProperty -Path "$profilesPath\$profileGuid" -ErrorAction SilentlyContinue
-        $profileName = $props.ProfileName
-        $category = $props.Category
-
-        $categoryLabel = switch ($category) {
-            0 { "Public" }
-            1 { "Private" }
-            2 { "Domain" }
-            default { "Unknown" }
-        }
-
-        Add-Content -Path $ConfigLog -Value "[$profileCount] $profileName (GUID: $profileGuid)"
-        Add-Content -Path $ConfigLog -Value "     Current category: $categoryLabel"
-        $profileCount++
-    }
+# Check if IIS is installed
+if (-not (Test-Path $appcmdExe)) {
+    Write-Host "IIS appcmd not found; IIS may not be installed on this system"
+    exit 0
 }
 
-Add-Content -Path $ConfigLog -Value ""
-Add-Content -Path $ConfigLog -Value "User selects network to reclassify and applies new configuration..."
-Add-Content -Path $ConfigLog -Value ""
+# Developer debugging workflow
+Write-Host "[Development] Troubleshooting IIS application performance..."
 
-# Simulate user selection and configuration change
-# Create a temporary test profile to simulate a discovered/new network
-$testGuid = '{EEEEEEEE-7777-8888-9999-FFFFFFFFFFFF}'
-$testPath = "$profilesPath\$testGuid"
+# List current app pools for context
+Write-Host "[Info] Current application pools:"
+& $appcmdExe list apppool /text:name
 
-try {
-    # Create test profile
-    if (-not (Test-Path $testPath)) {
-        New-Item -Path $testPath -Force | Out-Null
-    }
+# Disable HTTP logging on staging site to reduce I/O during debugging
+Write-Host "[Debugging] Disabling HTTP logging on staging site for cleaner diagnostic output..."
+& $appcmdExe set site "Default Web Site" /httplogging.dontlog:true
 
-    New-ItemProperty -Path $testPath -Name "ProfileName" -Value "Guest_WiFi_Network" -PropertyType String -Force | Out-Null
+Write-Host "[Test] Executing diagnostic queries..."
+Start-Sleep -Seconds 2
 
-    # Initial category (Public)
-    New-ItemProperty -Path $testPath -Name "Category" -Value 0 -PropertyType DWord -Force | Out-Null
+# Query IIS configuration
+& $appcmdExe list config "Default Web Site" /section:httplogging
 
-    Add-Content -Path $ConfigLog -Value "Selected network: Guest_WiFi_Network"
-    Add-Content -Path $ConfigLog -Value "Current setting: Public (0)"
-    Add-Content -Path $ConfigLog -Value "User action: Change to Private for better security"
+Start-Sleep -Seconds 1
 
-    # User reclassifies the network (realistic scenario)
-    New-ItemProperty -Path $testPath -Name "Category" -Value 1 -PropertyType DWord -Force | Out-Null
+# Re-enable logging for production readiness
+Write-Host "[Cleanup] Re-enabling HTTP logging for production deployment..."
+& $appcmdExe set site "Default Web Site" /httplogging.dontlog:false
 
-    $verifyNew = (Get-ItemProperty -Path $testPath -Name Category -ErrorAction SilentlyContinue).Category
-    Add-Content -Path $ConfigLog -Value "Applied change: Category = $verifyNew (Private)"
+Write-Host "Debugging session completed."
 
-} catch {
-    Add-Content -Path $ConfigLog -Value "Configuration error: $_"
-}
-
-# Cleanup
-Add-Content -Path $ConfigLog -Value ""
-Add-Content -Path $ConfigLog -Value "Cleaning up temporary configuration entries..."
-
-try {
-    if (Test-Path $testPath) {
-        Remove-Item -Path $testPath -Force -ErrorAction SilentlyContinue
-        Add-Content -Path $ConfigLog -Value "Removed temporary profile entry"
-    }
-} catch {
-    Add-Content -Path $ConfigLog -Value "Cleanup error: $_"
-}
-
-Add-Content -Path $ConfigLog -Value ""
-Add-Content -Path $ConfigLog -Value "Session ended: $(Get-Date)"
-
-# Display log
-Get-Content -Path $ConfigLog
-
-# Cleanup log file
-Remove-Item -Path $ConfigLog -Force -ErrorAction SilentlyContinue
-
-# SKIPPED cluster singleton_8ea72355-9c48-4b99-8f31-4026fcad0f19: LLM response truncated at max_tokens (4096)
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

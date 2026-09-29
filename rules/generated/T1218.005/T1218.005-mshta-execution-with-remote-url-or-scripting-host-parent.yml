@@ -1,0 +1,34 @@
+title: "Mshta Execution with Remote URL or Scripting-Host Parent"
+id: e3527e5e-b29b-4913-9d7b-28e156610827
+status: experimental
+description: "Detects mshta.exe invoked with a remote HTTP/HTTPS URL argument, or spawned by a scripting interpreter (cmd.exe, wscript.exe, cscript.exe, powershell.exe), both of which are strong indicators of HTA-based defense evasion or multi-stage dropper execution."
+references:
+    - https://attack.mitre.org/techniques/T1218/005/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.defense-evasion
+    - attack.t1218.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+      Image|endswith: '\mshta.exe'
+    selection_url:
+      CommandLine|contains:
+        - 'http://'
+        - 'https://'
+    selection_parent:
+      ParentImage|endswith:
+        - '\cmd.exe'
+        - '\wscript.exe'
+        - '\cscript.exe'
+        - '\powershell.exe'
+        - '\powershell_ise.exe'
+    condition: selection_img and (selection_url or selection_parent)
+falsepositives:
+    - "Legitimate internal HTA-based kiosk or administrative GUI tools that are launched from a scripting interpreter as part of logon scripts or software deployment automation."
+    - "Rare legacy enterprise applications that fetch HTA content over HTTP/HTTPS from an internal server — if identified, exempt by the specific internal hostname/IP in CommandLine rather than broadly excluding URL patterns."
+    - "Software installers or update mechanisms that stage and execute temporary HTA files via a scripting host; if confirmed benign, scope any exclusion to the specific signed vendor path or file hash referenced in CommandLine, not the parent process or staging directory generally."
+level: high

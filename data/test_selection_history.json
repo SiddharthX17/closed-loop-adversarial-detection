@@ -105,6 +105,18 @@
     "981e2942-e433-44e9-afc1-8c957a1496b6": {
       "runs_seen": 1,
       "rule_generated": true
+    },
+    "ed366cde-7d12-49df-a833-671904770b9f": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "1f896ce4-8070-4959-8a25-2658856a70c9": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "491a4af6-a521-4b74-b23b-f7b3f1ee9e77": {
+      "runs_seen": 1,
+      "rule_generated": true
     }
   },
   "T1059.001": {
@@ -175,6 +187,130 @@
   },
   "T1486": {
     "ab3f793f-2dcc-4da5-9c71-34988307263f": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1003.003": {
+    "224f7de0-8f0a-4a94-b5d8-989b036c86da": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "21c7bf80-3e8b-40fa-8f9d-f5b194ff2865": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "d893459f-71f0-484d-9808-ec83b2b64226": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "2364e33d-ceab-4641-8468-bfb1d7cc2723": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "b385996c-0e7d-4e27-95a4-aca046b119a7": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1021.006": {
+    "efe86d95-44c4-4509-ae42-7bfd9d1f5b3d": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "5295bd61-bd7e-4744-9d52-85962a4cf2d6": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "9059e8de-3d7d-4954-a322-46161880b9cf": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1552.001": {
+    "c9dc9de3-f961-4284-bd2d-f959c9f9fda5": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "114dd4e3-8d1c-4ea7-bb8d-8d8f6aca21f0": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "fdd0c913-714b-4c13-b40f-1824d6c015f2": {
+      "runs_seen": 1,
+      "rule_generated": false
+    }
+  },
+  "T1204.002": {
+    "3f3120f0-7e50-4be2-88ae-54c61230cb9f": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "add560ef-20d6-4011-a937-2c340f930911": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "8bebc690-18c7-4549-bc98-210f7019efff": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "3f3af983-118a-4fa1-85d3-ba4daa739d80": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "4ea1fc97-8a46-4b4e-ba48-af43d2a98052": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "5202ee05-c420-4148-bf5e-fd7f7d24850c": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1219": {
+    "b025c580-029e-4023-888d-a42710d76934": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1218.005": {
+    "8707a805-2b76-4f32-b1c0-14e558205772": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "007e5672-2088-4853-a562-7490ddc19447": {
+      "runs_seen": 1,
+      "rule_generated": true
+    }
+  },
+  "T1686.003": {
+    "0ef45922-1cd8-4211-8595-3cb3bd87f5d8": {
+      "runs_seen": 3,
+      "rule_generated": true
+    },
+    "f4e1a3bf-8b50-4967-a225-b6c383019e07": {
+      "runs_seen": 2,
+      "rule_generated": true
+    }
+  },
+  "T1685.001": {
+    "8e81d090-0cd6-4d46-863c-eec11311298f": {
+      "runs_seen": 1,
+      "rule_generated": false
+    },
+    "41ac52ba-5d5e-40c0-b267-573ed90489bd": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "85e6eff8-3ed4-4e03-ae50-aa6a404898a5": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "69435dcf-c66f-4ec0-a8b1-82beb76b34db": {
+      "runs_seen": 1,
+      "rule_generated": true
+    },
+    "a0cb81f8-44d0-4ac4-a8f3-c5c7f43a12c1": {
       "runs_seen": 1,
       "rule_generated": true
     }

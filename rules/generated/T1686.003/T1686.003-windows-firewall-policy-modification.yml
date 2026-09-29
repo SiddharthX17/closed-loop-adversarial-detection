@@ -1,0 +1,52 @@
+title: "T1686.003-Windows-Firewall-Policy-Modification"
+id: 7f18ec67-b008-46f2-bcf6-b897f77bbc03
+status: experimental
+description: "Detects process command lines that manipulate Windows Firewall policy via the HNetCfg.FwPolicy2 COM object, netsh advfirewall, or PowerShell NetSecurity cmdlets to disable or weaken firewall protections, regardless of which interpreter or wrapper script invokes them."
+references:
+    - https://attack.mitre.org/techniques/T1686/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.defense-impairment
+    - attack.t1686.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_com:
+      CommandLine|contains:
+        - 'FwPolicy2'
+        - 'EnableRuleGroup'
+        - 'DisableRuleGroup'
+    selection_netsh:
+      CommandLine|contains|all:
+        - 'advfirewall'
+      CommandLine|contains:
+        - 'set allprofiles state off'
+        - 'set currentprofile state off'
+        - 'set publicprofile state off'
+        - 'set privateprofile state off'
+        - 'set domainprofile state off'
+        - 'firewall set opmode disable'
+        - 'add allowedprogram'
+    selection_ps:
+      CommandLine|contains:
+        - 'Set-NetFirewallProfile'
+        - 'Set-NetFirewallRule'
+      CommandLine|contains:
+        - '-Enabled False'
+        - '-Enabled:$false'
+        - '-Enabled $false'
+    filter_vendor_selfmanage:
+      Image|endswith:
+        - '\MsMpEng.exe'
+        - '\NisSrv.exe'
+      CommandLine|contains:
+        - 'EnableRuleGroup'
+        - 'DisableRuleGroup'
+    condition: (selection_com or selection_netsh or selection_ps) and not filter_vendor_selfmanage
+falsepositives:
+    - "Legitimate administrative or IT provisioning scripts running netsh advfirewall or PowerShell NetSecurity cmdlets to configure firewall profiles/rules during deployment or troubleshooting"
+    - "Security or endpoint management software self-managing its own firewall rule groups via EnableRuleGroup/DisableRuleGroup (partially filtered here only when the calling Image is a known signed vendor binary such as MsMpEng.exe/NisSrv.exe; other vendors are not covered and may require separate identity-based tuning)"
+    - "Group Policy or SCCM-pushed configuration scripts that toggle firewall profile state as part of standard baseline enforcement — not filtered here since these typically execute via generic script hosts (cmd/powershell) indistinguishable from attacker-driven invocations without additional context"
+level: medium

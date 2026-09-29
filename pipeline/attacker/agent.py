@@ -404,6 +404,7 @@ def _call_llm(prompt: str, client: anthropic.Anthropic) -> dict | None:
     try:
         response = create_with_retry(
             client,
+            model=MODEL,
             max_tokens=2048,
             temperature=TEMPERATURE,
             messages=[{"role": "user", "content": prompt}],

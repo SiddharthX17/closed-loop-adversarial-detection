@@ -10,140 +10,143 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_c380a957-a8b3-4845-9aac-337cc41868f5  (1 rule(s)) ---------------------
-# Intent:    Attackers hijacking Windows service ImagePath registry values to point to script
-# Rules:     c380a957-a8b3-4845-9aac-337cc41868f5
+# -- Cluster: singleton_241ac331-aa8d-40de-9945-e9164c7a23e2  (1 rule(s)) ---------------------
+# Intent:    Detect when a service (services.exe or svchost.exe) spawns a child process that 
+# Rules:     241ac331-aa8d-40de-9945-e9164c7a23e2
 # Archetype: IT admin workflow
 
-# Admin task: Configure custom service for log aggregation
-$ServiceName = 'CustomLogAggregator'
-$ServicePath = "C:\Windows\System32\svchost.exe"
-$TestScriptPath = Join-Path $env:TEMP 'aggregator_service.ps1'
+# Create a mock remote server backup share path simulation
+# This represents a legitimate backup agent writing via administrative shares
 
-# Create a benign PowerShell script that the service would execute
-$ScriptContent = @'
-# Log aggregation script
-Write-Host "Service started"
-$LogPath = Join-Path $env:TEMP "service_logs.txt"
-Add-Content -Path $LogPath -Value "$(Get-Date): Service activity logged"
-'@
+# Start a dummy service process context simulation
+# In real scenarios, Windows Backup Service (svchost.exe) spawns robocopy
+# to enumerate and copy files from remote admin shares.
 
-$ScriptContent | Out-File -FilePath $TestScriptPath -Encoding UTF8 -Force
-
-try {
-    # Simulate registry operation: Set service ImagePath (demonstrates detection pattern)
-    # Real services use this structure: ImagePath = "C:\path\to\service.exe -parameters"
-    # In this case, we're configuring a service that uses PowerShell for administrative tasks
-    $ServiceRegPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\CustomLogAggregator'
-
-    # Only proceed if we have admin rights and registry path is accessible
-    if (-not (Test-Path $ServiceRegPath)) {
-        New-Item -Path $ServiceRegPath -Force -ErrorAction SilentlyContinue | Out-Null
-    }
-
-    # Set ImagePath that triggers detection: PowerShell with script invocation
-    $ImagePathValue = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$TestScriptPath\""
-
-    reg.exe add "HKLM\SYSTEM\CurrentControlSet\Services\CustomLogAggregator" /v "ImagePath" /t REG_SZ /d "$ImagePathValue" /f 2>$null
-
-    # Alternative: use -enc parameter (base64 encoded command) - another detection pattern
-    $CommandString = "Get-EventLog -LogName System -Newest 10 | ConvertTo-Json"
-    $EncodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($CommandString))
-    $ImagePathEncoded = "powershell.exe -enc $EncodedCommand"
-
-    reg.exe add "HKLM\SYSTEM\CurrentControlSet\Services\CustomLogAggregator" /v "ImagePath" /t REG_SZ /d "$ImagePathEncoded" /f 2>$null
-
-    # Verify the registry modification was recorded
-    Start-Sleep -Milliseconds 100
-
-    # Registry cleanup
-    reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\CustomLogAggregator" /f 2>$null
-
-} finally {
-    # Clean up test script
-    if (Test-Path $TestScriptPath) {
-        Remove-Item -Path $TestScriptPath -Force -ErrorAction SilentlyContinue
-    }
+$backupRoot = $env:TEMP + "\backup_staging"
+if (-not (Test-Path $backupRoot)) {
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
 }
 
-# -- Cluster: singleton_c380a957-a8b3-4845-9aac-337cc41868f5  (1 rule(s)) ---------------------
-# Intent:    Attackers hijacking Windows service ImagePath registry values to point to script
-# Rules:     c380a957-a8b3-4845-9aac-337cc41868f5
+# Simulate a backup job that would reference admin shares
+# The command line legitimately contains \\server\admin$\ paths
+$serverName = "dummy-backup-srv"
+$remoteAdminShare = "\\\\${serverName}\\admin$\\"
+$remoteC = "\\\\${serverName}\\c$\\"
+$remoteIPC = "\\\\${serverName}\\ipc$\\"
+
+# Create backup manifest documenting remote paths that would be accessed
+$manifestPath = Join-Path $backupRoot "backup_manifest.txt"
+@"
+Backup Manifest - Administrative Shares Access Log
+Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Backup Job ID: BackupSet-20240115-Full
+
+Configured remote backup sources:
+  Source 1: $remoteAdminShare
+  Source 2: $remoteC
+  Source 3: $remoteIPC
+
+These paths are accessed by the backup service during incremental backup operations.
+"@ | Out-File -FilePath $manifestPath -Encoding ASCII
+
+# Simulate Windows Backup invoking a copy operation to these shares
+# The robocopy invocation would appear with the admin share paths in CommandLine
+# This is realistic backup software behavior
+$robocopyCmd = "robocopy.exe \"$remoteAdminShare\" \"$backupRoot\\admin_share\" /E /Z /NFL /NDL /NJS /NJH /NP /TEE"
+Write-Host "[Backup Service] Executing backup job with remote paths..."
+Write-Host "Command: $robocopyCmd"
+
+# In actual operation, svchost.exe would spawn robocopy
+# We simulate the logging and manifest creation that occurs
+$jobLog = Join-Path $backupRoot "backup_job.log"
+@"
+[$(Get-Date -Format 'HH:mm:ss')] Backup Service initiated
+[$(Get-Date -Format 'HH:mm:ss')] Connecting to $serverName
+[$(Get-Date -Format 'HH:mm:ss')] Accessing $remoteAdminShare
+[$(Get-Date -Format 'HH:mm:ss')] Accessing $remoteC
+[$(Get-Date -Format 'HH:mm:ss')] Backup Job Started
+[$(Get-Date -Format 'HH:mm:ss')] Enumerated 512 files from remote shares
+[$(Get-Date -Format 'HH:mm:ss')] Backup Job Completed
+"@ | Out-File -FilePath $jobLog -Encoding ASCII
+
+# Verify files were created
+if (Test-Path $manifestPath) {
+    Write-Host "[OK] Backup manifest created"
+}
+
+# Clean up
+Remove-Item -Path $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+# -- Cluster: singleton_241ac331-aa8d-40de-9945-e9164c7a23e2  (1 rule(s)) ---------------------
+# Intent:    Detect when a service (services.exe or svchost.exe) spawns a child process that 
+# Rules:     241ac331-aa8d-40de-9945-e9164c7a23e2
 # Archetype: Software installer/updater workflow
 
-# Software deployment automation: Register helper services via registry
-# Simulates enterprise configuration management or deployment tool behavior
+# Simulate enterprise software deployment workflow that uses admin shares
+# This represents SCCM or similar deployment agent writing to remote admin shares
 
-$HelperServices = @(
-    @{
-        ServiceName = 'DeprecatedHelper1'
-        ScriptType = 'cmd.exe'
-    },
-    @{
-        ServiceName = 'LegacyConfigService'
-        ScriptType = 'wscript.exe'
-    }
+$deploymentRoot = $env:TEMP + "\deployment_work"
+if (-not (Test-Path $deploymentRoot)) {
+    New-Item -ItemType Directory -Path $deploymentRoot -Force | Out-Null
+}
+
+# Create deployment manifest that references target admin shares
+$targetServer = "deploy-target-01"
+$deployTargets = @(
+    "\\\\${targetServer}\\admin$\\",
+    "\\\\${targetServer}\\c$\\",
+    "\\\\${targetServer}\\ipc$\\"
 )
 
-try {
-    foreach ($Service in $HelperServices) {
-        $RegPath = "HKLM\SYSTEM\CurrentControlSet\Services\$($Service.ServiceName)"
+# Write deployment configuration
+$deployConfig = Join-Path $deploymentRoot "deploy_config.xml"
+@"
+<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<DeploymentJob>
+  <JobID>DEPLOY-2024-01-15-A</JobID>
+  <ServiceAccount>NT AUTHORITY\\SYSTEM</ServiceAccount>
+  <Targets>
+    <Target path=\"$($deployTargets[0])\" type=\"system\" />
+    <Target path=\"$($deployTargets[1])\" type=\"filesystem\" />
+    <Target path=\"$($deployTargets[2])\" type=\"ipc\" />
+  </Targets>
+  <Payload>
+    <Package>SystemUpdate-v1.2.3.exe</Package>
+    <Hash>a1b2c3d4e5f6g7h8i9j0</Hash>
+    <Size>52428800</Size>
+  </Payload>
+</DeploymentJob>
+"@ | Out-File -FilePath $deployConfig -Encoding ASCII
 
-        # Create service registry entry if it does not exist
-        if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\$($Service.ServiceName)")) {
-            New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$($Service.ServiceName)" -Force -ErrorAction SilentlyContinue | Out-Null
-        }
+# Simulate the installer writing status to admin shares
+$statusLog = Join-Path $deploymentRoot "deployment_log.txt"
+@"
+Deployment Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Deployment Service PID: 1024
+Parent Process: services.exe
 
-        # Set ImagePath using reg.exe - typical installer behavior
-        # This represents the detection pattern: reg.exe + binpath + scripting interpreter
-        $ImagePath = "$($Service.ScriptType) /c echo Configuration applied"
-        reg.exe add $RegPath /v "ImagePath" /t REG_SZ /d "$ImagePath" /f 2>$null
+Connecting to deployment targets:
+  Target 1: $($deployTargets[0]) - Status: CONNECTING
+  Target 2: $($deployTargets[1]) - Status: CONNECTING
+  Target 3: $($deployTargets[2]) - Status: CONNECTING
 
-        # Add service parameters
-        reg.exe add $RegPath /v "Type" /t REG_DWORD /d "16" /f 2>$null
-        reg.exe add $RegPath /v "Start" /t REG_DWORD /d "3" /f 2>$null
+Transfer Status:
+  Payload stage 1 -> $($deployTargets[0])setup.exe - 25 MB copied
+  Payload stage 2 -> $($deployTargets[1])setup.exe - 25 MB copied
+  Configuration -> $($deployTargets[2])config.ini - 1.5 KB copied
 
-        Start-Sleep -Milliseconds 50
-    }
+Deployment Status: COMPLETED
+Total Time: 2m 34s
+"@ | Out-File -FilePath $statusLog -Encoding ASCII
 
-    # Also demonstrate cscript.exe in ImagePath (another detection variant)
-    $CSCriptServicePath = "HKLM\SYSTEM\CurrentControlSet\Services\ConfigurationHelper"
-    if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\ConfigurationHelper")) {
-        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\ConfigurationHelper" -Force -ErrorAction SilentlyContinue | Out-Null
-    }
+# Create package manifest
+$packageManifest = Join-Path $deploymentRoot "package_manifest.txt"
+Get-Content $statusLog | Out-File -FilePath $packageManifest -Encoding ASCII
 
-    $CScriptImagePath = "cscript.exe //E:vbscript //Nologo \"C:\Windows\System32\config.vbs\""
-    reg.exe add $CSCriptServicePath /v "ImagePath" /t REG_SZ /d "$CScriptImagePath" /f 2>$null
+Write-Host "[Deployment Service] Package distribution to remote admin shares completed"
 
-    # Demonstrate mshta.exe and rundll32.exe patterns
-    $MshtaServicePath = "HKLM\SYSTEM\CurrentControlSet\Services\MHTAHelper"
-    if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\MHTAHelper")) {
-        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\MHTAHelper" -Force -ErrorAction SilentlyContinue | Out-Null
-    }
-
-    $MshtaImagePath = "mshta.exe \"javascript:void(0)\""
-    reg.exe add $MshtaServicePath /v "ImagePath" /t REG_SZ /d "$MshtaImagePath" /f 2>$null
-
-    $RundllServicePath = "HKLM\SYSTEM\CurrentControlSet\Services\RundllHelper"
-    if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\RundllHelper")) {
-        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\RundllHelper" -Force -ErrorAction SilentlyContinue | Out-Null
-    }
-
-    $RundllImagePath = "rundll32.exe shell32.dll,ShellAbout"
-    reg.exe add $RundllServicePath /v "ImagePath" /t REG_SZ /d "$RundllImagePath" /f 2>$null
-
-    Start-Sleep -Milliseconds 100
-
-} finally {
-    # Clean up all created service registry entries
-    foreach ($Service in $HelperServices) {
-        reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\$($Service.ServiceName)" /f 2>$null
-    }
-
-    reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\ConfigurationHelper" /f 2>$null
-    reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\MHTAHelper" /f 2>$null
-    reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\RundllHelper" /f 2>$null
-}
+# Clean up
+Remove-Item -Path $deploymentRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 
 # ===========================================================================

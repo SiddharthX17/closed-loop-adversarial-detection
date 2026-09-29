@@ -1,0 +1,36 @@
+title: "Windows Firewall Manipulation via COM API or Firewall Cmdlets"
+id: f3b6610c-0a01-4c1f-823e-e4a6d6ba8b0d
+status: experimental
+description: "Detects process command lines referencing the HNetCfg.FwPolicy2/INetFwPolicy2 firewall COM interface, EnableRuleGroup calls, or Set-NetFirewallProfile/Rule cmdlets, which are used to disable or weaken Windows Defender Firewall protections regardless of the hosting process (PowerShell, mshta, wscript, rundll32)."
+references:
+    - https://attack.mitre.org/techniques/T1686/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-30
+tags:
+    - attack.defense-impairment
+    - attack.t1686.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_com:
+      CommandLine|contains:
+        - 'HNetCfg.FwPolicy2'
+        - 'INetFwPolicy2'
+        - 'EnableRuleGroup'
+    selection_cmdlet:
+      CommandLine|contains:
+        - 'Set-NetFirewallProfile'
+        - 'Set-NetFirewallRule'
+    selection_netsh:
+      Image|endswith: '\netsh.exe'
+      CommandLine|contains: 'advfirewall'
+      CommandLine|contains:
+        - 'state off'
+        - 'set allprofiles'
+    condition: selection_com or selection_cmdlet or selection_netsh
+falsepositives:
+    - "Legitimate installer or administration software invoking the HNetCfg.FwPolicy2 COM interface or PowerShell firewall cmdlets to add or modify their own narrowly-scoped inbound rule (e.g., a signed installer opening a specific port for its own application) rather than disabling a profile or enabling broad discovery/sharing rule groups"
+    - "IT helpdesk, imaging, or RMM deployment scripts using netsh advfirewall to toggle firewall state for troubleshooting or provisioning purposes"
+    - "Group Policy or endpoint management tooling applying baseline firewall configuration changes via Set-NetFirewallProfile/Rule during legitimate system hardening or exception management"
+level: high

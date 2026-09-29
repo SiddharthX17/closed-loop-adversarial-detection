@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   1  |  Feasible: 1  |  Variants: 2
+# Clusters:   2  |  Feasible: 2  |  Variants: 5
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,143 +10,204 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_241ac331-aa8d-40de-9945-e9164c7a23e2  (1 rule(s)) ---------------------
-# Intent:    Detect when a service (services.exe or svchost.exe) spawns a child process that 
-# Rules:     241ac331-aa8d-40de-9945-e9164c7a23e2
+# -- Cluster: singleton_cb757e5e-f770-4521-9880-588aef1c902d  (1 rule(s)) ---------------------
+# Intent:    Detect when Service Control Manager spawns an interpreter (cmd, PowerShell, etc.
+# Rules:     cb757e5e-f770-4521-9880-588aef1c902d
 # Archetype: IT admin workflow
 
-# Create a mock remote server backup share path simulation
-# This represents a legitimate backup agent writing via administrative shares
+$ErrorActionPreference = 'Stop'
 
-# Start a dummy service process context simulation
-# In real scenarios, Windows Backup Service (svchost.exe) spawns robocopy
-# to enumerate and copy files from remote admin shares.
+# Create a temporary service configuration that will spawn PowerShell
+# to perform legitimate remote diagnostics collection
+$serviceName = 'DiagnosticSvc'
+$taskPath = 'Microsoft\Windows\Diagnostics\ScheduledMaintenance'
+$taskName = 'HealthCheckTask'
 
-$backupRoot = $env:TEMP + "\backup_staging"
-if (-not (Test-Path $backupRoot)) {
-    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-}
-
-# Simulate a backup job that would reference admin shares
-# The command line legitimately contains \\server\admin$\ paths
-$serverName = "dummy-backup-srv"
-$remoteAdminShare = "\\\\${serverName}\\admin$\\"
-$remoteC = "\\\\${serverName}\\c$\\"
-$remoteIPC = "\\\\${serverName}\\ipc$\\"
-
-# Create backup manifest documenting remote paths that would be accessed
-$manifestPath = Join-Path $backupRoot "backup_manifest.txt"
-@"
-Backup Manifest - Administrative Shares Access Log
-Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Backup Job ID: BackupSet-20240115-Full
-
-Configured remote backup sources:
-  Source 1: $remoteAdminShare
-  Source 2: $remoteC
-  Source 3: $remoteIPC
-
-These paths are accessed by the backup service during incremental backup operations.
-"@ | Out-File -FilePath $manifestPath -Encoding ASCII
-
-# Simulate Windows Backup invoking a copy operation to these shares
-# The robocopy invocation would appear with the admin share paths in CommandLine
-# This is realistic backup software behavior
-$robocopyCmd = "robocopy.exe \"$remoteAdminShare\" \"$backupRoot\\admin_share\" /E /Z /NFL /NDL /NJS /NJH /NP /TEE"
-Write-Host "[Backup Service] Executing backup job with remote paths..."
-Write-Host "Command: $robocopyCmd"
-
-# In actual operation, svchost.exe would spawn robocopy
-# We simulate the logging and manifest creation that occurs
-$jobLog = Join-Path $backupRoot "backup_job.log"
-@"
-[$(Get-Date -Format 'HH:mm:ss')] Backup Service initiated
-[$(Get-Date -Format 'HH:mm:ss')] Connecting to $serverName
-[$(Get-Date -Format 'HH:mm:ss')] Accessing $remoteAdminShare
-[$(Get-Date -Format 'HH:mm:ss')] Accessing $remoteC
-[$(Get-Date -Format 'HH:mm:ss')] Backup Job Started
-[$(Get-Date -Format 'HH:mm:ss')] Enumerated 512 files from remote shares
-[$(Get-Date -Format 'HH:mm:ss')] Backup Job Completed
-"@ | Out-File -FilePath $jobLog -Encoding ASCII
-
-# Verify files were created
-if (Test-Path $manifestPath) {
-    Write-Host "[OK] Backup manifest created"
-}
-
-# Clean up
-Remove-Item -Path $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_241ac331-aa8d-40de-9945-e9164c7a23e2  (1 rule(s)) ---------------------
-# Intent:    Detect when a service (services.exe or svchost.exe) spawns a child process that 
-# Rules:     241ac331-aa8d-40de-9945-e9164c7a23e2
-# Archetype: Software installer/updater workflow
-
-# Simulate enterprise software deployment workflow that uses admin shares
-# This represents SCCM or similar deployment agent writing to remote admin shares
-
-$deploymentRoot = $env:TEMP + "\deployment_work"
-if (-not (Test-Path $deploymentRoot)) {
-    New-Item -ItemType Directory -Path $deploymentRoot -Force | Out-Null
-}
-
-# Create deployment manifest that references target admin shares
-$targetServer = "deploy-target-01"
-$deployTargets = @(
-    "\\\\${targetServer}\\admin$\\",
-    "\\\\${targetServer}\\c$\\",
-    "\\\\${targetServer}\\ipc$\\"
+# Create a benign PowerShell script that would be executed by a service
+$scriptContent = @'
+Param(
+    [string]$RemoteHost,
+    [string]$SharePath
 )
 
-# Write deployment configuration
-$deployConfig = Join-Path $deploymentRoot "deploy_config.xml"
-@"
-<?xml version=\"1.0\" encoding=\"utf-8\"?>
-<DeploymentJob>
-  <JobID>DEPLOY-2024-01-15-A</JobID>
-  <ServiceAccount>NT AUTHORITY\\SYSTEM</ServiceAccount>
-  <Targets>
-    <Target path=\"$($deployTargets[0])\" type=\"system\" />
-    <Target path=\"$($deployTargets[1])\" type=\"filesystem\" />
-    <Target path=\"$($deployTargets[2])\" type=\"ipc\" />
-  </Targets>
-  <Payload>
-    <Package>SystemUpdate-v1.2.3.exe</Package>
-    <Hash>a1b2c3d4e5f6g7h8i9j0</Hash>
-    <Size>52428800</Size>
-  </Payload>
-</DeploymentJob>
-"@ | Out-File -FilePath $deployConfig -Encoding ASCII
+if ($RemoteHost -and $SharePath) {
+    # Legitimate diagnostic activity: accessing remote admin shares to collect logs
+    $adminSharePath = "\\\\$RemoteHost\\admin$\\Temp"
 
-# Simulate the installer writing status to admin shares
-$statusLog = Join-Path $deploymentRoot "deployment_log.txt"
-@"
-Deployment Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Deployment Service PID: 1024
-Parent Process: services.exe
+    try {
+        # Attempt to access the remote admin share (would be used for collecting diagnostics)
+        Get-Item -Path $adminSharePath -ErrorAction SilentlyContinue | Out-Null
 
-Connecting to deployment targets:
-  Target 1: $($deployTargets[0]) - Status: CONNECTING
-  Target 2: $($deployTargets[1]) - Status: CONNECTING
-  Target 3: $($deployTargets[2]) - Status: CONNECTING
+        # Access IPC share for WMI queries and remote diagnostics
+        Get-Item -Path "\\\\$RemoteHost\\ipc$" -ErrorAction SilentlyContinue | Out-Null
 
-Transfer Status:
-  Payload stage 1 -> $($deployTargets[0])setup.exe - 25 MB copied
-  Payload stage 2 -> $($deployTargets[1])setup.exe - 25 MB copied
-  Configuration -> $($deployTargets[2])config.ini - 1.5 KB copied
+        # Access c$ share for copying system files for analysis
+        Get-Item -Path "\\\\$RemoteHost\\c$\\Windows\\System32\\drivers\\etc" -ErrorAction SilentlyContinue | Out-Null
+    }
+    catch {
+        # Shares may not be accessible; this is expected in non-domain environments
+    }
+}
+'@
 
-Deployment Status: COMPLETED
-Total Time: 2m 34s
-"@ | Out-File -FilePath $statusLog -Encoding ASCII
+# Write the script to a temporary location
+$tempScript = Join-Path -Path $env:TEMP -ChildPath "diag_collector.ps1"
+Set-Content -Path $tempScript -Value $scriptContent -Encoding UTF8
 
-# Create package manifest
-$packageManifest = Join-Path $deploymentRoot "package_manifest.txt"
-Get-Content $statusLog | Out-File -FilePath $packageManifest -Encoding ASCII
+# Create a scheduled task that uses a service account (SYSTEM context)
+# This naturally spawns PowerShell from services.exe or svchost.exe
+try {
+    $taskAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$tempScript`" -RemoteHost 'localhost' -SharePath 'admin$'"
 
-Write-Host "[Deployment Service] Package distribution to remote admin shares completed"
+    $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(5)
 
-# Clean up
-Remove-Item -Path $deploymentRoot -Recurse -Force -ErrorAction SilentlyContinue
+    $taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount
+
+    $task = New-ScheduledTask -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -Principal $principal
+
+    # Register the task
+    Register-ScheduledTask -TaskName $taskName -InputObject $task -TaskPath $taskPath -Force | Out-Null
+
+    # Wait briefly for the task to execute and generate Sysmon events
+    Start-Sleep -Seconds 8
+
+    # Clean up the scheduled task
+    try {
+        Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {
+        # Task cleanup may fail if it hasn't finished; this is acceptable
+    }
+}
+catch {
+    # Silently continue if task scheduling fails (expected in non-admin CI environments)
+}
+
+# Clean up the temporary script
+if (Test-Path $tempScript) {
+    Remove-Item -Path $tempScript -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host 'Diagnostic collection workflow completed'
+
+# -- Cluster: singleton_cb757e5e-f770-4521-9880-588aef1c902d  (1 rule(s)) ---------------------
+# Intent:    Detect when Service Control Manager spawns an interpreter (cmd, PowerShell, etc.
+# Rules:     cb757e5e-f770-4521-9880-588aef1c902d
+# Archetype: Software installer/updater workflow
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Enterprise deployment verification scenario
+# A service spawns PowerShell to check software installation status on remote machines
+
+# Create a deployment verification script that accesses admin shares
+$deploymentScript = @'
+Param(
+    [string]$TargetMachine = 'localhost'
+)
+
+# Verify software is properly installed by checking remote admin shares
+$installPaths = @(
+    "\\\\$TargetMachine\\admin$\\Temp",
+    "\\\\$TargetMachine\\c$\\Program Files\\Enterprise",
+    "\\\\$TargetMachine\\ipc$"
+)
+
+foreach ($path in $installPaths) {
+    try {
+        $item = Get-Item -Path $path -ErrorAction SilentlyContinue
+        # Log would indicate successful access for deployment verification
+    }
+    catch {
+        # Access denied is expected in non-domain environments
+    }
+}
+'@
+
+# Save deployment script
+$scriptPath = Join-Path -Path $env:TEMP -ChildPath "deploy_verify.ps1"
+Set-Content -Path $scriptPath -Value $deploymentScript -Encoding UTF8
+
+# Simulate service spawning PowerShell for deployment verification
+# First, create a task that runs as SYSTEM (simulating svchost behavior)
+try {
+    $taskName = 'SoftwareDeploymentCheck'
+    $taskPath = 'Microsoft\\Windows\\Software'
+
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -TargetMachine 'localhost'"
+
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(3)
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount
+
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal
+    Register-ScheduledTask -TaskName $taskName -InputObject $task -TaskPath $taskPath -Force | Out-Null
+
+    # Allow task to execute
+    Start-Sleep -Seconds 6
+
+    # Clean up
+    Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
+}
+catch {
+    # Task scheduling may fail in CI environments
+}
+
+# Clean up script file
+if (Test-Path $scriptPath) {
+    Remove-Item -Path $scriptPath -Force
+}
+
+Write-Host 'Deployment verification completed'
+
+# -- Cluster: singleton_cb757e5e-f770-4521-9880-588aef1c902d  (1 rule(s)) ---------------------
+# Intent:    Detect when Service Control Manager spawns an interpreter (cmd, PowerShell, etc.
+# Rules:     cb757e5e-f770-4521-9880-588aef1c902d
+# Archetype: User-driven workflow
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Administrative troubleshooting scenario
+# Administrator uses PowerShell to access network shares for diagnostics and file operations
+
+# Direct administrative share access for legitimate troubleshooting
+$adminSharePaths = @(
+    '\\\\localhost\\admin$\\Temp',
+    '\\\\localhost\\c$\\Windows\\Temp',
+    '\\\\localhost\\ipc$'
+)
+
+# Attempt to access each share (normal admin troubleshooting would do this)
+foreach ($share in $adminSharePaths) {
+    try {
+        Get-Item -Path $share -ErrorAction SilentlyContinue | Out-Null
+    }
+    catch {
+        # Access may be denied; expected behavior
+    }
+}
+
+# Test using cmd.exe spawned command (another legitimate scenario)
+cmd /c "net use \\\\localhost\\admin$ 2>nul && net use \\\\localhost\\c$ 2>nul && net use \\\\localhost\\ipc$ 2>nul" | Out-Null
+
+# Legitimate file access pattern via PowerShell
+try {
+    # A real admin might check event logs or system files via admin shares
+    $null = cmd /c "dir \\\\localhost\\admin$\\Temp 2>nul"
+    $null = cmd /c "dir \\\\localhost\\c$\\Windows 2>nul"
+}
+catch {
+    # Expected failures in isolated environments
+}
+
+Write-Host 'Administrative access verification completed'
+
+# SKIPPED variant 'IT admin workflow': blocked pattern: cmd batch syntax ('echo off')
+
+# SKIPPED variant 'Software installer/updater workflow': blocked pattern: cmd batch syntax ('echo off')
 
 
 # ===========================================================================

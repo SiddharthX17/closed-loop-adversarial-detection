@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 2  |  Variants: 5
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,206 +10,171 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_834e59e9-f73b-4e11-8173-bbe1dc5321e8  (1 rule(s)) ---------------------
-# Intent:    Attackers programmatically disable or modify Windows Firewall rules to permit ma
-# Rules:     834e59e9-f73b-4e11-8173-bbe1dc5321e8
+# -- Cluster: singleton_d65b10d0-e42b-42a1-bd28-892ae4d5c423  (1 rule(s)) ---------------------
+# Intent:    Attackers modifying Windows Firewall policies via CLI or COM interfaces to disab
+# Rules:     d65b10d0-e42b-42a1-bd28-892ae4d5c423
 # Archetype: IT admin workflow
 
-# Scenario: Network security team audits and updates firewall rules for compliance
-# This represents a legitimate admin maintaining Windows Firewall configuration
-
 $ErrorActionPreference = 'SilentlyContinue'
-$testRuleName = 'TestWebServerRule_' + (Get-Random -Minimum 10000 -Maximum 99999)
-$testRuleName2 = 'TestDatabaseRule_' + (Get-Random -Minimum 10000 -Maximum 99999)
 
-try {
-    # Legitimate scenario: Admin creates a new inbound rule for a web server service
-    # This generates the 'new-netfirewallrule' command-line artifact
-    New-NetFirewallRule -DisplayName $testRuleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080 -ErrorAction SilentlyContinue | Out-Null
+# Simulate IT admin firewall maintenance and audit activity
+# Creating temporary test rules for verification before production deployment
 
-    # Admin enables a specific rule group to allow corporate software communication
-    # This generates the 'enablerulegroup' artifact
-    Enable-NetFirewallRule -DisplayGroup "Windows Defender Firewall" -ErrorAction SilentlyContinue
+# 1. Query current firewall state using netsh (common admin verification)
+Write-Host "[INFO] Auditing current firewall profile state..."
+netsh advfirewall show allprofiles
 
-    # Legitimate scenario: Configure firewall profile for domain-joined machines
-    # Admin sets the domain profile to enforce specific policy
-    Set-NetFirewallProfile -Profile Domain -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue
+# 2. Create a temporary test inbound rule via netsh
+Write-Host "[INFO] Creating test inbound rule for deployment verification..."
+netsh advfirewall firewall add rule name="TestInboundRuleAudit" dir=in action=allow protocol=tcp localport=8888 description="Temporary test rule for firewall audit"
 
-    # Create another rule and enable it - part of routine compliance audit
-    New-NetFirewallRule -DisplayName $testRuleName2 -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3306 -ErrorAction SilentlyContinue | Out-Null
+# 3. Query the newly created rule
+netsh advfirewall firewall show rule name="TestInboundRuleAudit"
 
-    # Admin enables the newly created database rule
-    Enable-NetFirewallRule -DisplayName $testRuleName2 -ErrorAction SilentlyContinue
+# 4. Disable the test rule (simulating rule modification during policy review)
+Write-Host "[INFO] Disabling test rule as part of audit..."
+netsh advfirewall firewall set rule name="TestInboundRuleAudit" new enable=no
 
-    # Reset profile to default after audit
-    Set-NetFirewallProfile -Profile Domain -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction SilentlyContinue
+# 5. Use PowerShell NetFirewall cmdlets for advanced rule management
+Write-Host "[INFO] Modifying firewall rules via PowerShell cmdlets..."
+Get-NetFirewallProfile | Set-NetFirewallProfile -Enabled $false
+Start-Sleep -Milliseconds 500
 
-    # Cleanup: Remove the test rules created during this maintenance cycle
-    Remove-NetFirewallRule -DisplayName $testRuleName -ErrorAction SilentlyContinue
-    Remove-NetFirewallRule -DisplayName $testRuleName2 -ErrorAction SilentlyContinue
+# 6. Re-enable firewall profiles
+Write-Host "[INFO] Re-enabling firewall profiles for normal operations..."
+Get-NetFirewallProfile | Set-NetFirewallProfile -Enabled $true
 
-} catch {
-    # Continue on error to ensure cleanup runs
-    Write-Host "Operation completed"
-}
+# 7. Query current rule state using PowerShell
+Write-Host "[INFO] Verifying test rule state via PowerShell..."
+Get-NetFirewallRule -DisplayName "TestInboundRuleAudit" | Select-Object DisplayName, Enabled, Direction, Action
 
-Write-Host "Firewall maintenance cycle completed"
+# 8. Create another test rule to verify enable functionality
+Write-Host "[INFO] Creating secondary test rule to verify enable functionality..."
+New-NetFirewallRule -DisplayName "TestManagementRule" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9999 -Enabled $true
 
-# -- Cluster: singleton_834e59e9-f73b-4e11-8173-bbe1dc5321e8  (1 rule(s)) ---------------------
-# Intent:    Attackers programmatically disable or modify Windows Firewall rules to permit ma
-# Rules:     834e59e9-f73b-4e11-8173-bbe1dc5321e8
+# 9. Query and then disable via PowerShell
+Write-Host "[INFO] Disabling secondary rule via PowerShell..."
+Disable-NetFirewallRule -DisplayName "TestManagementRule"
+
+# 10. Re-enable via PowerShell (simulating rule state changes during maintenance)
+Enable-NetFirewallRule -DisplayName "TestManagementRule"
+
+# 11. Cleanup: Remove test rules
+Write-Host "[INFO] Cleaning up temporary test rules..."
+netsh advfirewall firewall delete rule name="TestInboundRuleAudit"
+Remove-NetFirewallRule -DisplayName "TestManagementRule" -Confirm:$false -ErrorAction SilentlyContinue
+
+Write-Host "[INFO] Firewall audit and maintenance completed."
+
+# -- Cluster: singleton_d65b10d0-e42b-42a1-bd28-892ae4d5c423  (1 rule(s)) ---------------------
+# Intent:    Attackers modifying Windows Firewall policies via CLI or COM interfaces to disab
+# Rules:     d65b10d0-e42b-42a1-bd28-892ae4d5c423
 # Archetype: Software installer/updater workflow
 
-# Scenario: Windows Defender or security software post-installation configuration
-# Security tools legitimately modify firewall rules during setup/update as part of normal operation
-
 $ErrorActionPreference = 'SilentlyContinue'
-$defenderRuleName = 'Defender_Update_Service_' + (Get-Random -Minimum 10000 -Maximum 99999)
-$scanRuleName = 'Defender_Scan_Service_' + (Get-Random -Minimum 10000 -Maximum 99999)
 
-try {
-    # Simulate security software creating firewall rules for its update mechanisms
-    # This is typical of Windows Defender, Trend Micro, CrowdStrike, etc. during deployment
+# Simulate security software installation firewall integration workflow
+# This represents how legitimate security tools like Windows Defender or endpoint protection
+# solutions modify firewall policies during installation/update
 
-    # Create rule for Defender update service communication
-    New-NetFirewallRule -DisplayName $defenderRuleName -Direction Outbound -Action Allow -Program "C:\Program Files\Windows Defender\MsMpEng.exe" -ErrorAction SilentlyContinue | Out-Null
+$securityToolPath = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+$logPath = "$env:TEMP\security_install_log.txt"
 
-    # Enable built-in Windows Defender firewall rules
-    Enable-NetFirewallRule -DisplayGroup "Windows Defender Firewall" -ErrorAction SilentlyContinue
+# 1. Security software checks current firewall state during installation
+Write-Host "[INFO] Security software installer: Checking firewall compatibility..."
+netsh advfirewall show currentprofile >> $logPath
 
-    # Create rule for real-time scanning engine
-    New-NetFirewallRule -DisplayName $scanRuleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5985 -ErrorAction SilentlyContinue | Out-Null
+# 2. Verify firewall profiles are properly configured
+Write-Host "[INFO] Verifying firewall profiles for security agent compatibility..."
+netsh advfirewall show allprofiles | Out-File -Append $logPath
 
-    # Set firewall profile to ensure Defender functions in all scenarios
-    Set-NetFirewallProfile -Profile Public -DefaultInboundAction Block -ErrorAction SilentlyContinue
+# 3. Create allowlist rules for security tool network operations
+Write-Host "[INFO] Adding firewall rules for security service network access..."
+netsh advfirewall firewall add rule name="SecurityAgentOutbound" dir=out action=allow protocol=tcp remoteport=443 description="Allow security agent updates and telemetry"
 
-    # Enable the scan service rule
-    Enable-NetFirewallRule -DisplayName $scanRuleName -ErrorAction SilentlyContinue
+# 4. Create additional rule for callback traffic
+netsh advfirewall firewall add rule name="SecurityAgentCallback" dir=in action=allow protocol=tcp localport=5985 description="Allow security agent management callback"
 
-    # Configure advanced security settings via netsh (as some installers do)
-    # This generates the 'advfirewall' command-line artifacts
-    cmd /c "netsh advfirewall firewall show allprofiles" | Out-Null
+# 5. Use PowerShell to verify rule creation
+Write-Host "[INFO] Verifying rules via PowerShell..."
+Get-NetFirewallRule -DisplayName "SecurityAgent*" | Format-Table DisplayName, Direction, Action
 
-    # Cleanup: Remove test rules
-    Remove-NetFirewallRule -DisplayName $defenderRuleName -ErrorAction SilentlyContinue
-    Remove-NetFirewallRule -DisplayName $scanRuleName -ErrorAction SilentlyContinue
+# 6. Temporarily disable firewall profiles during installation (common pattern)
+Write-Host "[INFO] Temporarily adjusting firewall for installation process..."
+Get-NetFirewallProfile -Name Private | Set-NetFirewallProfile -DefaultInboundAction Block
 
-} catch {
-    Write-Host "Security software firewall configuration completed"
+# 7. Re-enable critical protections
+Write-Host "[INFO] Re-enabling firewall protections post-installation..."
+Get-NetFirewallProfile | Set-NetFirewallProfile -DefaultInboundAction Block -Enabled $true
+
+# 8. Enable specific allowlist rules
+Write-Host "[INFO] Enabling security tool firewall rules..."
+Enable-NetFirewallRule -DisplayName "SecurityAgentOutbound"
+Enable-NetFirewallRule -DisplayName "SecurityAgentCallback"
+
+# 9. Final state verification
+Write-Host "[INFO] Final firewall state verification..."
+Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table
+
+# 10. Cleanup temporary rules
+Write-Host "[INFO] Cleaning up temporary installation rules..."
+netsh advfirewall firewall delete rule name="SecurityAgentOutbound"
+netsh advfirewall firewall delete rule name="SecurityAgentCallback"
+
+if (Test-Path $logPath) {
+    Remove-Item $logPath -Force
 }
 
-Write-Host "Security software firewall rules configured"
+Write-Host "[INFO] Security software installation firewall integration completed."
 
-# -- Cluster: singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9  (1 rule(s)) ---------------------
-# Intent:    Disabling IIS HTTP request logging to evade detection of web-based attack activi
-# Rules:     56d235eb-8663-4eb8-b271-5f6801bb90e9
-# Archetype: IT admin workflow
-
-$iisPath = "C:\Windows\System32\inetsrv"
-$appcmdExe = Join-Path $iisPath "appcmd.exe"
-
-# Check if IIS is installed
-if (-not (Test-Path $appcmdExe)) {
-    Write-Host "IIS appcmd not found; IIS may not be installed on this system"
-    exit 0
-}
-
-# Query current HTTP logging status for audit purposes
-Write-Host "[Compliance Review] Auditing HTTP logging configuration..."
-& $appcmdExe list apppool /text:name | ForEach-Object {
-    Write-Host "Checking app pool: $_"
-}
-
-# Temporarily disable HTTP logging on the Default Web Site for a maintenance window
-Write-Host "[Maintenance] Disabling HTTP logging on Default Web Site during scheduled maintenance..."
-& $appcmdExe set site "Default Web Site" /httplogging.dontlog:true
-
-# Verify the change
-Write-Host "[Verification] Current logging status:"
-& $appcmdExe list site "Default Web Site" /text:httplogging.dontlog
-
-# Restore HTTP logging after maintenance
-Start-Sleep -Seconds 2
-Write-Host "[Compliance] Re-enabling HTTP logging..."
-& $appcmdExe set site "Default Web Site" /httplogging.dontlog:false
-
-# Final verification
-Write-Host "[Verification] Final logging status:"
-& $appcmdExe list site "Default Web Site" /text:httplogging.dontlog
-
-Write-Host "Compliance review and maintenance completed."
-
-# -- Cluster: singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9  (1 rule(s)) ---------------------
-# Intent:    Disabling IIS HTTP request logging to evade detection of web-based attack activi
-# Rules:     56d235eb-8663-4eb8-b271-5f6801bb90e9
-# Archetype: Software installer/updater workflow
-
-$iisPath = "C:\Windows\System32\inetsrv"
-$appcmdExe = Join-Path $iisPath "appcmd.exe"
-
-# Check if IIS is installed
-if (-not (Test-Path $appcmdExe)) {
-    Write-Host "IIS appcmd not found; IIS may not be installed on this system"
-    exit 0
-}
-
-# Simulate deployment automation adjusting IIS settings
-Write-Host "[Deployment] Configuring IIS for application initialization..."
-
-# Disable logging during setup phase for performance
-Write-Host "[Setup Phase] Temporarily reducing I/O overhead by disabling HTTP logging..."
-& $appcmdExe set apppool "DefaultAppPool" /processModel.idleTimeout:00:20:00
-
-# Apply HTTP logging configuration update
-& $appcmdExe set site "Default Web Site" /httplogging.enabled:true
-& $appcmdExe set site "Default Web Site" /httplogging.dontlog:true
-
-Start-Sleep -Seconds 3
-
-# Re-enable logging as part of post-deployment verification
-Write-Host "[Post-Deployment] Re-enabling HTTP logging for production..."
-& $appcmdExe set site "Default Web Site" /httplogging.dontlog:false
-
-Write-Host "Application initialization completed."
-
-# -- Cluster: singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9  (1 rule(s)) ---------------------
-# Intent:    Disabling IIS HTTP request logging to evade detection of web-based attack activi
-# Rules:     56d235eb-8663-4eb8-b271-5f6801bb90e9
+# -- Cluster: singleton_d65b10d0-e42b-42a1-bd28-892ae4d5c423  (1 rule(s)) ---------------------
+# Intent:    Attackers modifying Windows Firewall policies via CLI or COM interfaces to disab
+# Rules:     d65b10d0-e42b-42a1-bd28-892ae4d5c423
 # Archetype: User-driven workflow
 
-$iisPath = "C:\Windows\System32\inetsrv"
-$appcmdExe = Join-Path $iisPath "appcmd.exe"
+$ErrorActionPreference = 'SilentlyContinue'
 
-# Check if IIS is installed
-if (-not (Test-Path $appcmdExe)) {
-    Write-Host "IIS appcmd not found; IIS may not be installed on this system"
-    exit 0
-}
+# Simulate user-initiated network connectivity troubleshooting workflow
+# Real users run diagnostics when experiencing network issues, and system
+# troubleshooting tools interact with firewall state
 
-# Developer debugging workflow
-Write-Host "[Development] Troubleshooting IIS application performance..."
+# 1. User checks current firewall status during network troubleshooting
+Write-Host "[INFO] Checking firewall status for network troubleshooting..."
+Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table
 
-# List current app pools for context
-Write-Host "[Info] Current application pools:"
-& $appcmdExe list apppool /text:name
+# 2. User enables detailed firewall logging for diagnostics
+Write-Host "[INFO] Enabling firewall logging for network diagnosis..."
+Set-NetFirewallProfile -LogFileName "$env:SystemRoot\System32\LogFiles\Firewall\pfirewall.log" -LogMaxSizeKilobytes 4096
 
-# Disable HTTP logging on staging site to reduce I/O during debugging
-Write-Host "[Debugging] Disabling HTTP logging on staging site for cleaner diagnostic output..."
-& $appcmdExe set site "Default Web Site" /httplogging.dontlog:true
+# 3. User verifies Remote Desktop connectivity by checking firewall rules
+Write-Host "[INFO] Checking Remote Desktop firewall rules..."
+Get-NetFirewallRule -DisplayName "*Remote Desktop*" | Format-Table DisplayName, Enabled, Direction
 
-Write-Host "[Test] Executing diagnostic queries..."
-Start-Sleep -Seconds 2
+# 4. User attempts to enable RDP firewall exception if disabled
+Write-Host "[INFO] Verifying RDP is allowed through firewall..."
+Enable-NetFirewallRule -DisplayName "Remote Desktop - User Mode (TCP-In)" -ErrorAction SilentlyContinue
 
-# Query IIS configuration
-& $appcmdExe list config "Default Web Site" /section:httplogging
+# 5. User creates temporary diagnostic rule
+Write-Host "[INFO] Creating temporary diagnostics rule..."
+New-NetFirewallRule -DisplayName "DiagnosticsPing" -Direction Inbound -Action Allow -Protocol ICMP -ErrorAction SilentlyContinue
 
-Start-Sleep -Seconds 1
+# 6. User checks firewall state using both PowerShell and legacy netsh
+Write-Host "[INFO] Detailed firewall state check..."
+netsh advfirewall show allprofiles | Out-Null
 
-# Re-enable logging for production readiness
-Write-Host "[Cleanup] Re-enabling HTTP logging for production deployment..."
-& $appcmdExe set site "Default Web Site" /httplogging.dontlog:false
+# 7. User disables the diagnostic rule after testing
+Write-Host "[INFO] Disabling diagnostic rule..."
+Disable-NetFirewallRule -DisplayName "DiagnosticsPing" -ErrorAction SilentlyContinue
 
-Write-Host "Debugging session completed."
+# 8. User queries current inbound firewall action for troubleshooting documentation
+Write-Host "[INFO] Recording firewall policy state..."
+Get-NetFirewallProfile -PolicyStore ActiveStore | Select-Object Name, DefaultInboundAction, DefaultOutboundAction | Format-Table
+
+# 9. User cleans up diagnostic rule
+Write-Host "[INFO] Removing diagnostic rule..."
+Remove-NetFirewallRule -DisplayName "DiagnosticsPing" -Confirm:$false -ErrorAction SilentlyContinue
+
+Write-Host "[INFO] Network troubleshooting diagnostics completed."
 
 
 # ===========================================================================

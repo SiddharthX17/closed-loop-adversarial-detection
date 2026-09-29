@@ -1,0 +1,28 @@
+title: "IIS HTTP Logging Disabled via appcmd dontLog"
+id: 56d235eb-8663-4eb8-b271-5f6801bb90e9
+status: experimental
+description: "Detects use of appcmd.exe to disable IIS HTTP request logging via the httplogging configuration section with /dontLog:true, a technique used by attackers to impair forensic visibility into subsequent web-based activity."
+references:
+    - https://attack.mitre.org/techniques/T1685/001/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.defense-impairment
+    - attack.t1685.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+      Image|endswith: '\inetsrv\appcmd.exe'
+      CommandLine|contains: 'httplogging'
+    dontlog:
+      CommandLine|contains:
+        - 'dontLog:true'
+        - '/dontLog:true'
+    condition: selection and dontlog
+falsepositives:
+    - "Legitimate IIS administrators or automation tooling (SCCM, Ansible, DSC, custom deployment scripts) disabling HTTP logging for performance or compliance reasons — extremely rare in normal operations and should be treated as high-confidence regardless of parent process since ParentImage/ParentCommandLine are attacker-controllable and not used for exclusion"
+    - "Scripting interpreters (mshta, cmd, powershell, wscript) spawning appcmd for scheduled maintenance tasks that happen to reconfigure logging — parent process is not used to gate or exempt this rule, so legitimate automation invoking this exact command will still alert and requires analyst review"
+    - "No filtering has been applied for log rotation or log path changes since this rule targets only the dontLog:true disable condition, which has no known legitimate administrative equivalent"
+level: high

@@ -1,0 +1,29 @@
+title: "T1686 - Windows Firewall Disabled via Registry Policy Command Line"
+id: 2b3ffc9c-a54c-41c9-8601-cdace311c92e
+status: experimental
+description: "Detects a process command line writing EnableFirewall=0 (or equivalent DWORD zero) to the WindowsFirewall policy registry keys under DomainProfile/StandardProfile/PublicProfile, which disables Windows Firewall enforcement for a network profile and permits unrestricted traffic without generating firewall alerts."
+references:
+    - https://attack.mitre.org/techniques/T1686/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-30
+tags:
+    - attack.defense-impairment
+    - attack.t1686
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_path:
+        CommandLine|contains: 'WindowsFirewall'
+    selection_value:
+        CommandLine|contains:
+            - 'EnableFirewall -PropertyType DWORD -Value 0'
+            - 'EnableFirewall" -Value 0'
+            - 'EnableFirewall -Value 0'
+    condition: selection_path and selection_value
+falsepositives:
+    - "Legitimate PowerShell-based firewall administration scripts that set registry values directly instead of using netsh advfirewall or the GUI (rare in change-controlled environments but possible in custom deployment tooling)"
+    - "Group Policy or SCCM/Intune baseline scripts that programmatically reset or reapply firewall policy registry values as part of configuration management — these should be validated against the writing process being a verified, signed deployment agent binary rather than exempted by parent process or path alone"
+    - "Security tooling or compliance scanners that enumerate or test firewall policy keys without malicious intent, if such tooling constructs similar command-line strings for validation purposes"
+    - "Registry telemetry (Sysmon EventID 13) targeting the same TargetObject/Details would provide higher-precision, tool-agnostic coverage; this process_creation rule is a fallback that only catches cases where the full registry modification is expressed inline in a single CommandLine string"
+level: high

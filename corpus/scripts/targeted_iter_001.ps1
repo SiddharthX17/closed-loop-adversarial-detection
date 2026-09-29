@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   2  |  Feasible: 2  |  Variants: 5
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,204 +10,216 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# -- Cluster: singleton_cb757e5e-f770-4521-9880-588aef1c902d  (1 rule(s)) ---------------------
-# Intent:    Detect when Service Control Manager spawns an interpreter (cmd, PowerShell, etc.
-# Rules:     cb757e5e-f770-4521-9880-588aef1c902d
+# -- Cluster: singleton_e3527e5e-b29b-4913-9d7b-28e156610827  (1 rule(s)) ---------------------
+# Intent:    Detection of mshta.exe being invoked with remote URLs from scripting hosts or cm
+# Rules:     e3527e5e-b29b-4913-9d7b-28e156610827
 # Archetype: IT admin workflow
 
-$ErrorActionPreference = 'Stop'
+# IT Administrator testing HTML help system functionality
+$tempDir = Join-Path -Path $env:TEMP -ChildPath "HtmlHelpTest_$(Get-Random)"
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-# Create a temporary service configuration that will spawn PowerShell
-# to perform legitimate remote diagnostics collection
-$serviceName = 'DiagnosticSvc'
-$taskPath = 'Microsoft\Windows\Diagnostics\ScheduledMaintenance'
-$taskName = 'HealthCheckTask'
-
-# Create a benign PowerShell script that would be executed by a service
-$scriptContent = @'
-Param(
-    [string]$RemoteHost,
-    [string]$SharePath
-)
-
-if ($RemoteHost -and $SharePath) {
-    # Legitimate diagnostic activity: accessing remote admin shares to collect logs
-    $adminSharePath = "\\\\$RemoteHost\\admin$\\Temp"
-
-    try {
-        # Attempt to access the remote admin share (would be used for collecting diagnostics)
-        Get-Item -Path $adminSharePath -ErrorAction SilentlyContinue | Out-Null
-
-        # Access IPC share for WMI queries and remote diagnostics
-        Get-Item -Path "\\\\$RemoteHost\\ipc$" -ErrorAction SilentlyContinue | Out-Null
-
-        # Access c$ share for copying system files for analysis
-        Get-Item -Path "\\\\$RemoteHost\\c$\\Windows\\System32\\drivers\\etc" -ErrorAction SilentlyContinue | Out-Null
-    }
-    catch {
-        # Shares may not be accessible; this is expected in non-domain environments
-    }
-}
-'@
-
-# Write the script to a temporary location
-$tempScript = Join-Path -Path $env:TEMP -ChildPath "diag_collector.ps1"
-Set-Content -Path $tempScript -Value $scriptContent -Encoding UTF8
-
-# Create a scheduled task that uses a service account (SYSTEM context)
-# This naturally spawns PowerShell from services.exe or svchost.exe
 try {
-    $taskAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$tempScript`" -RemoteHost 'localhost' -SharePath 'admin$'"
+    # Create a minimal legitimate HTML help file locally
+    $htmlContent = @"
+<!DOCTYPE html>
+<html>
+<head><title>System Help</title></head>
+<body>
+<h1>Help Documentation</h1>
+<p>This is system help content.</p>
+</body>
+</html>
+"@
 
-    $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(5)
+    $htmlFile = Join-Path -Path $tempDir -ChildPath "help.html"
+    Set-Content -Path $htmlFile -Value $htmlContent -Force
 
-    $taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+    # Start a temporary HTTP server to serve the HTML
+    $port = 8765
+    $listener = New-Object System.Net.HttpListener
+    $listener.Prefixes.Add("http://127.0.0.1:$port/")
+    $listener.Start()
 
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount
+    # Background task to handle HTTP requests
+    $job = Start-Job -ScriptBlock {
+        param($listener, $htmlFile)
+        $listener.GetContext() | ForEach-Object {
+            $response = $_.Response
+            $html = Get-Content -Path $htmlFile -Raw
+            $buffer = [System.Text.Encoding]::UTF8.GetBytes($html)
+            $response.ContentLength64 = $buffer.Length
+            $response.OutputStream.Write($buffer, 0, $buffer.Length)
+            $response.OutputStream.Close()
+        }
+    } -ArgumentList $listener, $htmlFile
 
-    $task = New-ScheduledTask -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -Principal $principal
+    Start-Sleep -Milliseconds 500
 
-    # Register the task
-    Register-ScheduledTask -TaskName $taskName -InputObject $task -TaskPath $taskPath -Force | Out-Null
+    # Admin testing: launch mshta with the local HTTP URL to verify rendering
+    & cmd.exe /c "mshta http://127.0.0.1:$port/help.html"
 
-    # Wait briefly for the task to execute and generate Sysmon events
-    Start-Sleep -Seconds 8
+    Start-Sleep -Milliseconds 100
 
-    # Clean up the scheduled task
-    try {
-        Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
-    } catch {
-        # Task cleanup may fail if it hasn't finished; this is acceptable
+    $listener.Stop()
+    Stop-Job -Job $job -Force 2>$null
+
+} finally {
+    # Cleanup
+    if (Test-Path -Path $tempDir) {
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
-catch {
-    # Silently continue if task scheduling fails (expected in non-admin CI environments)
-}
 
-# Clean up the temporary script
-if (Test-Path $tempScript) {
-    Remove-Item -Path $tempScript -Force -ErrorAction SilentlyContinue
-}
-
-Write-Host 'Diagnostic collection workflow completed'
-
-# -- Cluster: singleton_cb757e5e-f770-4521-9880-588aef1c902d  (1 rule(s)) ---------------------
-# Intent:    Detect when Service Control Manager spawns an interpreter (cmd, PowerShell, etc.
-# Rules:     cb757e5e-f770-4521-9880-588aef1c902d
-# Archetype: Software installer/updater workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Enterprise deployment verification scenario
-# A service spawns PowerShell to check software installation status on remote machines
-
-# Create a deployment verification script that accesses admin shares
-$deploymentScript = @'
-Param(
-    [string]$TargetMachine = 'localhost'
-)
-
-# Verify software is properly installed by checking remote admin shares
-$installPaths = @(
-    "\\\\$TargetMachine\\admin$\\Temp",
-    "\\\\$TargetMachine\\c$\\Program Files\\Enterprise",
-    "\\\\$TargetMachine\\ipc$"
-)
-
-foreach ($path in $installPaths) {
-    try {
-        $item = Get-Item -Path $path -ErrorAction SilentlyContinue
-        # Log would indicate successful access for deployment verification
-    }
-    catch {
-        # Access denied is expected in non-domain environments
-    }
-}
-'@
-
-# Save deployment script
-$scriptPath = Join-Path -Path $env:TEMP -ChildPath "deploy_verify.ps1"
-Set-Content -Path $scriptPath -Value $deploymentScript -Encoding UTF8
-
-# Simulate service spawning PowerShell for deployment verification
-# First, create a task that runs as SYSTEM (simulating svchost behavior)
-try {
-    $taskName = 'SoftwareDeploymentCheck'
-    $taskPath = 'Microsoft\\Windows\\Software'
-
-    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -TargetMachine 'localhost'"
-
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
-    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(3)
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount
-
-    $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal
-    Register-ScheduledTask -TaskName $taskName -InputObject $task -TaskPath $taskPath -Force | Out-Null
-
-    # Allow task to execute
-    Start-Sleep -Seconds 6
-
-    # Clean up
-    Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction SilentlyContinue
-}
-catch {
-    # Task scheduling may fail in CI environments
-}
-
-# Clean up script file
-if (Test-Path $scriptPath) {
-    Remove-Item -Path $scriptPath -Force
-}
-
-Write-Host 'Deployment verification completed'
-
-# -- Cluster: singleton_cb757e5e-f770-4521-9880-588aef1c902d  (1 rule(s)) ---------------------
-# Intent:    Detect when Service Control Manager spawns an interpreter (cmd, PowerShell, etc.
-# Rules:     cb757e5e-f770-4521-9880-588aef1c902d
+# -- Cluster: singleton_e3527e5e-b29b-4913-9d7b-28e156610827  (1 rule(s)) ---------------------
+# Intent:    Detection of mshta.exe being invoked with remote URLs from scripting hosts or cm
+# Rules:     e3527e5e-b29b-4913-9d7b-28e156610827
 # Archetype: User-driven workflow
 
-$ErrorActionPreference = 'SilentlyContinue'
+# User scenario: Opening HTML application content from intranet/local resource
+$tempDir = Join-Path -Path $env:TEMP -ChildPath "HtmlAppTest_$(Get-Random)"
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-# Administrative troubleshooting scenario
-# Administrator uses PowerShell to access network shares for diagnostics and file operations
-
-# Direct administrative share access for legitimate troubleshooting
-$adminSharePaths = @(
-    '\\\\localhost\\admin$\\Temp',
-    '\\\\localhost\\c$\\Windows\\Temp',
-    '\\\\localhost\\ipc$'
-)
-
-# Attempt to access each share (normal admin troubleshooting would do this)
-foreach ($share in $adminSharePaths) {
-    try {
-        Get-Item -Path $share -ErrorAction SilentlyContinue | Out-Null
-    }
-    catch {
-        # Access may be denied; expected behavior
-    }
-}
-
-# Test using cmd.exe spawned command (another legitimate scenario)
-cmd /c "net use \\\\localhost\\admin$ 2>nul && net use \\\\localhost\\c$ 2>nul && net use \\\\localhost\\ipc$ 2>nul" | Out-Null
-
-# Legitimate file access pattern via PowerShell
 try {
-    # A real admin might check event logs or system files via admin shares
-    $null = cmd /c "dir \\\\localhost\\admin$\\Temp 2>nul"
-    $null = cmd /c "dir \\\\localhost\\c$\\Windows 2>nul"
+    # Create a VBScript file that will invoke mshta with a URL (simulating automated tool invocation)
+    $vbsContent = @"
+Set objHTTP = CreateObject("MSXML2.XMLHTTP")
+objHTTP.Open "GET", "http://127.0.0.1:9999/app.html", False
+objHTTP.Send
+Set shell = CreateObject("WScript.Shell")
+shell.Run "mshta http://127.0.0.1:9999/app.html"
+"@
+
+    $vbsFile = Join-Path -Path $tempDir -ChildPath "launcher.vbs"
+    Set-Content -Path $vbsFile -Value $vbsContent -Force
+
+    # Create HTML application content
+    $htaContent = @"
+<html>
+<head>
+<title>Enterprise Tool</title>
+</head>
+<body>
+<h1>Application Content</h1>
+<p>Loading application interface...</p>
+</body>
+</html>
+"@
+
+    $htmlFile = Join-Path -Path $tempDir -ChildPath "app.html"
+    Set-Content -Path $htmlFile -Value $htaContent -Force
+
+    # Start HTTP listener for the application content
+    $port = 9999
+    $listener = New-Object System.Net.HttpListener
+    $listener.Prefixes.Add("http://127.0.0.1:$port/")
+    $listener.Start()
+
+    # Background job to serve HTML
+    $job = Start-Job -ScriptBlock {
+        param($listener, $htmlFile)
+        $maxRequests = 2
+        $count = 0
+        while ($count -lt $maxRequests) {
+            try {
+                $context = $listener.GetContext()
+                $response = $context.Response
+                $html = Get-Content -Path $htmlFile -Raw
+                $buffer = [System.Text.Encoding]::UTF8.GetBytes($html)
+                $response.ContentLength64 = $buffer.Length
+                $response.OutputStream.Write($buffer, 0, $buffer.Length)
+                $response.OutputStream.Close()
+                $count++
+            } catch {}
+        }
+    } -ArgumentList $listener, $htmlFile
+
+    Start-Sleep -Milliseconds 500
+
+    # User invokes via wscript (simulating legitimate HTML app invocation)
+    & cscript.exe $vbsFile 2>$null
+
+    Start-Sleep -Milliseconds 500
+
+    $listener.Stop()
+    Stop-Job -Job $job -Force 2>$null
+
+} finally {
+    # Cleanup
+    if (Test-Path -Path $tempDir) {
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
-catch {
-    # Expected failures in isolated environments
+
+# -- Cluster: singleton_e3527e5e-b29b-4913-9d7b-28e156610827  (1 rule(s)) ---------------------
+# Intent:    Detection of mshta.exe being invoked with remote URLs from scripting hosts or cm
+# Rules:     e3527e5e-b29b-4913-9d7b-28e156610827
+# Archetype: Software installer/updater workflow
+
+# Software deployment: PowerShell-based installer checking and launching HTML wizard
+$tempDir = Join-Path -Path $env:TEMP -ChildPath "SoftwareSetup_$(Get-Random)"
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+try {
+    # Create installation wizard HTML
+    $wizardHtml = @"
+<!DOCTYPE html>
+<html>
+<head>
+<title>Installation Wizard</title>
+<style>
+body { font-family: Arial; }
+</style>
+</head>
+<body>
+<h2>Software Installation Wizard</h2>
+<p>Installation in progress...</p>
+<p>License Agreement Accepted</p>
+<p>Installation path: C:\\Program Files\\MyApp</p>
+</body>
+</html>
+"@
+
+    $wizardFile = Join-Path -Path $tempDir -ChildPath "wizard.html"
+    Set-Content -Path $wizardFile -Value $wizardHtml -Force
+
+    # Setup HTTP listener for wizard content distribution
+    $port = 7654
+    $listener = New-Object System.Net.HttpListener
+    $listener.Prefixes.Add("http://127.0.0.1:$port/")
+    $listener.Start()
+
+    # Background job to serve wizard content
+    $job = Start-Job -ScriptBlock {
+        param($listener, $wizardFile)
+        $context = $listener.GetContext()
+        $response = $context.Response
+        $html = Get-Content -Path $wizardFile -Raw
+        $buffer = [System.Text.Encoding]::UTF8.GetBytes($html)
+        $response.ContentLength64 = $buffer.Length
+        $response.OutputStream.Write($buffer, 0, $buffer.Length)
+        $response.OutputStream.Close()
+    } -ArgumentList $listener, $wizardFile
+
+    Start-Sleep -Milliseconds 500
+
+    # PowerShell-based installer launches mshta to display wizard
+    # This simulates legitimate software deployment using mshta for GUI rendering
+    & powershell.exe -NoProfile -Command @"
+Start-Process -FilePath mshta.exe -ArgumentList 'http://127.0.0.1:$port/wizard.html' -Wait
+"@
+
+    Start-Sleep -Milliseconds 100
+
+    $listener.Stop()
+    Stop-Job -Job $job -Force 2>$null
+
+} finally {
+    # Cleanup
+    if (Test-Path -Path $tempDir) {
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
-
-Write-Host 'Administrative access verification completed'
-
-# SKIPPED variant 'IT admin workflow': blocked pattern: cmd batch syntax ('echo off')
-
-# SKIPPED variant 'Software installer/updater workflow': blocked pattern: cmd batch syntax ('echo off')
 
 
 # ===========================================================================

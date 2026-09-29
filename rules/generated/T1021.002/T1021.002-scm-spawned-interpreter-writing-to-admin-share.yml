@@ -1,0 +1,41 @@
+title: "T1021.002 - SCM-Spawned Interpreter Writing to Admin Share"
+id: cb757e5e-f770-4521-9880-588aef1c902d
+status: experimental
+description: "Detects a command interpreter or scripting engine spawned by the Service Control Manager (services.exe) or svchost.exe hosting netsvcs, with a command line referencing an administrative share UNC path (ADMIN$, C$, or IPC$), consistent with remote service-based execution used for lateral movement over SMB."
+references:
+    - https://attack.mitre.org/techniques/T1021/002/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.lateral-movement
+    - attack.t1021.002
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+      ParentImage|endswith:
+        - '\services.exe'
+        - '\svchost.exe'
+      ParentCommandLine|contains: 'netsvcs'
+    selection_parent_svcexe:
+      ParentImage|endswith: '\services.exe'
+    selection_interpreter:
+      Image|endswith:
+        - '\cmd.exe'
+        - '\powershell.exe'
+        - '\pwsh.exe'
+        - '\wscript.exe'
+        - '\cscript.exe'
+        - '\mshta.exe'
+    selection_adminshare:
+      CommandLine|contains:
+        - 'ADMIN$'
+        - 'C$'
+        - 'IPC$'
+    condition: (selection_parent or selection_parent_svcexe) and selection_interpreter and selection_adminshare
+falsepositives:
+    - "Legitimate remote software deployment or patch management tooling (e.g., SCCM, remote patch agents) that spawns interpreters via services.exe/svchost.exe and references admin shares for installer staging — not filtered here since ParentImage/ParentCommandLine alone cannot reliably distinguish this from attacker use without an allowlist of the spawned process's own signed binary identity"
+    - "IT administrator manual troubleshooting or scripted remote support using net use, psexec, or similar tools that reference ADMIN$/C$/IPC$ paths — cannot be reliably distinguished from malicious use with available fields alone; correlate with change-management context"
+    - "Backup or imaging software that writes output/logs to administrative shares on remote hosts during scheduled maintenance windows"
+level: high

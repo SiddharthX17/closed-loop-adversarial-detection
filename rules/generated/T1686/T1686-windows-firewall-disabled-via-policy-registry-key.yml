@@ -1,0 +1,25 @@
+title: "T1686 - Windows Firewall Disabled via Policy Registry Key"
+id: c9520cc4-f89a-4303-8e7e-8ceee228af03
+status: experimental
+description: "Detects a registry write disabling the Windows Firewall by setting EnableFirewall to 0 under a firewall profile policy key (DomainProfile, StandardProfile, or PublicProfile), which is the underlying OS-checked mechanism regardless of the tool used to make the change (netsh, PowerShell, reg.exe, or Group Policy)."
+references:
+    - https://attack.mitre.org/techniques/T1686/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-30
+tags:
+    - attack.defense-impairment
+    - attack.t1686
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+      TargetObject|contains: '\Policies\Microsoft\WindowsFirewall\'
+      TargetObject|endswith: 'Profile\EnableFirewall'
+      Details|contains: '0x00000000'
+    condition: selection
+falsepositives:
+    - "Legitimate Group Policy firewall configuration changes pushed via gpupdate/Group Policy client - should be corroborated with a temporally adjacent GPO application/refresh log event before suppressing, not assumed from SYSTEM context alone"
+    - "Endpoint management or security tooling (SCCM, Intune, EDR agents) intentionally disabling or reconfiguring firewall profiles as part of authorized deployment or troubleshooting - exempt only via the writing process's own verified signed Image path if that telemetry becomes available, not via parent process or timing"
+    - "Administrator-driven manual firewall policy changes via netsh, PowerShell, or the Windows Firewall management console for legitimate operational reasons"
+level: high

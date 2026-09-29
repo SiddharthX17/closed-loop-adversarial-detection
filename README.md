@@ -24,6 +24,36 @@ The loop then repeats: whatever got caught this round informs how the attacker a
 
 Full detail on every stage is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+## Repository Layout
+
+```text
+pipeline/
+├── attacker/              # attack campaign planning
+├── emulator/              # Atomic Red Team procedures → synthetic logs
+├── detection/             # pySigma + sqlite3 rule evaluation
+├── detection_planner/     # pre-defender detection-strategy reasoning
+├── defender/              # candidate Sigma rule generation
+├── validation/            # schema linter, attack gate, noise gate
+├── corpus/                # benign-corpus clustering + stress-test generation
+├── github/                # PR creation, rule sync
+├── metrics/               # metrics tracking
+├── data/                  # STIX/Atomic loaders and cleaners
+├── api/                   # FastAPI service (/run, /results, /health)
+├── llm_retry.py           # shared retry/backoff for all LLM calls
+└── orchestrator.py        # coordinates all stages
+
+config/                    # techniques.yaml (active scope), schema.yaml
+data/                      # MITRE metadata, run/atomic test-selection history
+corpus/                    # attack + benign log corpora, corpus-learner scripts
+rules/                     # curated SigmaHQ rules
+└── generated/<technique_id>/   # per-technique approved generated rules
+scripts/                   # diagnostics, backfill, manual test/dry-run tools
+terraform/                 # Cloud Run, Secret Manager, IAM
+tests/fixtures/regression/ # regression fixtures, per validated rule
+archive/                   # retired components
+.github/workflows/         # regression · pipeline · collect_benign · corpus_runner · health_check
+```
+
 ## Results
 
 Every validated rule ships as a reviewable pull request with evidence and reasoning attached. The rules that were reviewed and approved for deployment can be found in:

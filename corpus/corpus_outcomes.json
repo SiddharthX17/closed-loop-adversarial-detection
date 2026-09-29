@@ -3,36 +3,38 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_26ad0693-16f9-4de2-8086-16e93b214f49"
+      "singleton_834e59e9-f73b-4e11-8173-bbe1dc5321e8",
+      "singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9"
     ],
     "archetype_tags": [
       "commandline"
     ],
     "behavioral_intents": [
-      "Attackers use secure deletion utilities (SDelete, Cipher) to irreversibly wipe files and tracks after data exfiltration or lateral movement."
+      "Attackers programmatically disable or modify Windows Firewall rules to permit malicious network traffic or lateral movement by invoking firewall management tools via command line or COM objects.",
+      "Disabling IIS HTTP request logging to evade detection of web-based attack activity or data exfiltration"
     ],
-    "committed_at": 1789899548.8096397,
-    "workflow_ran": null,
-    "logs_produced": null,
-    "rules_hit": null,
-    "useful_corpus": null
+    "committed_at": 1790702362.5732746,
+    "workflow_ran": true,
+    "logs_produced": true,
+    "rules_hit": [],
+    "useful_corpus": false
   },
   {
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_efb1170e-2737-4c5d-9c86-8d0dd3c8bd78",
-      "singleton_4da457f9-03de-41ff-824c-ef0cd1761275"
+      "singleton_7f18ec67-b008-46f2-bcf6-b897f77bbc03",
+      "singleton_88ecfc2a-5e7c-471d-b919-7e0cd737f5b6"
     ],
     "archetype_tags": [
       "commandline",
-      "mshta"
+      "registry"
     ],
     "behavioral_intents": [
-      "",
-      "Detects BITS job lifecycle management operations (create, add file, resume, set notification, complete) which are used by attackers for stealthy background file transfer or persistence payload orchestration."
+      "Adversaries modifying Windows Firewall policies to disable firewall protections and allow malicious inbound/outbound network activity.",
+      "Attackers modify Event Log channel CustomSD registry values to deny security principals (administrators, system, network service, audit) read/write access, effectively suppressing event logging to hide malicious activity."
     ],
-    "committed_at": 1784575790.4983869,
+    "committed_at": 1790702548.968672,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

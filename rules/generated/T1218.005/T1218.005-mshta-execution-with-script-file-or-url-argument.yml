@@ -1,0 +1,26 @@
+title: "Mshta Execution With Script File or URL Argument"
+id: 18e283b5-d9f3-43e4-a887-df05c713a836
+status: experimental
+description: "Detects mshta.exe being invoked with a command-line argument referencing a local HTA file or remote URL, which indicates execution of attacker-supplied script code via a trusted signed Microsoft binary rather than user-initiated interaction with no payload argument."
+references:
+    - https://attack.mitre.org/techniques/T1218/005/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.defense-evasion
+    - attack.t1218.005
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+      - Image|endswith: '\mshta.exe'
+      - OriginalFileName: 'MSHTA.EXE'
+    selection_arg:
+      CommandLine|re: '(?i)mshta\.exe\s+.+\.(hta|htm|html)|mshta\.exe\s+.*https?://'
+    condition: selection_img and selection_arg
+falsepositives:
+    - "Legitimate internal HTA-based line-of-business applications (kiosk apps, help systems, older intranet tools) launched by mshta.exe with a file path argument — should be exempted only via an organization-maintained allowlist of specific known-good HTA file paths or hashes, not by directory or parent process"
+    - "Software deployment or logon scripts (e.g., SCCM/GPO) that invoke mshta.exe with an HTA argument as part of legitimate automation, potentially spawned from cmd.exe or wscript.exe"
+    - "IT admin or developer testing/troubleshooting HTA scripts from Temp/Downloads/AppData, which shares staging locations with attacker-delivered payloads and cannot be reliably distinguished by path alone"
+level: medium

@@ -47,3 +47,5 @@
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-09-29T11:33:22.8528840+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-09-29 11:33:22.851"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-09-29T11:33:22.4311219+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-09-29 11:33:22.430"}
 {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-09-29T11:33:22.3547539+00:00","Image":"C:\\actions-runner\\cached\\2.337.0\\bin\\Runner.Worker.exe","TargetFilename":"2026-09-29 11:33:22.352"}
+{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-09-29T17:10:48.5022974+00:00","Image":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE","TargetFilename":"2026-09-29 17:10:48.501"}
+{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":11,"TimeCreated":"2026-09-29T17:10:48.4119239+00:00","Image":"C:\\actions-runner\\cached\\2.337.0\\bin\\Runner.Worker.exe","TargetFilename":"2026-09-29 17:10:48.410"}

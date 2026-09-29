@@ -1,0 +1,31 @@
+title: "Service Creation with Svchost Grouping and Registry Registration"
+id: b1778558-27a5-49ff-ae28-64022d28544d
+status: experimental
+description: "Detects command lines that create a Windows service with binPath pointing to svchost.exe -k <group>, which is the mechanism used to masquerade a malicious DLL as a generic svchost-hosted service. This structural pattern (service creation targeting svchost grouping) is required by the OS servicing model and is rarely invoked via visible command-line tooling for legitimate purposes."
+references:
+    - https://attack.mitre.org/techniques/T1543/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.persistence
+    - attack.t1543.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_sc_create:
+        CommandLine|contains|all:
+            - 'create'
+            - 'binPath'
+            - 'svchost.exe -k'
+        Image|endswith:
+            - '\cmd.exe'
+            - '\powershell.exe'
+            - '\sc.exe'
+    condition: selection_sc_create
+falsepositives:
+    - "Legitimate shared-service hosting installers that create services with svchost -k grouping via visible sc.exe command lines (uncommon outside Microsoft-signed installers, which typically use API calls rather than command-line tooling)"
+    - "Administrative or IT scripted service deployment tools (SCCM, Intune, third-party config management) that legitimately script sc create with svchost grouping for legacy or custom shared services"
+    - "Security/EDR agents that self-install as svchost-hosted services via command-line during deployment — should be validated against a signed-binary inventory rather than exempted by command-line content"
+    - "No exclusion applied for ServiceGroup or service name since these are attacker-controlled strings; this rule intentionally accepts residual review overhead on rare legitimate svchost -k service creation via command-line tooling"
+level: high

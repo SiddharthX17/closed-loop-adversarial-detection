@@ -3,17 +3,15 @@
     "iteration_id": "iter_001",
     "workflow_path": "corpus/scripts/targeted_iter_001.ps1",
     "cluster_ids": [
-      "singleton_834e59e9-f73b-4e11-8173-bbe1dc5321e8",
-      "singleton_56d235eb-8663-4eb8-b271-5f6801bb90e9"
+      "singleton_2b3ffc9c-a54c-41c9-8601-cdace311c92e"
     ],
     "archetype_tags": [
       "commandline"
     ],
     "behavioral_intents": [
-      "Attackers programmatically disable or modify Windows Firewall rules to permit malicious network traffic or lateral movement by invoking firewall management tools via command line or COM objects.",
-      "Disabling IIS HTTP request logging to evade detection of web-based attack activity or data exfiltration"
+      "Attacker disabling Windows Firewall via registry policy commands to evade network-based detection and allow malicious inbound/outbound traffic."
     ],
-    "committed_at": 1790702362.5732746,
+    "committed_at": 1790711544.5292063,
     "workflow_ran": true,
     "logs_produced": true,
     "rules_hit": [],
@@ -23,18 +21,15 @@
     "iteration_id": "iter_002",
     "workflow_path": "corpus/scripts/targeted_iter_002.ps1",
     "cluster_ids": [
-      "singleton_7f18ec67-b008-46f2-bcf6-b897f77bbc03",
-      "singleton_88ecfc2a-5e7c-471d-b919-7e0cd737f5b6"
+      "singleton_c9520cc4-f89a-4303-8e7e-8ceee228af03"
     ],
     "archetype_tags": [
-      "commandline",
       "registry"
     ],
     "behavioral_intents": [
-      "Adversaries modifying Windows Firewall policies to disable firewall protections and allow malicious inbound/outbound network activity.",
-      "Attackers modify Event Log channel CustomSD registry values to deny security principals (administrators, system, network service, audit) read/write access, effectively suppressing event logging to hide malicious activity."
+      "Attacker disabling Windows Firewall by setting the EnableFirewall registry value to 0 under the Windows Firewall policies to evade detection and allow unauthorized network access."
     ],
-    "committed_at": 1790702548.968672,
+    "committed_at": 1790711632.0553079,
     "workflow_ran": null,
     "logs_produced": null,
     "rules_hit": null,

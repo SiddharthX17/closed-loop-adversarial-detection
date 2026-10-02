@@ -1,0 +1,34 @@
+title: "Explorer-Spawned Script Interpreter Executing User-Path Script"
+id: 398f304f-13bb-44b6-8fb4-ccdd0985dcd4
+status: experimental
+description: "Detects cscript.exe, wscript.exe, or mshta.exe launched directly by explorer.exe (i.e. user double-click) with a command line referencing a script file in a user-writable directory such as Temp, AppData, Downloads, or Desktop, a common initial-execution pattern for user-invoked malicious files (T1204.002)."
+references:
+    - https://attack.mitre.org/techniques/T1204/002/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-28
+tags:
+    - attack.execution
+    - attack.t1204.002
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+      ParentImage|endswith: '\explorer.exe'
+    selection_image:
+      Image|endswith:
+        - '\cscript.exe'
+        - '\wscript.exe'
+        - '\mshta.exe'
+    selection_path:
+      CommandLine|contains:
+        - '\AppData\Local\Temp\'
+        - '\AppData\Roaming\'
+        - '\Downloads\'
+        - '\Desktop\'
+    condition: selection_parent and selection_image and selection_path
+falsepositives:
+    - "Legitimate IT-distributed or vendor .vbs/.hta packages that a user double-clicks from Temp, AppData, Downloads, or Desktop (should be excluded only by validating the script's own digital signature or an organization-approved deployment path, not by broadly excluding these directories)"
+    - "Help-desk or admin-provided HTA-based tools launched by a user from a downloaded or profile-local path"
+    - "Legacy line-of-business installers or logon scripts that stage a .vbs helper in a user-writable folder and are opened manually"
+level: medium

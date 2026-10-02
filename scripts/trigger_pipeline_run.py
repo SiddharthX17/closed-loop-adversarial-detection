@@ -52,7 +52,7 @@ def _request(method: str, url: str, headers: dict, body: dict | None = None) -> 
         # Surface the actual response body in the error — a bare HTTPError
         # str() loses the detail message app.py put in the response.
         body_text = e.read().decode(errors="replace")
-        raise RuntimeError(f"HTTP {e.code} from {url}: {body_text}") from e
+        raise RuntimeError(f"HTTP {e.code}: {body_text}") from e
 
 
 def cmd_trigger() -> None:

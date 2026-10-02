@@ -3,7 +3,7 @@ Coordinates all 7 pipeline stages:
   1. Attacker Agent  → structured campaign plan
   2. Emulator        → log stream per technique
   3. Detection Layer → per-technique match results
-  4 Detection Planner   → technique-level detection strategy (invariants, FP profile)
+  4. Detection Planner   → technique-level detection strategy (invariants, FP profile)
   5. Defender Agent  → candidate Sigma rules for gaps
   6. Validation      → schema linter + attack gate + noise gate (inside DefenderAgent)
   7. PR Creator      → opens GitHub PRs for validated rules
@@ -30,7 +30,7 @@ from typing import Optional
 from pipeline.attacker.agent import AttackerAgent, extract_emulator_inputs, CampaignPlan
 from pipeline.emulator.emulator import run_emulator
 from pipeline.detection.engine import DetectionEngine
-from pipeline.detection.result_parser import parse_results, get_gaps, get_covered
+from pipeline.detection.result_parser import parse_results
 from pipeline.defender.agent import DefenderAgent, GapContext, find_existing_rule_paths
 from pipeline.detection_planner.planner import DetectionPlanner
 from pipeline.github.pr_creator import PRCreator, PRResult

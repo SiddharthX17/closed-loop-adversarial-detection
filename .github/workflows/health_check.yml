@@ -1,0 +1,33 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: '17 4 * * *'  # once daily, off-the-hour to avoid GH Actions cron pile-up
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        id: ping
+        run: |
+          STATUS=$(curl -s -o response.json -w "%{http_code}" \
+            -H "X-Pipeline-Viewer-Secret: ${{ secrets.PIPELINE_VIEWER_SECRET }}" \
+            "${{ vars.SERVICE_URL }}/health")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          cat response.json || true
+          if [ "$STATUS" != "200" ]; then
+            echo "EXIT_CODE=1" >> "$GITHUB_ENV"
+          else
+            echo "EXIT_CODE=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Fail loudly if unhealthy
+        if: always() && env.EXIT_CODE != '0'
+        run: |
+          echo "Health check failed — HTTP ${{ steps.ping.outputs.status }}"
+          exit 1

@@ -1,0 +1,27 @@
+title: "T1112-IE-ZoneMap-Trusted-Zone-Assignment"
+id: 8d8502dc-5cb2-44bb-9ffe-7f85651054b5
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1112/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-23
+tags:
+    - attack.defense-evasion
+    - attack.t1112
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_path:
+      TargetObject|contains: '\Internet Settings\ZoneMap\Domains\'
+    selection_value:
+      Details|contains:
+        - 'DWORD (0x00000001)'
+        - 'DWORD (0x00000002)'
+    condition: selection_path and selection_value
+falsepositives:
+    - "IT-managed trusted sites configuration pushed via GPO or manually configured by users/admins for legitimate corporate or SaaS domains — should be filtered by maintaining a domain allowlist and matching the domain segment of TargetObject, not by excluding writing process or install context"
+    - "Software installers or browsers legitimately registering helper/vendor domains into the trusted or intranet zone at install time"
+    - "Group Policy client periodically re-applying configured zone assignments, which will repeatedly generate this same event for approved domains"
+    - "No process-based exemption is applied (reg.exe, PowerShell, GPO client, or GUI-driven Internet Options can all write this key legitimately or maliciously), so any of these legitimate tools will also trigger this rule when adding approved domains"
+level: medium

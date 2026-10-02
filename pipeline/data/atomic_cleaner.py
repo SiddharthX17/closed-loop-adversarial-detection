@@ -99,7 +99,8 @@ def _resolve_env_vars(command: str) -> str:
     for var, val in sorted(ATOMIC_VAR_DEFAULTS.items(), key=lambda x: -len(x[0])):
         # Case-insensitive replace for $env: variants
         if var.lower().startswith("$env:"):
-            command = re.sub(re.escape(var), lambda m: val, command, flags=re.IGNORECASE)
+            command = re.sub(re.escape(var), lambda m: val,
+                             command, flags=re.IGNORECASE)
         else:
             command = command.replace(var, val)
     return command
@@ -166,12 +167,75 @@ def _split_on_semicolons(command: str) -> list[str]:
     return parts if parts else [command]
 
 
+def _split_on_cmd_operators(command: str) -> list[str]:
+    """
+    Split a cmd.exe command on &&, ||, &, and | — but not inside double-quoted
+    strings. cmd.exe has no semicolon-style separator; these operators are
+    how it chains what are, in real process-creation telemetry, separate
+    child processes (each &&-joined command is its own process, sharing the
+    same parent). Without this, a chained command like
+    'bitsadmin /create X && bitsadmin /addfile X && bitsadmin /resume X'
+    is treated as one process's own CommandLine, which is not possible —
+    bitsadmin (like most CLI tools) takes one verb per invocation.
+
+    cmd.exe only treats double quotes as string delimiters at the shell-
+    parsing level (unlike PowerShell, which respects both single and
+    double) — single quotes are literal characters to cmd.exe itself.
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    in_double = False
+    i = 0
+    n = len(command)
+
+    while i < n:
+        char = command[i]
+
+        if char == '"':
+            in_double = not in_double
+            current.append(char)
+            i += 1
+            continue
+
+        if not in_double:
+            if command[i:i + 2] == '&&':
+                part = ''.join(current).strip()
+                if part:
+                    parts.append(part)
+                current = []
+                i += 2
+                continue
+            if command[i:i + 2] == '||':
+                part = ''.join(current).strip()
+                if part:
+                    parts.append(part)
+                current = []
+                i += 2
+                continue
+            if char in ('&', '|'):
+                part = ''.join(current).strip()
+                if part:
+                    parts.append(part)
+                current = []
+                i += 1
+                continue
+
+        current.append(char)
+        i += 1
+
+    last = ''.join(current).strip()
+    if last:
+        parts.append(last)
+
+    return parts if parts else [command]
+
+
 def _split_commands(raw_command: str, executor_name: str) -> list[str]:
     """
     Split a multi-line/multi-command string into a list of discrete commands.
     Handles:
       - PowerShell: backtick continuation, semicolons, comment lines (#)
-      - cmd.exe: caret continuation, REM comment lines
+      - cmd.exe: caret continuation, &&/||/&/| chain operators, REM comment lines
       - Others: newline split only
     """
     lines = raw_command.split('\n')
@@ -195,7 +259,8 @@ def _split_commands(raw_command: str, executor_name: str) -> list[str]:
             # Skip REM comments (case-insensitive)
             if re.match(r'^[Rr][Ee][Mm]\s', line) or line.upper() == 'REM':
                 continue
-            commands.append(line)
+            sub = _split_on_cmd_operators(line)
+            commands.extend(sub)
 
     else:
         # bash / sh / unknown — newline split only

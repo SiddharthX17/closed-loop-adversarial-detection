@@ -1,0 +1,30 @@
+title: "T1485 - Sdelete Secure-Delete Utility Execution"
+id: 6410bf60-1ae1-439d-9b68-ed303601110c
+status: experimental
+description: "Detects execution of the Sysinternals sdelete/sdelete64 utility with the -accepteula flag, a pattern indicative of secure file/disk wiping that can be abused to destroy data and evade forensic recovery."
+references:
+    - https://attack.mitre.org/techniques/T1485/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.impact
+    - attack.t1485
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_image:
+      - Image|endswith:
+          - '\sdelete.exe'
+          - '\sdelete64.exe'
+      - OriginalFileName:
+          - 'sdelete.exe'
+          - 'sdelete64.exe'
+    selection_flag:
+      CommandLine|contains: '-accepteula'
+    condition: selection_image and selection_flag
+falsepositives:
+    - "Legitimate use of sdelete by IT/security staff for compliance-driven secure disposal of files or free-space wiping as part of decommissioning or data-sanitization procedures"
+    - "Scripted deployment or maintenance automation (e.g., wscript/cscript/powershell invoking a cleanup script) that legitimately calls sdelete as part of an approved secure-deletion workflow"
+    - "Security tooling or endpoint hardening scripts that invoke sdelete to wipe temporary sensitive data as a defensive measure"
+level: high

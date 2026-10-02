@@ -1,0 +1,32 @@
+title: "T1070.003-PSReadline-History-Disable"
+id: f519892c-4d3a-48c8-ba36-b8811b3ba8e7
+status: experimental
+description: "Detects PowerShell command lines that disable PSReadline command history persistence via Set-PSReadlineOption -HistorySaveStyle SaveNothing/None, regardless of the launching process, which removes forensic evidence of prior console commands."
+references:
+    - https://attack.mitre.org/techniques/T1070/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.stealth
+    - attack.t1070.003
+    - attack.defense-evasion
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_cmdlet:
+      CommandLine|contains: 'PSReadlineOption'
+    selection_param:
+      CommandLine|contains: 'HistorySaveStyle'
+    selection_value:
+      CommandLine|contains:
+        - 'SaveNothing'
+        - 'DisableSaving'
+        - 'HistorySaveStyle None'
+        - 'HistorySaveStyle none'
+    condition: selection_cmdlet and selection_param and selection_value
+falsepositives:
+    - "Legitimate hardened/kiosk PowerShell deployment scripts that disable history recording as part of a documented security baseline on shared or jump-box accounts — such activity should be cross-referenced against a maintained allowlist of known host roles rather than suppressed within this rule"
+    - "VDI or session-reset automation that reconfigures PSReadline behavior as part of profile reset routines"
+    - "Security tooling or endpoint hardening scripts that intentionally disable history for compliance reasons on specific accounts"
+level: high

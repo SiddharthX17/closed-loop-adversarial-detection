@@ -1,0 +1,36 @@
+title: "BITS Job Notify Command Invoking Execution Proxy"
+id: 3d57d068-bd8d-42af-b383-bc205f34daba
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1197/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-19
+tags:
+    - attack.defense-evasion
+    - attack.t1197
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_notify:
+        CommandLine|contains: '/setnotifycmdline'
+    selection_proxy:
+        CommandLine|contains:
+            - 'cmd.exe'
+            - 'cmd /c'
+            - 'powershell.exe'
+            - 'powershell '
+            - 'pwsh.exe'
+            - 'rundll32.exe'
+            - 'rundll32 '
+            - 'mshta.exe'
+            - 'wscript.exe'
+            - 'cscript.exe'
+            - 'regsvr32.exe'
+    condition: selection_notify and selection_proxy
+falsepositives:
+    - "Legitimate software deployment or patch management tooling using bitsadmin /setnotifycmdline to trigger a signed installer or update script on job completion — should be reviewed against an approved patch-management inventory rather than blanket-exempted"
+    - "IT-managed BITS jobs configured with a notify command that launches an internal maintenance script via cmd.exe or powershell.exe for post-download processing"
+    - "Legacy administrative or imaging scripts that configure BITS notify commands referencing internal, non-malicious executables"
+    - "Security tooling or EDR test/validation scripts that emulate BITS abuse for detection testing"
+level: high

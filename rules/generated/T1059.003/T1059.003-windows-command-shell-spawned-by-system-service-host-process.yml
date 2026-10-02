@@ -1,0 +1,35 @@
+title: Windows Command Shell Spawned by System Service Host Process
+id: 65a60275-19b1-43d4-9804-4dac7b7c39dd
+status: experimental
+description: Detects cmd.exe spawned by core Windows system host processes (svchost.exe, lsass.exe, winlogon.exe, services.exe, smss.exe) which do not legitimately parent interactive command shells. This pattern indicates service-based code execution, process injection, or privilege escalation activity consistent with T1059.003.
+references:
+  - https://attack.mitre.org/techniques/T1059/003/
+tags:
+  - attack.t1059.003
+author: Detection Engineer
+date: 2024-01-01
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_child:
+    - Image|endswith: '\cmd.exe'
+    - OriginalFileName: 'Cmd.Exe'
+  selection_parent:
+    ParentImage|endswith:
+      - '\svchost.exe'
+      - '\lsass.exe'
+      - '\winlogon.exe'
+      - '\services.exe'
+      - '\smss.exe'
+  filter_known_good_svchost_schedule:
+    ParentImage|endswith: '\svchost.exe'
+    ParentCommandLine|contains:
+      - '-k Schedule'
+      - '-k schedule'
+  condition: (selection_child and selection_parent) and not filter_known_good_svchost_schedule
+falsepositives:
+  - Third-party services that legitimately shell out via cmd.exe from a service context
+  - Legacy Windows services invoking cmd.exe for scripted maintenance operations
+  - Scheduled tasks running under service accounts via the Task Scheduler svchost group
+level: high

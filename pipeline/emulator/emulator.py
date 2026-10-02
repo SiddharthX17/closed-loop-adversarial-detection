@@ -10,10 +10,10 @@ Usage:
   from pipeline.emulator.emulator import run_emulator
 
   # reads config/techniques.yaml
-  log_stream, stats = run_emulator()
+  log_stream, stats, history = run_emulator()
 
   # explicit list (useful for tests and one-off runs)
-  log_stream, stats = run_emulator(technique_ids=["T1059.001", "T1547.001"])
+  log_stream, stats, history = run_emulator(technique_ids=["T1059.001", "T1547.001"])
 
 Environment:
   PIPELINE_DEBUG=1   enable per-test debug output
@@ -32,6 +32,7 @@ from pipeline.emulator.procedure_interpreter import interpret_procedure, build_l
 from pipeline.emulator.log_builder import LogEvent
 from pipeline.emulator.output_writer import write_log_stream, write_stats
 from pipeline.emulator import test_history
+from pipeline.attacker.agent import refine_evasion_hints_v2
 
 _DEBUG = os.getenv("PIPELINE_DEBUG", "").lower() in ("1", "true")
 _CONFIG_PATH = Path("config/techniques.yaml")
@@ -299,9 +300,11 @@ def _select_candidates(
       cross-run seen    : test_history.PENALTY_CROSS_RUN (0.35)
       rule generated    : test_history.PENALTY_RULE_GENERATED (0.15)
 
-    If selected_guid is provided (attacker's choice), that test is guaranteed
-    to appear first in the result regardless of its sampled priority. The
-    remaining slots are filled by the weighted draw as normal.
+    If selected_guid is provided (a manual pin, e.g. from backfill_fixtures.py),
+    that test is guaranteed to appear first in the result regardless of its
+    sampled priority. The remaining slots are filled by the weighted draw as
+    normal. Not used in the live adversarial loop — see run_emulator()'s
+    docstring for selected_test_guids.
 
     Does NOT mark guids as seen. Returns the ranked candidate pool as
     (guid, cleaned) tuples for _emulate_technique to try in order. Being
@@ -321,7 +324,7 @@ def _select_candidates(
 
         if selected_guid and guid == selected_guid:
             pinned = (guid, cleaned)
-            _dbg(f"  {cleaned.test_name}: pinned (attacker selection)")
+            _dbg(f"  {cleaned.test_name}: pinned (manual selection)")
             continue
 
         cross_penalty = test_history.get_penalty(
@@ -465,15 +468,37 @@ def _emulate_technique(
         _prior_attempts.setdefault(technique_id, set()).add(test_guid)
 
         candidate_events: list[LogEvent] = []
+        required_event_type = None
+        required_step = None
+        base_event_dump = None
 
         for variant_idx, variant_hints in enumerate(hint_sets):
+            # Variant 2+: refine the attacker's original hint set using the
+            # actual variant 1 event, now that it's known, instead of the
+            # blind guess made before either event existed.
+            if variant_idx == 1 and base_event_dump is not None and variant_hints:
+                variant_hints = refine_evasion_hints_v2(
+                    technique_id=technique_id,
+                    technique_name=cleaned.technique_name,
+                    tactic=cleaned.tactic,
+                    base_event=base_event_dump,
+                    original_hints_v2=variant_hints,
+                )
+
             _dbg(
                 f"{technique_id} / '{cleaned.test_name}': "
                 f"calling interpret_procedure (variant {variant_idx + 1})"
             )
 
             interpretation = interpret_procedure(
-                cleaned, evasion_hints=variant_hints)
+                cleaned, evasion_hints=variant_hints,
+                required_event_type=required_event_type,
+                required_step=required_step,
+            )
+
+            if variant_idx == 0:
+                required_event_type = interpretation.get("event_type")
+                required_step = interpretation.get("selected_step")
 
             log_event = build_log_event(
                 interpretation=interpretation,
@@ -486,6 +511,8 @@ def _emulate_technique(
 
             if log_event is not None:
                 candidate_events.append(log_event)
+                if variant_idx == 0:
+                    base_event_dump = log_event.model_dump(exclude_none=True)
                 _dbg(
                     f"{technique_id} / '{cleaned.test_name}': "
                     f"LogEvent generated (EID {log_event.EventID}, {log_event.event_type})"
@@ -523,8 +550,12 @@ def run_emulator(
         evasion_hints:       Per-technique evasion context from AttackerAgent.
                              Keyed by technique_id — Sysmon field name → mutated value.
                              Pass None to run base procedures without mutation.
-        selected_test_guids: dict[technique_id, test_guid] from extract_emulator_inputs().
-                             Attacker-selected test pinned first in selection.
+        selected_test_guids: Manual pin for a specific Atomic test GUID per technique,
+                             used by scripts/backfill_fixtures.py to regenerate a
+                             regression fixture from a known-good test. Not used in
+                             the live adversarial loop — orchestrator.py never passes
+                             this, since test selection there is driven entirely by
+                             the emulator's own weighted scoring (see _select_candidates).
                              Pass None to run all tests up to _MAX_CANDIDATES.
         output_dir:          Root directory for JSONL output and stats.
                              Writes to:

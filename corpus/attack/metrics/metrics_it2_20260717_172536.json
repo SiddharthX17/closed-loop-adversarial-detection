@@ -1,0 +1,43 @@
+{
+  "iteration": 2,
+  "timestamp": "2026-07-17T17:25:36Z",
+  "techniques": [
+    {
+      "technique_id": "T1036.005",
+      "iteration": 2,
+      "covered": true,
+      "rules_evaluated": 12,
+      "rules_fired": 1,
+      "total_events": 1,
+      "matched_events": 1,
+      "missed_events": 0,
+      "precision": 0.0833,
+      "recall": 1.0,
+      "fp_rate": null,
+      "fp_count": null,
+      "total_benign": null,
+      "validation_gate_failed": null
+    },
+    {
+      "technique_id": "T1197",
+      "iteration": 2,
+      "covered": true,
+      "rules_evaluated": 1,
+      "rules_fired": 1,
+      "total_events": 1,
+      "matched_events": 1,
+      "missed_events": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "fp_rate": null,
+      "fp_count": null,
+      "total_benign": null,
+      "validation_gate_failed": null
+    }
+  ],
+  "total_techniques": 2,
+  "covered_techniques": 2,
+  "coverage_rate": 1.0,
+  "mean_recall": 1.0,
+  "mean_fp_rate": 0.0
+}

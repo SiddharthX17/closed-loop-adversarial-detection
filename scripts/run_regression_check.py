@@ -160,6 +160,27 @@ def compute_fp_rate(benign_events: list[dict]) -> float:
     return fp_count / len(benign_events)
 
 
+def compute_per_rule_fp_rates(benign_events: list[dict]) -> dict[str, float]:
+    """
+    FP rate per rule against benign corpus — identifies which specific rule
+    caused a surge rather than just reporting the aggregate rate increased.
+    Only called when an FP regression is detected, not on every run.
+    """
+    if not benign_events:
+        return {}
+    normalized = [_normalize_event(e) for e in benign_events]
+    engine = DetectionEngine(rules_dir=RULES_DIR, events=normalized)
+    total = len(normalized)
+    rates = {}
+    for rule_path in sorted(RULES_DIR.rglob("*.yml")):
+        result = engine.run_single_rule(
+            rule_path.read_text(), events=normalized)
+        fp_count = len(result.matched_events)
+        if fp_count > 0:
+            rates[rule_path.name] = fp_count / total
+    return rates
+
+
 def load_baseline() -> dict:
     if not BASELINE_PATH.exists():
         return {}
@@ -179,6 +200,7 @@ def build_report(
     coverage: dict[str, bool],
     fp_rate: float,
     baseline: dict,
+    benign_events: list[dict] | None = None,
 ) -> tuple[str, bool]:
     lines = ["## Regression Check Results\n"]
     regression_found = False
@@ -227,6 +249,17 @@ def build_report(
     lines.append(
         f"\n**FP rate:** {baseline_fp_rate:.2%} -> {fp_rate:.2%} ({fp_status})")
 
+    if fp_status == "REGRESSION" and benign_events:
+        per_rule = compute_per_rule_fp_rates(benign_events)
+        if per_rule:
+            lines.append("\n**Rules contributing to FP rate increase:**")
+            lines.append("| Rule | FP rate |")
+            lines.append("|---|---|")
+            for rule_name, rate in sorted(
+                per_rule.items(), key=lambda x: x[1], reverse=True
+            ):
+                lines.append(f"| {rule_name} | {rate:.2%} |")
+
     return "\n".join(lines), regression_found
 
 
@@ -237,8 +270,9 @@ def main() -> None:
     parser.add_argument("--output", default="regression_report.md")
     args = parser.parse_args()
 
+    benign_events = load_benign_events()
     rule_fired, coverage = compute_results()
-    fp_rate = compute_fp_rate(load_benign_events())
+    fp_rate = compute_fp_rate(benign_events)
 
     if args.mode == "update-baseline":
         save_baseline(rule_fired, coverage, fp_rate)
@@ -248,7 +282,7 @@ def main() -> None:
 
     baseline = load_baseline()
     report, regression_found = build_report(
-        rule_fired, coverage, fp_rate, baseline)
+        rule_fired, coverage, fp_rate, baseline, benign_events)
     Path(args.output).write_text(report)
     print(report)
 

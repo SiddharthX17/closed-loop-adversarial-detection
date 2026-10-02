@@ -1,0 +1,53 @@
+title: "T1564.003 - Hidden Window via PowerShell or Scripting Host"
+id: 5543fe68-119f-4334-8553-2c92a2d1ab1a
+status: experimental
+references:
+    - https://attack.mitre.org/techniques/T1564/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-07-25
+tags:
+    - attack.defense-evasion
+    - attack.t1564.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_ps_image:
+      Image|endswith:
+        - '\powershell.exe'
+        - '\pwsh.exe'
+    selection_ps_flag:
+      CommandLine|contains:
+        - '-WindowStyle hidden'
+        - '-WindowStyle Hidden'
+        - '-WindowStyle minimized'
+        - '-WindowStyle Minimized'
+        - '-windowstyle hidden'
+        - '-windowstyle minimized'
+        - '-W Hidden'
+        - '-Win Hidden'
+        - '-w hidden'
+    selection_scripthost_image:
+      Image|endswith:
+        - '\mshta.exe'
+        - '\wscript.exe'
+        - '\cscript.exe'
+        - '\regsvr32.exe'
+    selection_scripthost_call:
+      CommandLine|contains:
+        - 'WScript.Shell'
+        - 'Shell.Application'
+    selection_scripthost_hidden:
+      CommandLine|contains:
+        - ',0)'
+        - ',1)'
+        - ',2)'
+        - ',6)'
+        - ',7)'
+    condition: (selection_ps_image and selection_ps_flag) or (selection_scripthost_image and selection_scripthost_call and selection_scripthost_hidden)
+falsepositives:
+    - "Legitimate scheduled tasks, logon scripts, RMM/deployment tooling, and internal automation that intentionally launch PowerShell with -WindowStyle Hidden for silent background execution (e.g., silent module installers, background maintenance scripts)"
+    - "Internally cataloged HTA/VBScript-based silent installers or logon tooling that use WScript.Shell/Shell.Application Run or Exec calls with a hidden visibility parameter for legitimate unattended setup tasks"
+    - "Software packaging tools (e.g., some MSI wrapper scripts or self-extracting installers) that invoke cscript/wscript with hidden Run calls as part of normal silent install workflows"
+    - "Regsvr32-based legitimate silent registration scripts that incidentally match the WScript.Shell + hidden-parameter pattern (rare but possible in some enterprise deployment frameworks)"
+level: medium

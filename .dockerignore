@@ -21,7 +21,13 @@ terraform/tfplan
 .git/
 .github/
 tests/
-scripts/
+
+# Open the scripts folder, wipe its contents, but keep atomic.yaml
+!scripts/
+scripts/*
+!scripts/fetch_atomic_tests.py
+
+
 *.docx
 *.md
 README*

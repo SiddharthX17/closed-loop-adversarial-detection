@@ -33,6 +33,7 @@ from typing import Optional
 
 import anthropic
 from dotenv import load_dotenv
+from pipeline.llm_retry import create_with_retry
 
 from pipeline.detection_planner.prompts import build_planner_user_message, PLANNER_SYSTEM_PROMPT, PLANNER_OUTPUT_SCHEMA
 from pipeline.data.stix_loader import MITREMetadata
@@ -184,7 +185,8 @@ class DetectionPlanner:
 
     def _call_llm(self, system_prompt: str, user_message: str) -> Optional[str]:
         try:
-            response = self._client.messages.create(
+            response = create_with_retry(
+                self._client,
                 model=MODEL,
                 max_tokens=6144,
                 system=[

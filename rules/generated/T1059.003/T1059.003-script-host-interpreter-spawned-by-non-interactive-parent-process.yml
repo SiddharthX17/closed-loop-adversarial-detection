@@ -1,0 +1,34 @@
+title: Script Host Interpreter Spawned by Non-Interactive Parent Process
+id: 4cb0515f-9798-4245-8051-aa0501bd4056
+status: experimental
+description: Detects wscript.exe, cscript.exe, or mshta.exe launched as a child of a non-interactive system/service wrapper process (svchost.exe, rundll32.exe, services.exe) instead of a normal user shell, indicating living-off-the-land script host abuse for command execution.
+references:
+  - https://attack.mitre.org/techniques/T1059/003/
+tags:
+  - attack.t1059.003
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_interpreter:
+    Image|endswith:
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+  selection_parent:
+    ParentImage|endswith:
+      - '\svchost.exe'
+      - '\rundll32.exe'
+      - '\services.exe'
+  filter_sccm:
+    ParentCommandLine|contains:
+      - 'CcmExec'
+      - 'ccmsetup'
+  filter_intune:
+    ParentCommandLine|contains:
+      - 'IntuneManagementExtension'
+  condition: selection_interpreter and selection_parent and not filter_sccm and not filter_intune
+falsepositives:
+  - Legitimate software deployment or management tools using rundll32 or svchost wrappers to launch helper scripts (SCCM, Intune, GPO logon scripts)
+  - Internal automation tools invoking script hosts via rundll32/svchost-based launchers
+level: high

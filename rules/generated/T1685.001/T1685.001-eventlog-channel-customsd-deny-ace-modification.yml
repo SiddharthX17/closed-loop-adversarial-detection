@@ -1,0 +1,34 @@
+title: "EventLog Channel CustomSD Deny ACE Modification"
+id: 88ecfc2a-5e7c-471d-b919-7e0cd737f5b6
+status: experimental
+description: "Detects a registry write to the CustomSD value under an EventLog channel's service key containing an SDDL deny ACE against privileged or broad security principals, indicating an attempt to suppress logging or restrict access to that log without stopping the service or clearing existing records."
+references:
+    - https://attack.mitre.org/techniques/T1685/001/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-29
+tags:
+    - attack.defense-impairment
+    - attack.t1685.001
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_path:
+      TargetObject|contains: '\EventLog\'
+      TargetObject|endswith: '\CustomSD'
+    selection_deny:
+      Details|contains:
+        - 'D;;'
+    selection_deny_sid:
+      Details|contains:
+        - ';;;WD)'
+        - ';;;BA)'
+        - ';;;SY)'
+        - ';;;NS)'
+        - ';;;AU)'
+    condition: selection_path and selection_deny and selection_deny_sid
+falsepositives:
+    - "Legitimate security hardening or GPO-driven baseline enforcement scripts that intentionally restrict EventLog channel access via deny ACEs (rare; typically allow ACEs are used instead)"
+    - "EDR/SIEM agent installers or update routines that self-configure EventLog channel permissions during deployment — should only be exempted via verification of the writing process's own signed Image/hash, not via parent process or path context, and no such exemption is applied in this rule"
+    - "Administrative use of reg.exe or PowerShell for unrelated CustomSD maintenance that coincidentally includes a deny ACE against one of the listed SIDs (uncommon)"
+level: high

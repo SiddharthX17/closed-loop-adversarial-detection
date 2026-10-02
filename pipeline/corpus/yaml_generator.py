@@ -21,6 +21,7 @@ from typing import Optional
 
 import anthropic
 
+from pipeline.llm_retry import create_with_retry
 from pipeline.corpus.clusterer import RuleCluster
 from pipeline.corpus.prompts import SYSTEM_PROMPT, build_cluster_prompt
 
@@ -297,7 +298,8 @@ def _call_llm(
               f"({cluster.cluster_size} rules)")
 
     try:
-        response = client.messages.create(
+        response = create_with_retry(
+            client,
             model=_LLM_MODEL,
             max_tokens=_MAX_TOKENS,
             system=SYSTEM_PROMPT,

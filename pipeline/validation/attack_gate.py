@@ -47,10 +47,44 @@ UNMATCHED_FEEDBACK_CAP = 5
 # Content-based event hashing (same approach as result_parser._event_hash)
 # ---------------------------------------------------------------------------
 
+_NUMERIC_FIELDS = {"EventID", "DestinationPort",
+                   "ProcessId", "ParentProcessId"}
+
+
 def _event_hash(event: dict) -> str:
-    """Stable content hash for deduplication/comparison. Not crypto."""
-    serialised = json.dumps(event, sort_keys=True, default=str)
-    return hashlib.md5(serialised.encode()).hexdigest()  # noqa: S324
+    """
+    Stable content hash for deduplication/comparison. Not crypto.
+
+    Drops any key with a None/empty value, then casts every remaining
+    value to string, before hashing. This replaces the earlier
+    numeric-field-specific normalization: matched_events (reconstructed
+    from sqlite3 rows) may carry a full, fixed column set with NULLs for
+    unset fields, while attack_sample's events (Pydantic
+    model_dump(exclude_none=True)) never have those keys at all — a
+    differing key-set hashes differently even when every populated field
+    agrees, independent of any single field's type. Stringifying
+    everything also means no future field (not just the four originally
+    listed as numeric) can silently reintroduce this bug.
+    """
+    normalised = {
+        k: str(v) for k, v in event.items()
+        if v is not None and v != ""
+    }
+    serialised = json.dumps(normalised, sort_keys=True)
+    return hashlib.md5(serialised.encode()).hexdigest()
+
+
+def _normalise_for_display(event: dict) -> dict:
+    """
+    Normalise field values for feedback display only — drops empty/None
+    values and stringifies the rest, same treatment as _event_hash's
+    comparison logic. Purely cosmetic: prevents EventID (or any field)
+    displaying as a different type (str vs int) depending on whether the
+    event came from matched_events (sqlite3-reconstructed) or
+    unmatched_events (native attack_sample). Does not affect match/unmatch
+    classification, which is already computed correctly via _event_hash.
+    """
+    return {k: str(v) for k, v in event.items() if v is not None and v != ""}
 
 
 def _find_unmatched(
@@ -128,12 +162,18 @@ class GateResult:
             )
 
         # Partial match
+        matched_summary = _format_matched(self.matched_events)
         return (
             f"Attack gate failed — rule fired on {self.match_count} of "
             f"{self.total_events} attack events ({self.match_ratio:.0%}), "
             f"below the required threshold.\n"
             f"{fields_note}\n"
-            f"Broaden conditions without removing existing ones:\n{unmatched_summary}"
+            f"Events that MATCHED (what currently works):\n{matched_summary}\n"
+            f"Events that did NOT match:\n{unmatched_summary}\n"
+            f"Rework the condition so it matches every event above — this may "
+            f"mean broadening an existing condition, replacing one that only "
+            f"fits some events, or restructuring entirely. Do not simply add "
+            f"more conditions on top of ones that do not generalize."
         )
 
 
@@ -159,19 +199,44 @@ def _format_unmatched(unmatched_events: list[dict]) -> str:
     if not unmatched_events:
         return "  (no unmatched event details available)"
 
-    key_fields = ("Image", "CommandLine", "ParentImage", "TargetObject",
-                  "Details", "OriginalFileName", "DestinationIp",
+    key_fields = ("Image", "CommandLine", "ParentImage", "ParentCommandLine",
+                  "TargetObject", "Details", "OriginalFileName", "DestinationIp",
                   "DestinationHostname", "DestinationPort", "EventID")
     cap = UNMATCHED_FEEDBACK_CAP
     shown = unmatched_events[:cap]
     lines = []
     for i, event in enumerate(shown, 1):
-        parts = {k: event[k] for k in key_fields if event.get(
-            k) is not None and event.get(k) != ""}
+        normalised = _normalise_for_display(event)
+        parts = {k: normalised[k] for k in key_fields if k in normalised}
         lines.append(f"  [{i}] {parts}")
     if len(unmatched_events) > cap:
         lines.append(
             f"  ... and {len(unmatched_events) - cap} more unmatched events")
+    return "\n".join(lines)
+
+
+def _format_matched(matched_events: list[dict]) -> str:
+    """
+    Format matched events as a compact list, same style as _format_unmatched,
+    so the defender agent can directly compare what worked vs what didn't
+    instead of only ever seeing failures.
+    """
+    if not matched_events:
+        return "  (no matched event details available)"
+
+    key_fields = ("Image", "CommandLine", "ParentImage", "ParentCommandLine",
+                  "TargetObject", "Details", "OriginalFileName", "DestinationIp",
+                  "DestinationHostname", "DestinationPort", "EventID")
+    cap = UNMATCHED_FEEDBACK_CAP
+    shown = matched_events[:cap]
+    lines = []
+    for i, event in enumerate(shown, 1):
+        normalised = _normalise_for_display(event)
+        parts = {k: normalised[k] for k in key_fields if k in normalised}
+        lines.append(f"  [{i}] {parts}")
+    if len(matched_events) > cap:
+        lines.append(
+            f"  ... and {len(matched_events) - cap} more matched events")
     return "\n".join(lines)
 
 

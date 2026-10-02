@@ -1,0 +1,41 @@
+title: "T1036.003 - Renamed System Utility Executing via PE Metadata Mismatch"
+id: 2f12a30f-52e8-439f-8615-5fe49b15e280
+status: experimental
+description: "Detects execution of a sensitive Windows system binary (e.g. powershell.exe, cmd.exe, mshta.exe, rundll32.exe, certutil.exe, regsvr32.exe, wscript.exe, cscript.exe) whose PE internal OriginalFileName does not match the on-disk Image filename, indicating the binary has been renamed to evade detections and analyst review anchored on process name."
+references:
+    - https://attack.mitre.org/techniques/T1036/003/
+author: "Defender Agent — Detection Engineering Automation"
+date: 2026-09-26
+tags:
+    - attack.defense-evasion
+    - attack.t1036.003
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_sensitive_originalfilename:
+      OriginalFileName:
+        - 'powershell.exe'
+        - 'cmd.exe'
+        - 'mshta.exe'
+        - 'rundll32.exe'
+        - 'certutil.exe'
+        - 'regsvr32.exe'
+        - 'wscript.exe'
+        - 'cscript.exe'
+    filter_matching_name:
+      Image|endswith:
+        - '\powershell.exe'
+        - '\cmd.exe'
+        - '\mshta.exe'
+        - '\rundll32.exe'
+        - '\certutil.exe'
+        - '\regsvr32.exe'
+        - '\wscript.exe'
+        - '\cscript.exe'
+    condition: selection_sensitive_originalfilename and not filter_matching_name
+falsepositives:
+    - "Legitimate software bundling a renamed copy of a system interpreter or helper binary (e.g. some installers embed a renamed powershell.exe or cscript.exe for portability); should be validated against the binary's digital signature/publisher rather than its path or parent process"
+    - "Portable or user-installed applications that legitimately run a renamed sensitive utility from AppData, Temp, or similar user-writable directories — directory location alone is not used as a suppressor here since attackers deliberately stage payloads in these same paths"
+    - "Endpoint security or IT management agents that occasionally rename or repackage a scripting engine for compatibility reasons; verify via code-signing certificate rather than exempting by path or ancestry"
+level: high

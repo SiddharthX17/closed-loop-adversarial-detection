@@ -1,0 +1,1 @@
+{"timestamp": "2026-07-13T09:36:11.157856+00:00", "host": "PC-JDOE", "user": "CORP\\mthompson", "EventID": 1, "event_type": "process_creation", "Channel": "Microsoft-Windows-Sysmon/Operational", "Image": "C:\\Windows\\Temp\\svchost.exe", "CommandLine": "C:\\Windows\\Temp\\svchost.exe", "ParentImage": "powershell.exe", "OriginalFileName": "svchost.exe"}

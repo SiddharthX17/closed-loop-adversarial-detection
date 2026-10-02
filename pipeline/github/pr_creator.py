@@ -320,7 +320,7 @@ class PRCreator:
         """
         filename = _rule_filename(technique_id, rule_yaml)
         branch = _branch_name(technique_id)
-        rule_path = f"{RULES_DIR}/{filename}"
+        rule_path = f"{RULES_DIR}/{technique_id}/{filename}"
 
         default_branch = self._repo.default_branch
         head_sha = self._repo.get_branch(default_branch).commit.sha

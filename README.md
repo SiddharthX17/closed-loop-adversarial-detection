@@ -1,7 +1,7 @@
 # closed-loop-adversarial-detection
 
 [![Health Check](../../actions/workflows/health_check.yml/badge.svg)](../../actions/workflows/health_check.yml)
-![Techniques Covered](https://img.shields.io/github/directory-file-count/SiddharthX17/closed-loop-adversarial-detection/rules/generated?type=dir&label=techniques%20covered)
+![MITRE Techniques Covered](https://img.shields.io/github/directory-file-count/SiddharthX17/closed-loop-adversarial-detection/rules/generated?type=dir&label=techniques%20covered)
 [![Regression Check](../../actions/workflows/regression.yml/badge.svg)](../../actions/workflows/regression.yml)
 
 Most teams measure detection coverage by counting rules. This system measures it by attacking them. 

@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_002
-# Clusters:   2  |  Feasible: 1  |  Variants: 3
+# Clusters:   1  |  Feasible: 1  |  Variants: 3
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,175 +10,154 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_002'
 
-# -- Cluster: singleton_4da457f9-03de-41ff-824c-ef0cd1761275  (1 rule(s)) ---------------------
-# Intent:    Detects BITS job lifecycle management operations (create, add file, resume, set 
-# Rules:     4da457f9-03de-41ff-824c-ef0cd1761275
+# -- Cluster: singleton_c9520cc4-f89a-4303-8e7e-8ceee228af03  (1 rule(s)) ---------------------
+# Intent:    Attacker disabling Windows Firewall by setting the EnableFirewall registry value
+# Rules:     c9520cc4-f89a-4303-8e7e-8ceee228af03
 # Archetype: IT admin workflow
 
-# IT administrator using BITS for reliable background transfer of compliance data
-# This simulates a real scenario where a sysadmin script orchestrates critical file downloads
+$firewallPolicyPath = 'HKLM:\Software\Policies\Microsoft\WindowsFirewall'
 
-$jobName = 'ComplianceReportDownload_' + (Get-Date -Format 'yyyyMMdd')
-$tempDir = [System.IO.Path]::GetTempPath()
-$localPath = Join-Path $tempDir 'compliance_report.zip'
-$notifyScript = Join-Path $tempDir 'notify_completion.ps1'
-
-try {
-  # Create a simple notification script (legitimate cleanup mechanism)
-  @'
-Write-Host 'Compliance report download completed'
-'@ | Out-File -FilePath $notifyScript -Encoding ASCII -Force
-
-  # Create BITS job for reliable background download
-  # This mirrors real admin scripts that use BITS for critical file transfers
-  bitsadmin.exe /create /name $jobName
-
-  # Add the file to transfer
-  # Using a legitimate internal destination (localhost simulates corporate HTTP server)
-  bitsadmin.exe /addfile $jobName 'http://127.0.0.1/compliance_report.zip' $localPath
-
-  # Set retry timing for network reliability
-  bitsadmin.exe /setminretrydelay $jobName 60
-
-  # Configure completion notification
-  bitsadmin.exe /setnotifycmdline $jobName $notifyScript ''
-
-  # Resume the job to begin transfer
-  bitsadmin.exe /resume $jobName
-
-  # Allow job to attempt for a brief period
-  Start-Sleep -Seconds 3
-
-  # Complete the job (cleanup)
-  bitsadmin.exe /complete $jobName
-
-  Write-Host 'BITS job lifecycle completed'
-}
-catch {
-  Write-Host "Error during BITS operation: $_"
-}
-finally {
-  # Cleanup: remove temp notification script
-  if (Test-Path $notifyScript) {
-    Remove-Item -Path $notifyScript -Force -ErrorAction SilentlyContinue
-  }
-
-  # Cleanup: remove temp file if it was created
-  if (Test-Path $localPath) {
-    Remove-Item -Path $localPath -Force -ErrorAction SilentlyContinue
-  }
+# Check if firewall policy path exists, create if needed for demonstration
+if (-not (Test-Path $firewallPolicyPath)) {
+    New-Item -Path $firewallPolicyPath -Force | Out-Null
 }
 
-# -- Cluster: singleton_4da457f9-03de-41ff-824c-ef0cd1761275  (1 rule(s)) ---------------------
-# Intent:    Detects BITS job lifecycle management operations (create, add file, resume, set 
-# Rules:     4da457f9-03de-41ff-824c-ef0cd1761275
+# Navigate to the Domain Profile policy path
+$domainProfilePath = Join-Path $firewallPolicyPath 'DomainProfile'
+if (-not (Test-Path $domainProfilePath)) {
+    New-Item -Path $domainProfilePath -Force | Out-Null
+}
+
+# Simulate policy remediation cycle: temporarily disable, then restore
+# This represents IT admin validating policy enforcement mechanisms
+Write-Host 'Starting firewall policy compliance check...'
+Start-Sleep -Seconds 1
+
+# Set EnableFirewall to 0 (disabled state) - this triggers the detection
+Set-ItemProperty -Path $domainProfilePath -Name 'EnableFirewall' -Value 0 -Type DWord -Force
+Write-Host 'Firewall policy temporarily disabled for remediation verification'
+Start-Sleep -Seconds 2
+
+# Restore firewall to enabled state (this is the remediation)
+Set-ItemProperty -Path $domainProfilePath -Name 'EnableFirewall' -Value 1 -Type DWord -Force
+Write-Host 'Firewall policy re-enabled and compliance verified'
+
+# Clean up: remove the test registry key if it was created for this exercise
+if (Test-Path $domainProfilePath) {
+    Remove-Item -Path $domainProfilePath -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path $firewallPolicyPath) {
+    Remove-Item -Path $firewallPolicyPath -Force -ErrorAction SilentlyContinue
+}
+
+# -- Cluster: singleton_c9520cc4-f89a-4303-8e7e-8ceee228af03  (1 rule(s)) ---------------------
+# Intent:    Attacker disabling Windows Firewall by setting the EnableFirewall registry value
+# Rules:     c9520cc4-f89a-4303-8e7e-8ceee228af03
 # Archetype: Software installer/updater workflow
 
-# Enterprise deployment agent using BITS for patch distribution
-# Simulates realistic enterprise software update orchestration
+# Simulate enterprise security software installer configuring firewall policies
+# This is realistic behavior during deployment of network management tools
 
-$deploymentId = 'Deploy_' + (Get-Random -Minimum 10000 -Maximum 99999)
-$tempDir = [System.IO.Path]::GetTempPath()
-$patchFile = Join-Path $tempDir "patch_KB5034441.exe"
-$logFile = Join-Path $tempDir "deployment_$deploymentId.log"
+$firewallPolicyPath = 'HKLM:\Software\Policies\Microsoft\WindowsFirewall'
+$standardProfilePath = Join-Path $firewallPolicyPath 'StandardProfile'
 
+# Ensure policy path exists for software installation context
+if (-not (Test-Path $firewallPolicyPath)) {
+    New-Item -Path $firewallPolicyPath -Force | Out-Null
+}
+
+if (-not (Test-Path $standardProfilePath)) {
+    New-Item -Path $standardProfilePath -Force | Out-Null
+}
+
+Write-Host 'Network management client starting installation...'
+
+# Store current firewall state for restoration
+$currentState = $null
 try {
-  # Initialize deployment log
-  "Deployment started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File -FilePath $logFile -Encoding ASCII
-
-  # Create BITS job for patch distribution
-  bitsadmin.exe /create /name $deploymentId
-
-  # Add patch file to download queue
-  # In real scenarios, this would be from an internal patch server or CDN
-  bitsadmin.exe /addfile $deploymentId 'http://127.0.0.1/patches/KB5034441.exe' $patchFile
-
-  # Configure retry behavior for unstable networks
-  bitsadmin.exe /setminretrydelay $deploymentId 30
-
-  # Set completion notification to log deployment status
-  bitsadmin.exe /setnotifycmdline $deploymentId "cmd /c echo Patch downloaded >> $logFile"
-
-  # Resume transfer
-  bitsadmin.exe /resume $deploymentId
-
-  # Wait for initial transfer attempt
-  Start-Sleep -Seconds 2
-
-  # Complete job
-  bitsadmin.exe /complete $deploymentId
-
-  # Log completion
-  "Deployment completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File -FilePath $logFile -Encoding ASCII -Append
-}
-catch {
-  "Deployment error: $_" | Out-File -FilePath $logFile -Encoding ASCII -Append
-}
-finally {
-  # Cleanup temporary files
-  if (Test-Path $patchFile) {
-    Remove-Item -Path $patchFile -Force -ErrorAction SilentlyContinue
-  }
-  if (Test-Path $logFile) {
-    Remove-Item -Path $logFile -Force -ErrorAction SilentlyContinue
-  }
+    $currentState = (Get-ItemProperty -Path $standardProfilePath -Name 'EnableFirewall' -ErrorAction SilentlyContinue).EnableFirewall
+} catch {
+    $currentState = 1  # Default to enabled if not found
 }
 
-# -- Cluster: singleton_4da457f9-03de-41ff-824c-ef0cd1761275  (1 rule(s)) ---------------------
-# Intent:    Detects BITS job lifecycle management operations (create, add file, resume, set 
-# Rules:     4da457f9-03de-41ff-824c-ef0cd1761275
-# Archetype: Document/file operation workflow
+Write-Host "Current EnableFirewall state: $currentState"
 
-# User/service retrieving large shared document using BITS background transfer
-# Realistic scenario: accessing archived company records or training materials
+# Installation phase: temporarily disable firewall policy to allow installer operations
+Write-Host 'Configuring firewall policies for installation phase...'
+Set-ItemProperty -Path $standardProfilePath -Name 'EnableFirewall' -Value 0 -Type DWord -Force
+Write-Host 'Firewall policy disabled during installation'
 
-$documentJob = 'RetrieveArchive_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
-$downloadDir = Join-Path $env:TEMP 'documents'
-$archiveFile = Join-Path $downloadDir 'Q3_Training_Materials.zip'
-$statusLog = Join-Path $downloadDir 'transfer_log.txt'
+# Simulate installation work
+Start-Sleep -Seconds 2
+Write-Host 'Installation components deploying...'
+Start-Sleep -Seconds 1
 
-try {
-  # Ensure download directory exists
-  if (-not (Test-Path $downloadDir)) {
-    New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
-  }
+# Post-installation: restore firewall policy to previous state
+Write-Host 'Restoring firewall policy configuration...'
+Set-ItemProperty -Path $standardProfilePath -Name 'EnableFirewall' -Value 1 -Type DWord -Force
+Write-Host 'Firewall policy restored to enabled state'
 
-  # Create BITS job for document retrieval
-  bitsadmin.exe /create /name $documentJob
-
-  # Add document archive to job
-  # Simulates downloading from internal document repository
-  bitsadmin.exe /addfile $documentJob 'http://127.0.0.1/docs/Q3_Training_Materials.zip' $archiveFile
-
-  # Configure reasonable retry behavior
-  bitsadmin.exe /setminretrydelay $documentJob 45
-
-  # Set notification to update transfer log on completion
-  $notifyCmd = "cmd /c echo Transfer completed at %date% %time% >> $statusLog"
-  bitsadmin.exe /setnotifycmdline $documentJob $notifyCmd ''
-
-  # Start the transfer
-  bitsadmin.exe /resume $documentJob
-
-  # Allow transfer attempt
-  Start-Sleep -Seconds 3
-
-  # Finalize the job
-  bitsadmin.exe /complete $documentJob
-
-  Write-Host 'Document transfer workflow completed'
+# Clean up temporary policy configuration
+if (Test-Path $standardProfilePath) {
+    Remove-Item -Path $standardProfilePath -Force -ErrorAction SilentlyContinue
 }
-catch {
-  Write-Host "Error: $_"
-}
-finally {
-  # Cleanup: remove temporary files and logs
-  if (Test-Path $downloadDir) {
-    Remove-Item -Path $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
-  }
+if (Test-Path $firewallPolicyPath) {
+    Remove-Item -Path $firewallPolicyPath -Force -ErrorAction SilentlyContinue
 }
 
-# SKIPPED cluster singleton_efb1170e-2737-4c5d-9c86-8d0dd3c8bd78: LLM response truncated at max_tokens (4096)
+Write-Host 'Installation and firewall policy restoration completed'
+
+# -- Cluster: singleton_c9520cc4-f89a-4303-8e7e-8ceee228af03  (1 rule(s)) ---------------------
+# Intent:    Attacker disabling Windows Firewall by setting the EnableFirewall registry value
+# Rules:     c9520cc4-f89a-4303-8e7e-8ceee228af03
+# Archetype: User-driven workflow
+
+# User-driven firewall troubleshooting workflow
+# IT support technician diagnosing network connectivity issues
+
+$firewallPolicyPath = 'HKLM:\Software\Policies\Microsoft\WindowsFirewall'
+$publicProfilePath = Join-Path $firewallPolicyPath 'PublicProfile'
+
+# Ensure paths exist
+if (-not (Test-Path $firewallPolicyPath)) {
+    New-Item -Path $firewallPolicyPath -Force | Out-Null
+}
+
+if (-not (Test-Path $publicProfilePath)) {
+    New-Item -Path $publicProfilePath -Force | Out-Null
+}
+
+Write-Host 'Network connectivity troubleshooting initiated...'
+Write-Host 'Ticket: Customer reports intermittent connectivity issues'
+
+# Diagnostic phase 1: Disable firewall policy to test if firewall is causing connectivity problems
+Write-Host 'Step 1: Disabling firewall policy for diagnostic testing...'
+Set-ItemProperty -Path $publicProfilePath -Name 'EnableFirewall' -Value 0 -Type DWord -Force
+
+Write-Host 'Firewall policy disabled. Running connectivity diagnostics...'
+Start-Sleep -Seconds 3
+
+# Simulate ping or connectivity test
+$testResult = 'Connectivity test: PASS'
+Write-Host $testResult
+
+# Diagnostic phase 2: Re-enable firewall policy
+Write-Host 'Step 2: Connectivity confirmed. Re-enabling firewall policy...'
+Set-ItemProperty -Path $publicProfilePath -Name 'EnableFirewall' -Value 1 -Type DWord -Force
+Write-Host 'Firewall policy re-enabled'
+
+# Verification
+Start-Sleep -Seconds 1
+Write-Host 'Troubleshooting complete. Firewall policy verified as operational.'
+
+# Clean up temporary diagnostic configuration
+if (Test-Path $publicProfilePath) {
+    Remove-Item -Path $publicProfilePath -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path $firewallPolicyPath) {
+    Remove-Item -Path $firewallPolicyPath -Force -ErrorAction SilentlyContinue
+}
+
 
 # ===========================================================================
 # Export Sysmon events to corpus/benign/

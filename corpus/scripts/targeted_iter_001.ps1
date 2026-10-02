@@ -1,7 +1,7 @@
 # Auto-generated corpus stress-test script
 # Pipeline: closed-loop-adversarial-detection
 # Iteration:  iter_001
-# Clusters:   5  |  Feasible: 5  |  Variants: 15
+# Clusters:   1  |  Feasible: 1  |  Variants: 2
 # Runner:     corpus_runner.yml (GH Actions)
 
 $ProgressPreference    = 'SilentlyContinue'
@@ -10,529 +10,96 @@ $ErrorActionPreference = 'Continue'
 
 $iterationId = 'iter_001'
 
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# -- Cluster: singleton_8af420ec-3464-406e-aa32-0ff39808feab  (1 rule(s)) ---------------------
-# Intent:    Adversaries creating scheduled tasks via PowerShell cmdlets or script hosts to e
-# Rules:     8af420ec-3464-406e-aa32-0ff39808feab
-# Archetype: Software installer/updater workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# Software installation workflow creating scheduled task for automated updates
-# This mimics how legitimate management tools set up maintenance tasks
-
-$taskFolder = 'SoftwareUpdates'
-$taskName = 'AutoUpdateCheck'
-$scriptPath = Join-Path $env:ProgramData 'Updates'
-$logFile = Join-Path $scriptPath 'update_check.log'
-
-# Create the supporting directory structure
-if (-not (Test-Path $scriptPath)) {
-    New-Item -ItemType Directory -Path $scriptPath | Out-Null
-}
-
-# Create a temporary maintenance script
-$maintenanceScript = Join-Path $scriptPath 'update_maintenance.ps1'
-$scriptContent = @'
-# Log file location
-$logPath = '{0}'
-Add-Content -Path $logPath -Value "Update check executed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-'@ -f $logFile
-
-Set-Content -Path $maintenanceScript -Value $scriptContent -Encoding UTF8
-
-try {
-    # Use schtasks.exe to create the scheduled task (common in installer workflows)
-    $action = 'powershell.exe'
-    $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$maintenanceScript`""
-
-    $createTaskCmd = @(
-        'schtasks.exe',
-        '/create',
-        '/tn', "\$taskFolder\$taskName",
-        '/tr', "$action $arguments",
-        '/sc', 'weekly',
-        '/d', 'SUN',
-        '/st', '03:00:00',
-        '/ru', 'NT AUTHORITY\SYSTEM',
-        '/f',
-        '/z'
-    )
-
-    & $createTaskCmd 2>&1 | Out-Null
-
-    # Verify task creation
-    $existingTask = schtasks.exe /query /tn "\$taskFolder\$taskName" /fo list 2>&1
-    if ($existingTask -notlike '*ERROR*') {
-        Write-Host "Task created via installer workflow: $taskName"
-    }
-
-    # Clean up
-    schtasks.exe /delete /tn "\$taskFolder\$taskName" /f 2>&1 | Out-Null
-    Remove-Item -Path $maintenanceScript -Force -ErrorAction SilentlyContinue | Out-Null
-    Remove-Item -Path $scriptPath -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
-}
-catch {
-    Write-Host "Error during software update task setup: $_"
-    Remove-Item -Path $scriptPath -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
-}
-
-Write-Host 'Software update scheduling workflow completed'
-
-# -- Cluster: singleton_8af420ec-3464-406e-aa32-0ff39808feab  (1 rule(s)) ---------------------
-# Intent:    Adversaries creating scheduled tasks via PowerShell cmdlets or script hosts to e
-# Rules:     8af420ec-3464-406e-aa32-0ff39808feab
-# Archetype: User-driven workflow
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-# User workflow: creating a scheduled task for daily report generation
-# This mimics how administrative users or scripts set up personal automation
-
-$reportDir = Join-Path $env:TEMP 'daily_reports'
-$taskName = 'DailyReportGeneration'
-
-# Create report directory
-if (-not (Test-Path $reportDir)) {
-    New-Item -ItemType Directory -Path $reportDir | Out-Null
-}
-
-# Create report generation script in a standard location
-$reportScript = Join-Path $reportDir 'generate_report.ps1'
-$reportScriptContent = @'
-Param([string]$OutputPath)
-$timestamp = Get-Date -Format 'yyyy-MM-dd'
-$reportFile = Join-Path $OutputPath "report_$timestamp.csv"
-Get-WmiObject -Class Win32_LogicalDisk | Select-Object Name, Size, FreeSpace | Export-Csv -Path $reportFile -NoTypeInformation
-'@
-
-Set-Content -Path $reportScript -Value $reportScriptContent -Encoding UTF8
-
-try {
-    # Create the scheduled task using schtasks
-    $pwshPath = 'powershell.exe'
-    $scriptArg = "-NoProfile -ExecutionPolicy Bypass -File `"$reportScript`" -OutputPath `"$reportDir`""
-
-    $taskCmd = @(
-        'schtasks.exe',
-        '/create',
-        '/tn', '\\UserMaintenance\\DailyReporting',
-        '/tr', "$pwshPath $scriptArg",
-        '/sc', 'daily',
-        '/st', '06:00:00',
-        '/ru', 'NT AUTHORITY\SYSTEM',
-        '/f'
-    )
-
-    & $taskCmd 2>&1 | Out-Null
-
-    # Verify creation
-    $checkTask = schtasks.exe /query /tn '\\UserMaintenance\\DailyReporting' /fo list 2>&1
-    if ($checkTask -notlike '*ERROR*') {
-        Write-Host "Daily report task created successfully"
-    }
-
-    # Clean up
-    schtasks.exe /delete /tn '\\UserMaintenance\\DailyReporting' /f 2>&1 | Out-Null
-    Remove-Item -Path $reportDir -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
-}
-catch {
-    Write-Host "Error during report task creation: $_"
-    Remove-Item -Path $reportDir -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
-}
-
-Write-Host 'User report scheduling workflow completed'
-
-# -- Cluster: singleton_37b9adf5-1251-44bc-97fe-42cc239603b5  (1 rule(s)) ---------------------
-# Intent:    Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download fi
-# Rules:     37b9adf5-1251-44bc-97fe-42cc239603b5
+# -- Cluster: singleton_2b3ffc9c-a54c-41c9-8601-cdace311c92e  (1 rule(s)) ---------------------
+# Intent:    Attacker disabling Windows Firewall via registry policy commands to evade networ
+# Rules:     2b3ffc9c-a54c-41c9-8601-cdace311c92e
 # Archetype: IT admin workflow
 
-# Certificate authority CRL validation for compliance audit
-$tempDir = [System.IO.Path]::GetTempPath()
-$crlPath = Join-Path $tempDir 'root_crl.crl'
+$auditLogPath = Join-Path $env:TEMP 'firewall_policy_audit.txt'
+$policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile'
+$domainPolicyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile'
+
+# Document current firewall policy state for audit purposes
+Add-Content -Path $auditLogPath -Value "Firewall Policy Audit - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Add-Content -Path $auditLogPath -Value "================================================================"
+
+# Query current firewall enabled state across profiles
+try {
+  if (Test-Path $policyPath) {
+    $stdValue = Get-ItemProperty -Path $policyPath -Name 'EnableFirewall' -ErrorAction SilentlyContinue
+    Add-Content -Path $auditLogPath -Value "StandardProfile EnableFirewall: $($stdValue.EnableFirewall)"
+  }
+} catch {}
 
 try {
-    # Retrieve CRL from internal PKI endpoint (simulated with localhost for testing)
-    # This represents a real admin validating certificate chains during infrastructure maintenance
-    & certutil.exe -urlcache -split -f 'http://localhost:8080/certsrv/certca.crl' $crlPath
+  if (Test-Path $domainPolicyPath) {
+    $domainValue = Get-ItemProperty -Path $domainPolicyPath -Name 'EnableFirewall' -ErrorAction SilentlyContinue
+    Add-Content -Path $auditLogPath -Value "DomainProfile EnableFirewall: $($domainValue.EnableFirewall)"
+  }
+} catch {}
 
-    # Also validate with https PKI endpoint
-    & certutil.exe -urlcache -f 'https://localhost:8443/pki/root.crl' $crlPath
+# Update firewall policy using registry command-line tool
+# This simulates admin making policy changes via standard registry modification
+reg add "HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile" /v EnableFirewall /t REG_DWORD /d 1 /f 2>&1 | Out-Null
 
-    # Clean up
-    Remove-Item -Force $crlPath -ErrorAction SilentlyContinue
-}
-catch {
-    # Network endpoint may not be available in test environment, which is expected
-    Remove-Item -Force $crlPath -ErrorAction SilentlyContinue
-}
+# Use PowerShell to verify policy application
+$verifyCmd = 'powershell.exe -NoProfile -Command "Get-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile -Name EnableFirewall -ErrorAction SilentlyContinue | Select-Object EnableFirewall"'
+Invoke-Expression $verifyCmd 2>&1 | Out-Null
 
-Write-Host 'Certificate authority validation complete'
+# Query via command line to document final state (demonstrates monitoring via CLI)
+cmd /c "reg query HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile /v EnableFirewall" 2>&1 | Out-Null
 
-# -- Cluster: singleton_37b9adf5-1251-44bc-97fe-42cc239603b5  (1 rule(s)) ---------------------
-# Intent:    Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download fi
-# Rules:     37b9adf5-1251-44bc-97fe-42cc239603b5
+# Clean up audit log
+if (Test-Path $auditLogPath) { Remove-Item -Path $auditLogPath -Force }
+
+# -- Cluster: singleton_2b3ffc9c-a54c-41c9-8601-cdace311c92e  (1 rule(s)) ---------------------
+# Intent:    Attacker disabling Windows Firewall via registry policy commands to evade networ
+# Rules:     2b3ffc9c-a54c-41c9-8601-cdace311c92e
 # Archetype: Software installer/updater workflow
 
-# Enterprise patch management via BitsAdmin (SCCM distribution point)
-$tempDir = [System.IO.Path]::GetTempPath()
-$updateFile = Join-Path $tempDir 'patch_q4_2024.exe'
-$jobName = 'EnterprisePatchJob'
+$configLogPath = Join-Path $env:TEMP 'config_firewall_settings.log'
+$tempRegPath = 'HKLM:\SOFTWARE\Temp_SecurityConfig'
 
+# Simulate security tool installer verifying Windows Firewall policy
+# This is typical behavior of endpoint protection, MDM, or network management tools
+
+# Create temporary configuration registry location
 try {
-    # Create a BitsAdmin transfer job simulating patch distribution
-    # In production, this would connect to an actual SCCM endpoint
-    & bitsadmin.exe /create /download /priority normal $jobName
+  if (-not (Test-Path $tempRegPath)) {
+    New-Item -Path $tempRegPath -Force | Out-Null
+  }
+} catch {}
 
-    # Add file transfer from enterprise SCCM server
-    & bitsadmin.exe /addfile $jobName 'https://sccm.internal.corp.local/content/patch.exe' $updateFile
+# Installer queries current firewall state using command-line registry tool
+# (Enterprise tools often verify policy state before applying configurations)
+cmd /c "reg query HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile /v EnableFirewall" 2>&1 | Tee-Object -FilePath $configLogPath | Out-Null
 
-    # Add a second file from WSUS endpoint
-    $wsusFile = Join-Path $tempDir 'wsus_manifest.xml'
-    & bitsadmin.exe /addfile $jobName 'https://wsus.internal.corp.local/updates/manifest.xml' $wsusFile
-
-    # In real deployment, /resume would start the transfer
-    # & bitsadmin.exe /resume $jobName
-
-    # Clean up the job
-    & bitsadmin.exe /complete $jobName -ErrorAction SilentlyContinue
-    & bitsadmin.exe /remove $jobName -ErrorAction SilentlyContinue
-
-    # Clean up temporary files
-    Remove-Item -Force $updateFile -ErrorAction SilentlyContinue
-    Remove-Item -Force $wsusFile -ErrorAction SilentlyContinue
-}
-catch {
-    & bitsadmin.exe /remove $jobName -ErrorAction SilentlyContinue
-    Remove-Item -Force $updateFile -ErrorAction SilentlyContinue
-    Remove-Item -Force $wsusFile -ErrorAction SilentlyContinue
-}
-
-Write-Host 'Enterprise patch transfer workflow completed'
-
-# -- Cluster: singleton_37b9adf5-1251-44bc-97fe-42cc239603b5  (1 rule(s)) ---------------------
-# Intent:    Attackers using legitimate Windows tools (CertUtil and BitsAdmin) to download fi
-# Rules:     37b9adf5-1251-44bc-97fe-42cc239603b5
-# Archetype: User-driven workflow
-
-# Certificate validation troubleshooting - OCSP status checking
-$tempDir = [System.IO.Path]::GetTempPath()
-$certPath = Join-Path $tempDir 'server_cert.crt'
-$ocspResponse = Join-Path $tempDir 'ocsp_response.bin'
-
+# Tool applies its firewall policy configuration via PowerShell registry command
+# Setting EnableFirewall to 1 (enabled) as part of standard deployment
 try {
-    # Retrieve OCSP response for certificate validation during SSL troubleshooting
-    # Simulates a user or support team validating certificate chain integrity
-    & certutil.exe -urlcache -split -f 'http://ocsp.digicert.com/ocsp' $ocspResponse
-
-    # Also attempt OCSP validation via https endpoint
-    & certutil.exe -urlcache -f 'https://ocsp.internal.corp.local/ocsp/check' $ocspResponse
-
-    # Download certificate details for validation
-    & certutil.exe -urlcache -split -f 'https://pki.example.corp.local/cert' $certPath
-
-    # Verify the certificate file if it was downloaded
-    if (Test-Path $certPath) {
-        & certutil.exe -verify -urlfetch $certPath
-    }
-
-    # Clean up
-    Remove-Item -Force $certPath -ErrorAction SilentlyContinue
-    Remove-Item -Force $ocspResponse -ErrorAction SilentlyContinue
-}
-catch {
-    Remove-Item -Force $certPath -ErrorAction SilentlyContinue
-    Remove-Item -Force $ocspResponse -ErrorAction SilentlyContinue
-}
-
-Write-Host 'Certificate validation workflow completed'
-
-# -- Cluster: singleton_e0ccd616-16f2-4203-af74-0fda2efd9835  (1 rule(s)) ---------------------
-# Intent:    Attacker persistence via registry Run/RunOnce keys pointing to application updat
-# Rules:     e0ccd616-16f2-4203-af74-0fda2efd9835
-# Archetype: Software installer/updater workflow
-
-$regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-$appName = 'VSCodeUpdate'
-$updaterPath = 'C:\Program Files\Microsoft VS Code\update.exe'
-
-# Create a temporary directory structure to simulate VSCode installation
-$tempDir = Join-Path -Path $env:TEMP -ChildPath ('vscode_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $tempDir -ChildPath 'bin') -Force | Out-Null
-
-# Create a stub executable to represent the updater
-$stubPath = Join-Path $tempDir -ChildPath 'bin\update.exe'
-Copy-Item -Path (Get-Command cmd.exe).Path -Destination $stubPath -Force
-
-# Simulate the updater registration in the Run key
-$registryValue = $stubPath
-Reg.exe add $regPath /v $appName /d $registryValue /f | Out-Null
-
-# Wait briefly to allow Sysmon to capture the event
-Start-Sleep -Milliseconds 500
-
-# Clean up: remove the registry entry
-Reg.exe delete $regPath /v $appName /f 2>$null | Out-Null
-
-# Clean up: remove the temporary directory
-Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_e0ccd616-16f2-4203-af74-0fda2efd9835  (1 rule(s)) ---------------------
-# Intent:    Attacker persistence via registry Run/RunOnce keys pointing to application updat
-# Rules:     e0ccd616-16f2-4203-af74-0fda2efd9835
-# Archetype: IT admin workflow
-
-$regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-$appName = 'GoogleUpdate'
-$updaterPath = 'C:\Program Files (x86)\Google\Update\GoogleUpdate.exe'
-
-# Create a temporary directory structure to represent Google Update installation
-$tempDir = Join-Path -Path $env:TEMP -ChildPath ('googleupdate_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-# Create a stub executable
-$stubPath = Join-Path $tempDir -ChildPath 'GoogleUpdate.exe'
-Copy-Item -Path (Get-Command cmd.exe).Path -Destination $stubPath -Force
-
-# Register the updater in the Run key using native registry API
-$registryValue = $stubPath
-Reg.exe add $regPath /v $appName /d $registryValue /f | Out-Null
-
-# Wait for Sysmon to capture the event
-Start-Sleep -Milliseconds 500
-
-# Remove the registry entry (cleanup)
-Reg.exe delete $regPath /v $appName /f 2>$null | Out-Null
-
-# Clean up temporary directory
-Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_e0ccd616-16f2-4203-af74-0fda2efd9835  (1 rule(s)) ---------------------
-# Intent:    Attacker persistence via registry Run/RunOnce keys pointing to application updat
-# Rules:     e0ccd616-16f2-4203-af74-0fda2efd9835
-# Archetype: User-driven workflow
-
-$regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-$appName = 'SlackAutoUpdate'
-$updaterPath = 'C:\Program Files\Slack\Slack.exe'
-
-# Simulate Slack installation by creating a temporary directory structure
-$tempDir = Join-Path -Path $env:TEMP -ChildPath ('slack_' + [System.Guid]::NewGuid().ToString().Substring(0, 8))
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-# Create a stub executable to represent Slack.exe
-$stubPath = Join-Path $tempDir -ChildPath 'Slack.exe'
-Copy-Item -Path (Get-Command cmd.exe).Path -Destination $stubPath -Force
-
-# Register Slack in the Run key
-$registryValue = $stubPath
-Reg.exe add $regPath /v $appName /d $registryValue /f | Out-Null
-
-# Allow time for Sysmon to record the event
-Start-Sleep -Milliseconds 500
-
-# Clean up: remove the registry entry
-Reg.exe delete $regPath /v $appName /f 2>$null | Out-Null
-
-# Clean up: remove the temporary directory
-Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# -- Cluster: singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9  (1 rule(s)) ---------------------
-# Intent:    Detect mshta.exe as a parent process executing shell commands through inline VBS
-# Rules:     dfe49bba-8f75-4a19-8464-8a87b03c4ca9
-# Archetype: IT admin workflow
-
-$tempDir = [System.IO.Path]::GetTempPath()
-$diagScript = Join-Path $tempDir "hw_diagnostic.hta"
-
-# Create a legitimate HTML Application that invokes system diagnostics via VBScript
-$htaContent = @'
-<html>
-<head>
-<title>System Diagnostic Tool</title>
-</head>
-<body>
-<h2>Running Hardware Diagnostics</h2>
-<script language="VBScript">
-Dim shell, osInfo, diskInfo
-Set shell = CreateObject("wscript.shell")
-Set osInfo = shell.Exec("cmd /c systeminfo")
-Set diskInfo = shell.Exec("cmd /c wmic logicaldisk get name,size,freespace")
-MsgBox "Diagnostics complete", 0, "System Health Check"
-</script>
-</body>
-</html>
-'@
-
-Set-Content -Path $diagScript -Value $htaContent -Force
-
-# Execute the HTA file which will spawn as an mshta.exe parent process
-# The script execution will trigger Sysmon process creation events
-$process = Start-Process -FilePath "mshta.exe" -ArgumentList $diagScript -PassThru -Wait -ErrorAction SilentlyContinue
-
-# Clean up
-Remove-Item -Path $diagScript -Force -ErrorAction SilentlyContinue
-
-Write-Host "Hardware diagnostic workflow completed"
-
-# -- Cluster: singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9  (1 rule(s)) ---------------------
-# Intent:    Detect mshta.exe as a parent process executing shell commands through inline VBS
-# Rules:     dfe49bba-8f75-4a19-8464-8a87b03c4ca9
-# Archetype: Software installer/updater workflow
-
-$tempDir = [System.IO.Path]::GetTempPath()
-$installerHta = Join-Path $tempDir "app_installer_check.hta"
-
-# Create an installer pre-flight check HTA that uses VBScript to validate system
-$installerContent = @'
-<html>
-<head>
-<title>Application Pre-Install Validation</title>
-</head>
-<body>
-<h2>Validating Installation Prerequisites</h2>
-<script language="VBScript">
-Dim shell, regQuery, installResult
-Set shell = CreateObject("wscript.shell")
-
-regQuery = shell.Exec("cmd /c reg query HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion")
-installResult = shell.Run("cmd /c echo Installation prerequisites validated", 0)
-
-Dim fso
-Set fso = CreateObject("Scripting.FileSystemObject")
-if fso.FolderExists("C:\\Windows\\System32") then
-  shell.Run "cmd /c echo System directory check passed", 0
-end if
-</script>
-</body>
-</html>
-'@
-
-Set-Content -Path $installerHta -Value $installerContent -Force
-
-# Execute the installer pre-flight validation through mshta
-$process = Start-Process -FilePath "mshta.exe" -ArgumentList $installerHta -PassThru -Wait -ErrorAction SilentlyContinue
-
-# Clean up installer check file
-Remove-Item -Path $installerHta -Force -ErrorAction SilentlyContinue
-
-Write-Host "Application pre-install validation completed"
-
-# -- Cluster: singleton_dfe49bba-8f75-4a19-8464-8a87b03c4ca9  (1 rule(s)) ---------------------
-# Intent:    Detect mshta.exe as a parent process executing shell commands through inline VBS
-# Rules:     dfe49bba-8f75-4a19-8464-8a87b03c4ca9
-# Archetype: User-driven workflow
-
-$tempDir = [System.IO.Path]::GetTempPath()
-$configHta = Join-Path $tempDir "network_config_tool.hta"
-
-# Create a legitimate user-facing HTML Application GUI tool for network configuration
-$configContent = @'
-<html>
-<head>
-<title>Network Configuration Utility</title>
-<style>
-body { font-family: Arial; margin: 20px; }
-input { padding: 5px; margin: 5px; }
-</style>
-</head>
-<body>
-<h2>Network Settings Manager</h2>
-<button onclick="CheckNetwork()">Check Network Status</button>
-<script language="VBScript">
-Sub CheckNetwork()
-  Dim shell, netstat
-  Set shell = CreateObject("wscript.shell")
-  Set netstat = shell.Exec("cmd /c ipconfig /all")
-  Dim gateway
-  Set gateway = shell.Exec("cmd /c route print")
-  MsgBox "Network check completed. Review Event Viewer for details.", 0, "Network Status"
-End Sub
-</script>
-</body>
-</html>
-'@
-
-Set-Content -Path $configHta -Value $configContent -Force
-
-# User opens the network configuration HTA from their applications folder
-# This triggers mshta.exe as parent with inline VBScript execution
-$process = Start-Process -FilePath "mshta.exe" -ArgumentList $configHta -PassThru -Wait -ErrorAction SilentlyContinue
-
-# Clean up the configuration tool
-Remove-Item -Path $configHta -Force -ErrorAction SilentlyContinue
-
-Write-Host "Network configuration tool workflow completed"
-
-# SKIPPED variant 'IT admin workflow': blocked pattern: hidden window ('-windowstyle hidden')
-
-# -- Cluster: singleton_5543fe68-119f-4334-8553-2c92a2d1ab1a  (1 rule(s)) ---------------------
-# Intent:    Detect the use of scripting hosts (PowerShell, cmd, wscript, mshta, regsvr32) wi
-# Rules:     5543fe68-119f-4334-8553-2c92a2d1ab1a
-# Archetype: Software installer/updater workflow
-
-# Software update process: common in managed enterprise environments
-# Uses minimized window during dependency checking phase
-
-$updateScript = $env:TEMP + '\update_checker.ps1'
-
-$scriptContent = @'
-# Dependency and compatibility check - runs with minimized window during updates
-Write-Host "Checking application dependencies..."
-$modules = @('Posh-Git', 'PSReadLine')
-foreach ($module in $modules) {
-    if (Get-Module -ListAvailable -Name $module) {
-        Write-Host "Module $module is installed"
-    } else {
-        Write-Host "Module $module not found"
-    }
-}
-Write-Host "Dependency check complete"
-'@
-
-Set-Content -Path $updateScript -Value $scriptContent
-
-# Run with minimized window - typical for background update processes
-powershell.exe -WindowStyle Minimized -File $updateScript
-
-# Cleanup
-Remove-Item -Path $updateScript -Force
-Write-Host "Update check finished"
-
-# -- Cluster: singleton_5543fe68-119f-4334-8553-2c92a2d1ab1a  (1 rule(s)) ---------------------
-# Intent:    Detect the use of scripting hosts (PowerShell, cmd, wscript, mshta, regsvr32) wi
-# Rules:     5543fe68-119f-4334-8553-2c92a2d1ab1a
-# Archetype: User-driven workflow
-
-# User automation: batch file organization using WScript.Shell COM interface
-# Common for users automating file operations across shared drives
-
-$wscriptFile = $env:TEMP + '\organize_files.vbs'
-
-$vbsContent = @'
-Set WshShell = CreateObject("WScript.Shell")
-Set objShell = CreateObject("Shell.Application")
-
-' Create folder for organization if needed
-strPath = WshShell.ExpandEnvironmentStrings("%TEMP%") & "\organized"
-Set objFolder = objShell.NameSpace(WshShell.ExpandEnvironmentStrings("%TEMP%"))
-
-WScript.Echo "File organization utility initialized"
-WScript.Echo "User home directory: " & WshShell.SpecialFolders("MyDocuments")
-WScript.Echo "Organization utility ready"
-'@
-
-Set-Content -Path $wscriptFile -Value $vbsContent -Encoding ASCII
-
-# Execute using wscript.exe - standard for user automation scripts
-cscript.exe $wscriptFile
-
-# Cleanup
-Remove-Item -Path $wscriptFile -Force
-Write-Host "File organization script completed"
+  $fwPolicyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile'
+  if (-not (Test-Path $fwPolicyPath)) {
+    New-Item -Path $fwPolicyPath -Force | Out-Null
+  }
+
+  Set-ItemProperty -Path $fwPolicyPath -Name 'EnableFirewall' -Value 1 -Type DWord -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $fwPolicyPath -Name 'DoNotAllowExceptions' -Value 0 -Type DWord -ErrorAction SilentlyContinue
+} catch {}
+
+# Verify policy application success
+Invoke-Expression "Get-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile -Name EnableFirewall -ErrorAction SilentlyContinue" 2>&1 | Out-Null
+
+# Document configuration completion
+Add-Content -Path $configLogPath -Value "Configuration applied at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+
+# Clean up temporary registry and log
+try {
+  if (Test-Path $tempRegPath) {
+    Remove-Item -Path $tempRegPath -Force -Recurse -ErrorAction SilentlyContinue
+  }
+} catch {}
+
+if (Test-Path $configLogPath) { Remove-Item -Path $configLogPath -Force }
 
 
 # ===========================================================================

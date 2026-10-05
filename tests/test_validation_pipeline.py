@@ -58,7 +58,8 @@ def _lint_fail(feedback="Invalid field: BadField. Valid: Image, CommandLine"):
 def _attack_pass():
     r = MagicMock()
     r.passed = True
-    r.feedback = None
+    # GateResult.feedback is a method
+    r.feedback = MagicMock(return_value=None)
     r.skipped = False
     return r
 
@@ -66,7 +67,7 @@ def _attack_pass():
 def _attack_fail(feedback="Rule did not fire on attack sample"):
     r = MagicMock()
     r.passed = False
-    r.feedback = feedback
+    r.feedback = MagicMock(return_value=feedback)
     r.skipped = False
     return r
 

@@ -168,17 +168,18 @@ class TestRuleFilename:
     def test_max_length(self):
         long_title = "title: " + "A very long rule title " * 5
         filename = _rule_filename("T1059.001", long_title)
-        # stem should be capped — total filename reasonable
-        assert len(filename) < 100
+        # Tied to real constants (slug cap 120, see _slugify) not a magic number
+        assert len(filename) <= len("T1059.001") + 1 + 120 + len(".yml")
 
 
 class TestBranchName:
     def test_format(self):
-        branch = _branch_name("T1059.001", SAMPLE_RULE)
-        assert branch.startswith("rule/T1059.001-")
+        # _branch_name takes technique_id only — stable per-technique branch
+        branch = _branch_name("T1059.001")
+        assert branch == "rule/T1059.001"
 
     def test_no_spaces(self):
-        branch = _branch_name("T1059.001", SAMPLE_RULE)
+        branch = _branch_name("T1059.001")
         assert " " not in branch
 
 
@@ -220,7 +221,7 @@ class TestPRCreator:
         assert isinstance(result, PRResult)
         assert result.pr_number == 42
         assert result.pr_url == "https://github.com/testowner/testrepo/pull/42"
-        assert result.branch_name.startswith("rule/T1059.001-")
+        assert result.branch_name == "rule/T1059.001"
         assert result.rule_filename.endswith(".yml")
 
     def test_creates_branch_from_head(self, pr_creator, mock_repo, mock_validation_result):

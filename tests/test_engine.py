@@ -118,6 +118,20 @@ RULE_NULL_FIELD = textwrap.dedent("""\
         condition: sel
 """)
 
+RULE_TRULY_MISSING_FIELD = textwrap.dedent("""\
+    title: Test Truly Missing Field
+    name: test_truly_missing_field
+    id: 66666666-6666-6666-6666-666666666666
+    status: test
+    logsource:
+        category: process_creation
+        product: windows
+    detection:
+        sel:
+            RegistryValueData|contains: 'something'
+        condition: sel
+""")
+
 
 # ---------------------------------------------------------------------------
 # Sample event helpers
@@ -130,7 +144,7 @@ def make_process_event(**overrides) -> dict:
         "Channel": "Microsoft-Windows-Sysmon/Operational",
         "Image": "C:\\Windows\\System32\\cmd.exe",
         "CommandLine": "cmd.exe /c whoami",
-        "User": "DOMAIN\\user",
+        "user": "DOMAIN\\user",
         "ProcessId": "1234",
         "ParentProcessId": "5678",
         "UtcTime": "2024-01-01 12:00:00.000",
@@ -238,8 +252,10 @@ class TestBuildDb:
         count = conn.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
         assert count == 2
 
-    def test_missing_field_stored_as_null(self):
-        # Event A has 'Image', Event B doesn't — B's Image should be NULL
+    def test_missing_field_stored_as_empty_string(self):
+        # Current design stores missing fields as "" not NULL (see
+        # _build_db's own docstring) — prevents NULL propagation killing
+        # NOT-filter matches under SQLite's three-valued logic.
         events = [
             {"EventID": "1", "Image": "cmd.exe"},
             {"EventID": "2"},  # no Image key
@@ -248,7 +264,7 @@ class TestBuildDb:
         row = conn.execute(
             "SELECT `Image` FROM logs WHERE `EventID` = '2'").fetchone()
         assert row is not None
-        assert row[0] is None
+        assert row[0] == ""
 
     def test_regexp_udf_registered(self):
         events = [make_process_event(Image=r"C:\Windows\malware.exe")]
@@ -448,9 +464,10 @@ class TestDetectionEngineRun:
     # ── missing column (sparse logs) ─────────────────────────────────────
 
     def test_missing_column_skipped_not_crash(self, tmp_path):
-        # RULE_MISSING_FIELD references ParentCommandLine which is not in our events
-        self.write_rule(tmp_path, "rule.yml", RULE_MISSING_FIELD)
-        # Events deliberately omit ParentCommandLine
+        # ParentCommandLine is now in BASELINE_COLUMNS, so it always exists
+        # as a column regardless of event content — use a field that's
+        # genuinely absent from both BASELINE_COLUMNS and the test events.
+        self.write_rule(tmp_path, "rule.yml", RULE_TRULY_MISSING_FIELD)
         events = [{"EventID": "1", "Channel": "Microsoft-Windows-Sysmon/Operational",
                    "Image": "cmd.exe"}]
         engine = DetectionEngine(rules_dir=tmp_path, events=events)
@@ -461,13 +478,12 @@ class TestDetectionEngineRun:
         assert "execution_error" in r.skip_reason
 
     def test_missing_column_skip_reason_names_the_column(self, tmp_path):
-        self.write_rule(tmp_path, "rule.yml", RULE_MISSING_FIELD)
+        self.write_rule(tmp_path, "rule.yml", RULE_TRULY_MISSING_FIELD)
         events = [{"EventID": "1", "Channel": "Microsoft-Windows-Sysmon/Operational",
                    "Image": "cmd.exe"}]
         engine = DetectionEngine(rules_dir=tmp_path, events=events)
         results = engine.run()
-        # skip_reason should mention the missing field by name
-        assert "ParentCommandLine" in results[0].skip_reason or \
+        assert "RegistryValueData" in results[0].skip_reason or \
                "execution_error" in results[0].skip_reason
 
     # ── sql_query populated ───────────────────────────────────────────────

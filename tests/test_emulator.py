@@ -37,8 +37,9 @@ import pytest
 
 
 class DummyTest:
-    def __init__(self, name="test"):
+    def __init__(self, name="test", guid="guid-0"):
         self.test_name = name
+        self.test_guid = guid
 
 
 class DummyCleaned:
@@ -46,6 +47,10 @@ class DummyCleaned:
         self.test_name = name
         self.has_unresolved_vars = unresolved
         self.formatted_input = "powershell.exe -enc SQBFAFgA"
+        self.commands = ["powershell.exe -enc SQBFAFgA"]
+        self.executor_image = "powershell.exe"
+        self.technique_name = "Test Technique"
+        self.tactic = "execution"
 
 
 # =============================================================================
@@ -53,7 +58,13 @@ class DummyCleaned:
 # =============================================================================
 
 def test_run_emulator_basic_flow(monkeypatch):
-    """Full happy path: 1 technique → 2 cleaned tests → 2 events"""
+    """
+    1 technique, 1 primary candidate, base+evasion variants → 2 events.
+    Current _emulate_technique stops at the first candidate that yields
+    events — fallbacks only fire on zero-event failure, never accumulate
+    alongside a successful primary. "2 events" now comes from 2 variants
+    of one candidate, not 2 separate candidate tests.
+    """
 
     from pipeline.emulator.emulator import run_emulator
 
@@ -61,12 +72,14 @@ def test_run_emulator_basic_flow(monkeypatch):
         return object()
 
     def mock_select(*args, **kwargs):
-        return [DummyCleaned("c1"), DummyCleaned("c2")]
+        # (guid, cleaned) tuples — c2 is an unused fallback, never reached
+        return [("guid-c1", DummyCleaned("c1")), ("guid-c2", DummyCleaned("c2"))]
 
-    def mock_interpret(cleaned, evasion_hints=None):
+    def mock_interpret(cleaned, evasion_hints=None, **kwargs):
         return {
             "EventID": 1,
             "event_type": "process_creation",
+            "selected_step": "step-1",
             "fields": {
                 "Image": "cmd.exe",
                 "CommandLine": "cmd.exe /c whoami",
@@ -94,8 +107,17 @@ def test_run_emulator_basic_flow(monkeypatch):
         "pipeline.emulator.emulator.interpret_procedure", mock_interpret)
     monkeypatch.setattr(
         "pipeline.emulator.emulator.build_log_event", mock_build)
+    monkeypatch.setattr(
+        "pipeline.emulator.emulator.refine_evasion_hints_v2",
+        lambda **kwargs: kwargs["original_hints_v2"],
+    )
 
-    log_stream, stats = run_emulator(["T1059.001"])
+    log_stream, stats, history = run_emulator(
+        ["T1059.001"],
+        evasion_hints={"T1059.001": {"Image": "cmd.exe"}},
+        evasion_hints_v2={"T1059.001": {"Image": "powershell.exe"}},
+        output_dir=None,
+    )
 
     assert "T1059.001" in log_stream
     assert len(log_stream["T1059.001"]) == 2
@@ -127,7 +149,7 @@ def test_no_atomic_tests(monkeypatch):
     from pipeline.emulator.emulator import _select_tests, EmulatorStats
 
     monkeypatch.setattr(
-        "pipeline.emulator.emulator.load_tests_for_technique",
+        "pipeline.emulator.emulator.load_tests_for_technique_with_fallback",
         lambda x: [],
     )
 
@@ -146,7 +168,7 @@ def test_clean_test_none_skipped(monkeypatch):
         test_name = "bad test"
 
     monkeypatch.setattr(
-        "pipeline.emulator.emulator.load_tests_for_technique",
+        "pipeline.emulator.emulator.load_tests_for_technique_with_fallback",
         lambda x: [Dummy()],
     )
 
@@ -172,7 +194,7 @@ def test_unresolved_vars_skipped(monkeypatch):
         test_name = "bad vars"
 
     monkeypatch.setattr(
-        "pipeline.emulator.emulator.load_tests_for_technique",
+        "pipeline.emulator.emulator.load_tests_for_technique_with_fallback",
         lambda x: [DummyTest()],
     )
 
@@ -185,7 +207,7 @@ def test_unresolved_vars_skipped(monkeypatch):
     result = _select_tests("T1059.001", object(), stats)
 
     assert result == []
-    assert stats.tests_skipped_unresolved == 1
+    assert stats.tests_with_unresolved_vars == 1
 
 
 def test_build_log_event_none_dropped(monkeypatch):
@@ -197,7 +219,7 @@ def test_build_log_event_none_dropped(monkeypatch):
         "pipeline.emulator.emulator.lookup_technique", lambda x: object())
     monkeypatch.setattr(
         "pipeline.emulator.emulator._select_tests",
-        lambda *args: [DummyCleaned()],
+        lambda *args, **kwargs: [("guid-1", DummyCleaned())],
     )
 
     monkeypatch.setattr(
@@ -221,17 +243,21 @@ def test_build_log_event_none_dropped(monkeypatch):
 # =============================================================================
 
 def test_max_tests_limit(monkeypatch):
-    """Ensure _MAX_TESTS_PER_TECHNIQUE cap is enforced"""
+    """Candidate pool is capped at _MAX_CANDIDATES + _FALLBACK_POOL (1+3=4)
+    via _select_candidates — there is no _MAX_TESTS_PER_TECHNIQUE constant."""
 
-    from pipeline.emulator.emulator import _select_tests, EmulatorStats, _MAX_TESTS_PER_TECHNIQUE
+    from pipeline.emulator.emulator import (
+        _select_tests, EmulatorStats, _MAX_CANDIDATES, _FALLBACK_POOL,
+    )
 
     class Cleaned:
         has_unresolved_vars = False
         test_name = "ok"
+        commands = ["some suspicious command"]
 
     monkeypatch.setattr(
-        "pipeline.emulator.emulator.load_tests_for_technique",
-        lambda x: [DummyTest()] * 10,
+        "pipeline.emulator.emulator.load_tests_for_technique_with_fallback",
+        lambda x: [DummyTest(guid=f"guid-{i}") for i in range(10)],
     )
 
     monkeypatch.setattr(
@@ -242,7 +268,7 @@ def test_max_tests_limit(monkeypatch):
     stats = EmulatorStats()
     result = _select_tests("T1059.001", object(), stats)
 
-    assert len(result) == _MAX_TESTS_PER_TECHNIQUE
+    assert len(result) == _MAX_CANDIDATES + _FALLBACK_POOL
 
 
 # =============================================================================
@@ -256,10 +282,10 @@ def test_all_techniques_present_in_output(monkeypatch):
 
     monkeypatch.setattr(
         "pipeline.emulator.emulator._emulate_technique",
-        lambda *args: [],
+        lambda *args, **kwargs: [],
     )
 
-    log_stream, _ = run_emulator(["T1", "T2"])
+    log_stream, _, _ = run_emulator(["T1", "T2"], output_dir=None)
 
     assert "T1" in log_stream
     assert "T2" in log_stream
@@ -278,10 +304,10 @@ def test_stats_consistency(monkeypatch):
 
     monkeypatch.setattr(
         "pipeline.emulator.emulator._emulate_technique",
-        lambda *args: [1, 2, 3],
+        lambda *args, **kwargs: [1, 2, 3],
     )
 
-    log_stream, stats = run_emulator(["T1"])
+    log_stream, stats, _ = run_emulator(["T1"], output_dir=None)
 
     assert stats.events_generated == 3
     assert stats.per_technique["T1"] == 3

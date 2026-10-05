@@ -62,7 +62,7 @@ def make_attack_event(**overrides) -> dict:
         "Channel": "Microsoft-Windows-Sysmon/Operational",
         "Image": "C:\\Windows\\System32\\cmd.exe",
         "CommandLine": "cmd.exe malicious_payload --go",
-        "User": "DOMAIN\\attacker",
+        "user": "DOMAIN\\attacker",
         "ProcessId": "1337",
     }
     base.update(overrides)

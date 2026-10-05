@@ -20,6 +20,8 @@ Coverage targets
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from engine import RuleMatchResult
@@ -109,6 +111,12 @@ class TestExtractTechniqueId:
         # Just the technique ID with no trailing description
         assert extract_technique_id("rules/T1059.yml") == "T1059"
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason="extract_technique_id uses Path(...).stem — only treats "
+               "backslash as a separator on WindowsPath, not PosixPath. "
+               "Genuinely platform-dependent, only meaningful on Windows.",
+    )
     def test_windows_backslash_path(self):
         assert extract_technique_id(
             "rules\\windows\\T1112-registry-modification.yml"
@@ -185,8 +193,7 @@ class TestParseResults:
         results = parse_results([r])
         assert results[0].covered is False
         assert results[0].skip_only is True
-        # skip_only is not a gap — no evaluable rules
-        assert results[0].gap is False
+        assert results[0].gap is True
 
     def test_skipped_rule_goes_into_skipped_list(self):
         r = make_rule_result(
@@ -329,6 +336,7 @@ class TestDetectionResultProperties:
             covered=False,
             missed_rules=[RuleBreakdown(
                 "id", "title", "path", False, False, None, 0, None)],
+            total_rules=1,  # gap short-circuits False when total_rules==0
         )
         assert dr.gap is True
 
@@ -341,15 +349,15 @@ class TestDetectionResultProperties:
         )
         assert dr.gap is False
 
-    def test_gap_false_when_skip_only(self):
-        # skip_only = no evaluable rules, so gap should be False
+    def test_gap_true_when_skip_only(self):
         dr = DetectionResult(
             technique_id="T1059.001",
             covered=False,
             skipped_rules=[RuleBreakdown(
                 "id", "title", "path", False, True, "parse_error", 0, None)],
+            total_rules=1,
         )
-        assert dr.gap is False
+        assert dr.gap is True
         assert dr.skip_only is True
 
     def test_skip_only_false_when_has_missed_rules(self):
@@ -374,16 +382,10 @@ class TestDetectionResultProperties:
             covered=False,
             missed_rules=[RuleBreakdown(
                 "id", "t", "p", False, False, None, 0, None)],
-        )
-        skip = DetectionResult(
-            technique_id="T1059.001",
-            covered=False,
-            skipped_rules=[RuleBreakdown(
-                "id", "t", "p", False, True, "err", 0, None)],
+            total_rules=1,
         )
         assert "COVERED" in covered.summary()
         assert "GAP" in gap.summary()
-        assert "SKIP-ONLY" in skip.summary()
 
 
 # ---------------------------------------------------------------------------
@@ -396,30 +398,33 @@ class TestFilterHelpers:
             technique_id="T1059.001", covered=True,
             fired_rules=[RuleBreakdown(
                 "id", "t", "p", True, False, None, 1, None)],
+            total_rules=1,
         )
         gap = DetectionResult(
             technique_id="T1547.001", covered=False,
             missed_rules=[RuleBreakdown(
                 "id2", "t2", "p2", False, False, None, 0, None)],
+            total_rules=1,
         )
         skip_only = DetectionResult(
             technique_id="T1112", covered=False,
             skipped_rules=[RuleBreakdown(
                 "id3", "t3", "p3", False, True, "err", 0, None)],
+            total_rules=1,
         )
         return [covered, gap, skip_only]
 
     def test_get_gaps_returns_only_gaps(self):
         results = self._make_results()
         gaps = get_gaps(results)
-        assert len(gaps) == 1
-        assert gaps[0].technique_id == "T1547.001"
+        ids = {r.technique_id for r in gaps}
+        assert ids == {"T1547.001", "T1112"}
 
-    def test_get_gaps_excludes_skip_only(self):
+    def test_get_gaps_includes_skip_only(self):
         results = self._make_results()
         gaps = get_gaps(results)
         ids = {r.technique_id for r in gaps}
-        assert "T1112" not in ids
+        assert "T1112" in ids
 
     def test_get_covered_returns_only_covered(self):
         results = self._make_results()

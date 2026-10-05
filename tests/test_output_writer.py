@@ -46,7 +46,7 @@ class DummyLogEvent:
     def __init__(self, data: dict):
         self._data = data
 
-    def model_dump(self):
+    def model_dump(self, exclude_none=False):
         return self._data
 
 

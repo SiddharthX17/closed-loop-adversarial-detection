@@ -1,0 +1,1 @@
+﻿{"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":12,"TimeCreated":"2026-09-27T03:39:32.7252820+00:00","EventType":"DeleteKey","Image":"\\\\?\\C:\\Windows\\system32\\wbem\\WMIADAP.EXE","TargetObject":"HKLM\\SOFTWARE\\Microsoft\\Wbem\\WDM\\DREDGE"}
